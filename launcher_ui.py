@@ -377,36 +377,6 @@ HTML_CONTENT = f"""
             <span class="menu-line"></span>
         </button>
 
-        <!-- Reproductor de Música -->
-        <div id="music-player">
-            <div class="player-top-row">
-                <img id="album-cover" src="{URL_ALBUM_COVER}" alt="Album Cover">
-                <div class="track-info">
-                    <span id="track-title">Cargando...</span>
-                    <span id="track-artist">...</span>
-                </div>
-                <div class="controls">
-                    <button id="play-pause-btn" class="control-btn" title="Play/Pause">
-                        <i class="fas fa-play"></i>
-                        <i class="fas fa-pause"></i>
-                    </button>
-                    <button id="next-btn" class="control-btn" title="Siguiente">
-                        <i class="fas fa-forward-step"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="player-bottom-row">
-                 <div id="progress-container">
-                      <div id="progress-bar"></div>
-                 </div>
-                 <div id="volume-container">
-                      <i id="volume-icon" class="fas fa-volume-high"></i>
-                      <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
-                 </div>
-            </div>
-        </div>
-        <!-- Elemento Audio (oculto) -->
-        <audio id="audio-element" preload="metadata"></audio>
     </div>
 
     <!-- Panel Lateral Deslizable -->
@@ -817,8 +787,7 @@ HTML_CONTENT = f"""
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); loadingAnimationId = null; }}
 
             // Mostrar reproductor si NO estamos en una pantalla de setup/settings
-            const musicPlayerShouldBeVisible = (screenName !== 'initial-setup' && screenName !== 'settings');
-            domPlayer.player.classList.toggle('visible', musicPlayerShouldBeVisible);
+            domPlayer.player.classList.add('visible');
 
             // Mostrar pantalla de juego (fondo)
             dom.screens.play.style.display = 'flex';
@@ -1415,6 +1384,36 @@ HTML_CONTENT = f"""
             console.log("Initial event listeners attached.");
         }});
     </script>
+        <!-- Reproductor de Música -->
+        <div id="music-player">
+            <div class="player-top-row">
+                <img id="album-cover" src="{URL_ALBUM_COVER}" alt="Album Cover">
+                <div class="track-info">
+                    <span id="track-title">Cargando...</span>
+                    <span id="track-artist">...</span>
+                </div>
+                <div class="controls">
+                    <button id="play-pause-btn" class="control-btn" title="Play/Pause">
+                        <i class="fas fa-play"></i>
+                        <i class="fas fa-pause"></i>
+                    </button>
+                    <button id="next-btn" class="control-btn" title="Siguiente">
+                        <i class="fas fa-forward-step"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="player-bottom-row">
+                 <div id="progress-container">
+                      <div id="progress-bar"></div>
+                 </div>
+                 <div id="volume-container">
+                      <i id="volume-icon" class="fas fa-volume-high"></i>
+                      <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+                 </div>
+            </div>
+        </div>
+        <!-- Elemento Audio (oculto) -->
+        <audio id="audio-element" preload="metadata"></audio>
 </body>
 </html>
 """
