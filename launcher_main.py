@@ -731,9 +731,25 @@ class ModpackLauncherAPI:
             
             if self.cancel_event.is_set(): raise InterruptedError("Descarga cancelada.")
 
-            # 2. Extraer
-            self._update_install_status("Descarga completa. Extrayendo archivos...")
-            extract_target = os.path.join(tmp_dir, "extracted")
+            # 2. Crear directorio de destino y extraer
+            self._update_install_status(f"Creando directorio de instancia: {os.path.basename(final_instance_path)}")
+
+            # (CORREGIDO) Asegurarse de que la carpeta 'instances' exista
+            try:
+                os.makedirs(instance_base_path, exist_ok=True)
+            except Exception as e:
+                raise IOError(f"No se pudo crear el directorio 'instances': {e}")
+
+            if os.path.exists(final_instance_path):
+                self._update_install_status("Una carpeta de instancia antigua existe. Eliminándola...")
+                try:
+                    shutil.rmtree(final_instance_path)
+                except Exception as e:
+                    raise IOError(f"No se pudo eliminar la instancia antigua: {e}")
+
+            os.makedirs(final_instance_path, exist_ok=True)
+
+            self._update_install_status("Extrayendo archivos de modpack...")
             
             with zipfile.ZipFile(zip_path, 'r') as zf:
                 if zf.testzip() is not None:
@@ -745,53 +761,18 @@ class ModpackLauncherAPI:
                 
                 for member in zf.infolist():
                     if self.cancel_event.is_set(): raise InterruptedError("Extracción cancelada.")
-                    zf.extract(member, extract_target)
+                    # Extraer directamente en la carpeta de instancia final
+                    zf.extract(member, final_instance_path)
                     extracted_count += 1
                     
                     now = time.time()
                     if now - last_update_time > 0.1 or extracted_count == total_files:
                         pct = extracted_count / total_files if total_files > 0 else 0
                         self._update_install_status(f"Extrayendo: {member.filename}")
-                        # Usar el mismo _update_progress pero para el wizard
                         if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
                         last_update_time = now
 
-            self._update_install_status("Extracción completa. Verificando archivos...")
-            
-            # Asumir que el ZIP contiene directamente la carpeta "Kewz's Vanilla+ True"
-            src_folder_path = os.path.join(extract_target, MODPACK_INSTANCE_NAME)
-            
-            if not os.path.isdir(src_folder_path) or not os.path.isdir(os.path.join(src_folder_path, "minecraft")):
-                # Fallback: buscar si está en una subcarpeta (común en GitLab/Dropbox)
-                found_correct_folder = False
-                for root, dirs, _ in os.walk(extract_target):
-                    if MODPACK_INSTANCE_NAME in dirs:
-                        src_folder_path = os.path.join(root, MODPACK_INSTANCE_NAME)
-                        if os.path.isdir(os.path.join(src_folder_path, "minecraft")):
-                             self._update_install_status("Carpeta de instancia encontrada dentro del ZIP.")
-                             found_correct_folder = True
-                             break
-                if not found_correct_folder:
-                    raise FileNotFoundError(f"El ZIP no contiene la carpeta de instancia '{MODPACK_INSTANCE_NAME}' esperada.")
-
-            # 3. Mover a la carpeta de instancias
-            self._update_install_status(f"Moviendo '{MODPACK_INSTANCE_NAME}' a '{instance_base_path}'...")
-            
-            # (CORREGIDO) Asegurarse de que la carpeta 'instances' exista
-            try:
-                os.makedirs(instance_base_path, exist_ok=True)
-                self._update_install_status(f"Carpeta 'instances' asegurada en: {instance_base_path}")
-            except Exception as e:
-                raise IOError(f"No se pudo crear el directorio 'instances': {e}")
-            
-            if os.path.exists(final_instance_path):
-                self._update_install_status("Una carpeta de instancia antigua existe. Eliminándola...")
-                try:
-                    shutil.rmtree(final_instance_path)
-                except Exception as e:
-                    raise IOError(f"No se pudo eliminar la instancia antigua: {e}")
-
-            shutil.move(src_folder_path, instance_base_path) # Mueve la carpeta
+            self._update_install_status("Extracción completa. Verificando...")
             
             self._update_install_status("Verificación final de la instancia...")
             if self._validate_instance_path(final_mc_path):
