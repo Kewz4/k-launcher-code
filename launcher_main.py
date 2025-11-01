@@ -127,11 +127,19 @@ class ModpackLauncherAPI:
 
     def _log(self, message):
         """Envía un mensaje de registro a la consola de la GUI."""
-        print(f"[Launcher Log] {message}")
+        try:
+            # Intentar imprimir directamente. Esto funciona en la mayoría de los casos.
+            print(f"[Launcher Log] {message}")
+        except UnicodeEncodeError:
+            # Si falla (p. ej., en consolas de Windows que no son UTF-8),
+            # codifica el mensaje de forma segura y vuelve a intentarlo.
+            safe_message_for_console = f"[Launcher Log] {message}".encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding)
+            print(safe_message_for_console)
+
         if self.window:
-            safe_message = json.dumps(message)[1:-1]
+            safe_message_for_gui = json.dumps(message)[1:-1]
             try:
-                self.window.evaluate_js(f'requestAnimationFrame(() => logToConsole("{safe_message}"))')
+                self.window.evaluate_js(f'requestAnimationFrame(() => logToConsole("{safe_message_for_gui}"))')
             except Exception as e:
                 pass
 
