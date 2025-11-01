@@ -1390,6 +1390,13 @@ HTML_CONTENT = """
              dom.minimizedWidget.addEventListener('click', () => {{
                  isProgressMinimized = false;
                  dom.minimizedWidget.style.display = 'none';
+
+                 // (CORREGIDO) Sincronizar la barra principal con la minimizada antes de mostrarla
+                 const currentMinimizedWidth = dom.minimizedProgressBarFill.style.width;
+                 dom.progressBar.style.transition = 'none'; // Desactivar transición para el salto
+                 dom.progressBar.style.width = currentMinimizedWidth;
+                 setTimeout(() => { dom.progressBar.style.transition = 'width 0.3s ease'; }, 50); // Reactivar transición
+
                  dom.screens.progress.style.display = 'flex';
                  dom.screens.progress.classList.add('active');
              }});
