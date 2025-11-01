@@ -589,75 +589,9 @@ HTML_CONTENT = f"""
         // (ACTUALIZADO) setupState ahora se usa para ambos flujos
         let setupState = {{ prismPath: null, instancePath: null }};
         
-        const domPlayer = {{
-            player: document.getElementById('music-player'),
-            cover: document.getElementById('album-cover'),
-            title: document.getElementById('track-title'),
-            artist: document.getElementById('track-artist'),
-            audio: document.getElementById('audio-element'),
-            playPauseBtn: document.getElementById('play-pause-btn'),
-            nextBtn: document.getElementById('next-btn'),
-            progressContainer: document.getElementById('progress-container'),
-            progressBar: document.getElementById('progress-bar'),
-            volumeContainer: document.getElementById('volume-container'),
-            volumeIcon: document.getElementById('volume-icon'),
-            volumeSlider: document.getElementById('volume-slider')
-        }};
-        
-        const dom = {{
-            loadingOverlay: document.getElementById('loading-overlay'), loadingSpinner: document.getElementById('loading-spinner'), loadingTitle: document.getElementById('loading-title'), loadingDetails: document.getElementById('loading-details'), 
-            mainContainer: document.getElementById('main-container'), 
-            screens: {{ 
-                initialSetup: document.getElementById('screen-initial-setup'), // (NUEVO)
-                settings: document.getElementById('screen-settings'), // (RENOMBRADO)
-                play: document.getElementById('screen-play'), 
-                progress: document.getElementById('screen-progress'), 
-            }},
-            // (NUEVO) Asistente de Configuración Inicial
-            wizard: {{
-                steps: document.querySelectorAll('#screen-initial-setup .wizard-step'),
-                btnAskYes: document.getElementById('wizard-btn-ask-yes'),
-                btnAskNo: document.getElementById('wizard-btn-ask-no'),
-                btnFindManual: document.getElementById('wizard-btn-find-manual'),
-                btnInstallLocation: document.getElementById('wizard-btn-install-location'),
-                btnCancelInstall: document.getElementById('wizard-btn-cancel-install'),
-                btnLoginOpen: document.getElementById('wizard-btn-login-open'),
-                btnLoginFinish: document.getElementById('wizard-btn-login-finish'),
-                installTitle: document.getElementById('wizard-install-title'),
-                installSubtitle: document.getElementById('wizard-install-subtitle'),
-                progressBar: document.getElementById('wizard-progress-bar-fill'),
-                progressLabel: document.getElementById('wizard-progress-label'),
-                console: document.getElementById('wizard-console'),
-            }},
-            // (RENOMBRADO) Pantalla de Ajustes
-            settings: {{ 
-                prismDisplay: document.getElementById('settings-prism-exe-display'), 
-                prismText: document.getElementById('settings-prism-exe-text'), 
-                browsePrismBtn: document.getElementById('settings-browse-prism-btn'), 
-                instanceDisplay: document.getElementById('settings-instance-folder-display'), 
-                instanceText: document.getElementById('settings-instance-folder-text'), 
-                browseInstanceBtn: document.getElementById('settings-browse-instance-btn'), 
-                saveBtn: document.getElementById('save-settings-btn') 
-            }}, 
-            playBtn: document.getElementById('play-btn'), 
-            menuBtn: document.getElementById('menu-btn'), 
-            sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'), 
-            panelSettingsBtn: document.getElementById('panel-settings-btn'), // (RENOMBRADO)
-            panelQuitBtn: document.getElementById('panel-quit-btn'), 
-            cancelBtn: document.getElementById('cancel-btn'), 
-            progressTitle: document.getElementById('progress-title'), 
-            progressBar: document.getElementById('progress-fill'), 
-            progressLabel: document.getElementById('progress-label'), 
-            console: document.getElementById('console'), 
-            scrollBottomBtn: document.getElementById('scroll-bottom-btn'), 
-            changelogContent: document.getElementById('changelog-content'), 
-            modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
-            minimizeProgressBtn: document.getElementById('minimize-progress-btn'),
-            minimizedWidget: document.getElementById('minimized-progress-widget'),
-            minimizedProgressLabel: document.getElementById('minimized-progress-label'),
-            minimizedProgressPercent: document.getElementById('minimized-progress-percent'),
-            minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill')
-        }};
+        // (CORREGIDO) Declarar variables aquí, pero asignarlas dentro de DOMContentLoaded
+        let domPlayer;
+        let dom;
 
         // --- Lógica del Reproductor de Música ---
         let playlist = [];
@@ -1180,6 +1114,75 @@ HTML_CONTENT = f"""
         // 2. Esperar a que el DOM esté completamente cargado
         document.addEventListener('DOMContentLoaded', () => {{
             console.log("DOMContentLoaded: El DOM está completamente cargado.");
+
+            // (CORREGIDO) Asignar las constantes del DOM aquí, ahora que el HTML está cargado.
+            domPlayer = {
+                player: document.getElementById('music-player'),
+                cover: document.getElementById('album-cover'),
+                title: document.getElementById('track-title'),
+                artist: document.getElementById('track-artist'),
+                audio: document.getElementById('audio-element'),
+                playPauseBtn: document.getElementById('play-pause-btn'),
+                nextBtn: document.getElementById('next-btn'),
+                progressContainer: document.getElementById('progress-container'),
+                progressBar: document.getElementById('progress-bar'),
+                volumeContainer: document.getElementById('volume-container'),
+                volumeIcon: document.getElementById('volume-icon'),
+                volumeSlider: document.getElementById('volume-slider')
+            };
+
+            dom = {
+                loadingOverlay: document.getElementById('loading-overlay'), loadingSpinner: document.getElementById('loading-spinner'), loadingTitle: document.getElementById('loading-title'), loadingDetails: document.getElementById('loading-details'),
+                mainContainer: document.getElementById('main-container'),
+                screens: {
+                    initialSetup: document.getElementById('screen-initial-setup'),
+                    settings: document.getElementById('screen-settings'),
+                    play: document.getElementById('screen-play'),
+                    progress: document.getElementById('screen-progress'),
+                },
+                wizard: {
+                    steps: document.querySelectorAll('#screen-initial-setup .wizard-step'),
+                    btnAskYes: document.getElementById('wizard-btn-ask-yes'),
+                    btnAskNo: document.getElementById('wizard-btn-ask-no'),
+                    btnFindManual: document.getElementById('wizard-btn-find-manual'),
+                    btnInstallLocation: document.getElementById('wizard-btn-install-location'),
+                    btnCancelInstall: document.getElementById('wizard-btn-cancel-install'),
+                    btnLoginOpen: document.getElementById('wizard-btn-login-open'),
+                    btnLoginFinish: document.getElementById('wizard-btn-login-finish'),
+                    installTitle: document.getElementById('wizard-install-title'),
+                    installSubtitle: document.getElementById('wizard-install-subtitle'),
+                    progressBar: document.getElementById('wizard-progress-bar-fill'),
+                    progressLabel: document.getElementById('wizard-progress-label'),
+                    console: document.getElementById('wizard-console'),
+                },
+                settings: {
+                    prismDisplay: document.getElementById('settings-prism-exe-display'),
+                    prismText: document.getElementById('settings-prism-exe-text'),
+                    browsePrismBtn: document.getElementById('settings-browse-prism-btn'),
+                    instanceDisplay: document.getElementById('settings-instance-folder-display'),
+                    instanceText: document.getElementById('settings-instance-folder-text'),
+                    browseInstanceBtn: document.getElementById('settings-browse-instance-btn'),
+                    saveBtn: document.getElementById('save-settings-btn')
+                },
+                playBtn: document.getElementById('play-btn'),
+                menuBtn: document.getElementById('menu-btn'),
+                sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'),
+                panelSettingsBtn: document.getElementById('panel-settings-btn'),
+                panelQuitBtn: document.getElementById('panel-quit-btn'),
+                cancelBtn: document.getElementById('cancel-btn'),
+                progressTitle: document.getElementById('progress-title'),
+                progressBar: document.getElementById('progress-fill'),
+                progressLabel: document.getElementById('progress-label'),
+                console: document.getElementById('console'),
+                scrollBottomBtn: document.getElementById('scroll-bottom-btn'),
+                changelogContent: document.getElementById('changelog-content'),
+                modal: { element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') },
+                minimizeProgressBtn: document.getElementById('minimize-progress-btn'),
+                minimizedWidget: document.getElementById('minimized-progress-widget'),
+                minimizedProgressLabel: document.getElementById('minimized-progress-label'),
+                minimizedProgressPercent: document.getElementById('minimized-progress-percent'),
+                minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill')
+            };
 
             // Función para iniciar la aplicación una vez que AMBOS eventos han ocurrido
             function initializeApp() {{
