@@ -1215,7 +1215,8 @@ class ModpackLauncherAPI:
 
             self._log("Leyendo log en tiempo real...")
             time.sleep(0.1)
-            file_handle = open(log_path, 'r', encoding='utf-8', errors='ignore')
+            # (CORREGIDO) Usar 'replace' para manejar errores de codificación sin detener el programa
+            file_handle = open(log_path, 'r', encoding='utf-8', errors='replace')
             file_handle.seek(0, os.SEEK_END)
             self._log("Monitoreando nuevas líneas en tiempo real...")
 
@@ -1238,7 +1239,7 @@ class ModpackLauncherAPI:
                     try:
                         if file_handle.closed:
                             self._log("Reabriendo handle del log...")
-                            file_handle = open(log_path, 'r', encoding='utf-8', errors='ignore')
+                            file_handle = open(log_path, 'r', encoding='utf-8', errors='replace')
                             file_handle.seek(0, os.SEEK_END)
                         else:
                             current_pos = file_handle.tell()
