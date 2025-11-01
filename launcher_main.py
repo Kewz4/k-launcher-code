@@ -72,6 +72,7 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
 MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 # (ACTUALIZADO) Nueva URL de Dropbox (confirmado que es .ZIP)
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/n09t1j88vvohgxcvn6t6u/Kewz-s-Vanilla-True-Modpack.zip?rlkey=tg8v655uq2h30oc6k9qunsktl&st=eg2zn3h6&dl=1"
+PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
 
 
 # La línea que indica que el juego está listo
@@ -631,123 +632,84 @@ class ModpackLauncherAPI:
 
     def _task_install_prism(self, install_location_base):
         """
-        (NUEVO) Tarea en hilo: Instala Prism usando Winget.
+        (REESCRITO) Tarea en hilo: Descarga y extrae la versión portable de Prism.
         Llama a JS: onPrismInstallComplete(success, path, error)
         """
         
-        # (CORREGIDO) Crear una subcarpeta dedicada para la instalación
         dedicated_install_path = os.path.join(install_location_base, "PrismLauncher")
-        self._update_install_status(f"Creando directorio de instalación dedicado en: {dedicated_install_path}")
+        self._update_install_status(f"Creando directorio de instalación en: {dedicated_install_path}")
         
+        tmp_dir = None
         try:
             os.makedirs(dedicated_install_path, exist_ok=True)
-        except Exception as e:
-            msg = f"Fallo al crear directorio dedicado '{dedicated_install_path}': {e}"
-            self._log(msg)
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-            return
             
-        if self.cancel_event.is_set():
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, "Instalación cancelada.")')
-            return
+            if self.cancel_event.is_set():
+                raise InterruptedError("Instalación cancelada por el usuario.")
 
-        # (NUEVO) Paso 1: Intentar desinstalar cualquier versión "fantasma"
-        self._update_install_status("Intentando limpiar instalaciones anteriores de Prism (por si acaso)...")
-        uninstall_command = [
-            "winget", "uninstall", "PrismLauncher.PrismLauncher",
-            "--silent",
-            "--accept-source-agreements"
-        ]
-        try:
-            # Ejecutar esto y esperar a que termine, pero no fallar si no encuentra nada
-            uninstall_process = subprocess.Popen(uninstall_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
-            while True:
-                output = uninstall_process.stdout.readline()
-                if output == '' and uninstall_process.poll() is not None:
-                    break
-                if output:
-                    self._update_install_status(f"[Limpieza] {output.strip()}")
+            tmp_dir = tempfile.mkdtemp(prefix="prism_portable_")
+            self._update_install_status(f"Directorio temporal creado: {os.path.basename(tmp_dir)}")
+            zip_path = os.path.join(tmp_dir, "prismlauncher.zip")
+
+            # 1. Descargar
+            self._update_install_status(f"Descargando Prism Launcher desde: {PRISM_PORTABLE_URL}")
+            self._download_file(PRISM_PORTABLE_URL, zip_path, "wizard_install")
+
+            if self.cancel_event.is_set(): raise InterruptedError("Descarga cancelada.")
+
+            # 2. Extraer
+            self._update_install_status("Descarga completa. Extrayendo archivos...")
             
-            uninstall_return_code = uninstall_process.poll()
-            if uninstall_return_code == 0:
-                self._update_install_status("Limpieza completada.")
-            else:
-                # Esto es normal si no se encontró nada
-                self._update_install_status("No se encontró instalación fantasma (o la limpieza falló, no es crítico).")
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                if zf.testzip() is not None:
+                    raise zipfile.BadZipFile("Archivo ZIP de Prism Launcher corrupto.")
                 
-        except Exception as e:
-            self._update_install_status(f"Error durante la limpieza (no es crítico): {e}")
+                total_files = len(zf.infolist())
+                extracted_count = 0
+                last_update_time = time.time()
 
-        if self.cancel_event.is_set():
-             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, "Instalación cancelada.")')
-             return
+                for member in zf.infolist():
+                    if self.cancel_event.is_set(): raise InterruptedError("Extracción cancelada.")
+                    zf.extract(member, dedicated_install_path)
+                    extracted_count += 1
 
-        # (NUEVO) Paso 2: Instalar en la RUTA DEDICADA
-        self._update_install_status(f"Iniciando Winget para instalar Prism en: {dedicated_install_path}")
-        self._update_install_status("(Esto puede tardar varios minutos)...")
-        
-        install_command = [
-            "winget", "install", "PrismLauncher.PrismLauncher",
-            "--silent",
-            "--accept-package-agreements",
-            "--accept-source-agreements",
-            "--force",
-            "--scope", "machine",
-            "--location", dedicated_install_path  # <-- (CORREGIDO) Usar la nueva ruta
-        ]
-        
-        # (CORREGIDO) Winget a veces usa P mayúscula
-        final_exe_path = os.path.join(dedicated_install_path, "PrismLauncher.exe")
-        final_exe_path_lower = os.path.join(dedicated_install_path, "prismlauncher.exe")
+                    now = time.time()
+                    if now - last_update_time > 0.1 or extracted_count == total_files:
+                        pct = extracted_count / total_files if total_files > 0 else 0
+                        self._update_install_status(f"Extrayendo: {member.filename}")
+                        if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
+                        last_update_time = now
 
-        try:
-            # Usar Popen para leer la salida en tiempo real
-            process = subprocess.Popen(install_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+            self._update_install_status("Extracción completa. Verificando ejecutable...")
             
-            while True:
-                if self.cancel_event.is_set():
-                    self._log("Cancelación detectada. Intentando terminar Winget...")
-                    process.terminate()
-                    process.wait(timeout=5)
-                    raise InterruptedError("Instalación cancelada por el usuario.")
-                
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    self._update_install_status(output.strip())
-            
-            return_code = process.poll()
-            
-            if return_code == 0:
-                self._update_install_status("Winget completado. Verificando ejecutable...")
-                # (CORREGIDO) Comprobar ambas capitalizaciones
-                if self._validate_prism_path(final_exe_path):
-                    self._update_install_status("¡Prism Launcher instalado con éxito!")
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path)}, null)')
-                elif self._validate_prism_path(final_exe_path_lower):
-                    self._update_install_status("¡Prism Launcher instalado con éxito!")
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path_lower)}, null)')
-                else:
-                    msg = f"Winget reportó éxito, pero no se encontró 'PrismLauncher.exe' en '{dedicated_install_path}'."
-                    self._log(msg)
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
+            final_exe_path = os.path.join(dedicated_install_path, "PrismLauncher.exe")
+            final_exe_path_lower = os.path.join(dedicated_install_path, "prismlauncher.exe")
+
+            if self._validate_prism_path(final_exe_path):
+                self._update_install_status("¡Prism Launcher instalado con éxito!")
+                if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path)}, null)')
+            elif self._validate_prism_path(final_exe_path_lower):
+                self._update_install_status("¡Prism Launcher instalado con éxito!")
+                if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path_lower)}, null)')
             else:
-                msg = f"Winget falló con código de error: {return_code}"
+                msg = f"Se extrajo el ZIP, pero no se encontró 'PrismLauncher.exe' en '{dedicated_install_path}'."
                 self._log(msg)
                 if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
 
-        except InterruptedError as e:
-            msg = str(e)
-            self._log(msg)
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-        except Exception as e:
-            msg = f"Error fatal al ejecutar Winget: {e}"
+        except (InterruptedError, FileNotFoundError, zipfile.BadZipFile, IOError, Exception) as e:
+            msg = f"Fallo en la instalación de Prism Launcher: {e}"
             self._log(msg)
             import traceback
             self._log(traceback.format_exc())
             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
             
+        finally:
+            if tmp_dir and os.path.exists(tmp_dir):
+                try:
+                    shutil.rmtree(tmp_dir)
+                    self._log(f"Temporal de instalación '{os.path.basename(tmp_dir)}' eliminado.")
+                except Exception as e:
+                    self._log(f"Warn: Fallo eliminando temporal de instalación: {e}")
+
     def _task_install_modpack(self, prism_exe_path, instance_base_path):
         """
         (NUEVO) Tarea en hilo: Descarga y extrae el modpack.
