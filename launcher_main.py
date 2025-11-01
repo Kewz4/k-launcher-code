@@ -116,7 +116,7 @@ class ModpackLauncherAPI:
         self.changelog_processed_items = set()
 
         self.config_lock = threading.Lock()
-        self.avg_launch_time_sec = 60.0
+        self.avg_launch_time_sec = 180.0
         self.music_library = None
         
         # (NUEVO) Estado para el hilo de tareas

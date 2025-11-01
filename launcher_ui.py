@@ -844,7 +844,7 @@ HTML_CONTENT = """
         function startLoadingAnimation(durationSeconds) {{ 
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); }} 
             const startTime = performance.now(); 
-            const durationMs = (durationSeconds || 60) * 1000; 
+            const durationMs = (durationSeconds || 180) * 1000;
             
             dom.progressBar.style.transition = 'none'; 
             dom.progressBar.style.width = '0%';
@@ -1383,6 +1383,13 @@ HTML_CONTENT = """
 
             dom.minimizeProgressBtn.addEventListener('click', () => {{
                 isProgressMinimized = true;
+
+                // (CORREGIDO) Sincronizar la barra minimizada con la principal ANTES de mostrarla
+                const currentMainWidth = dom.progressBar.style.width;
+                dom.minimizedProgressBarFill.style.transition = 'none';
+                dom.minimizedProgressBarFill.style.width = currentMainWidth;
+                setTimeout(() => { dom.minimizedProgressBarFill.style.transition = 'width 0.3s ease'; }, 50);
+
                 dom.screens.progress.style.display = 'none';
                 dom.screens.progress.classList.remove('active');
                 dom.minimizedWidget.style.display = 'flex';
@@ -1390,13 +1397,6 @@ HTML_CONTENT = """
              dom.minimizedWidget.addEventListener('click', () => {{
                  isProgressMinimized = false;
                  dom.minimizedWidget.style.display = 'none';
-
-                 // (CORREGIDO) Sincronizar la barra principal con la minimizada antes de mostrarla
-                 const currentMinimizedWidth = dom.minimizedProgressBarFill.style.width;
-                 dom.progressBar.style.transition = 'none'; // Desactivar transición para el salto
-                 dom.progressBar.style.width = currentMinimizedWidth;
-                 setTimeout(() => {{ dom.progressBar.style.transition = 'width 0.3s ease'; }}, 50); // Reactivar transición
-
                  dom.screens.progress.style.display = 'flex';
                  dom.screens.progress.classList.add('active');
              }});
