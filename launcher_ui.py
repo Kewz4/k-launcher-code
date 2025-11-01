@@ -1166,14 +1166,33 @@ HTML_CONTENT = f"""
 
 
         // --- Event Listeners ---
+        // (CORREGIDO) Separar la lógica de pywebviewready y DOMContentLoaded
+
+        // 1. Esperar a que la API de Python esté lista
         window.addEventListener('pywebviewready', () => {{
-            window.quitting = false;
+            console.log("pywebviewready: La API de Python está lista.");
+            window.pywebview.apiReady = true; // Establecer una bandera global
             
-            // (NUEVO) Envolver la lógica de INICIO en un setTimeout
-            // para dar tiempo a que la API de Python se vincule completamente.
-            setTimeout(() => {{
+            // Adjuntar listeners que dependen únicamente de la API y no del DOM
+            // (Ninguno en este caso, pero es buena práctica tenerlo aquí)
+        }});
+
+        // 2. Esperar a que el DOM esté completamente cargado
+        document.addEventListener('DOMContentLoaded', () => {{
+            console.log("DOMContentLoaded: El DOM está completamente cargado.");
+
+            // Función para iniciar la aplicación una vez que AMBOS eventos han ocurrido
+            function initializeApp() {{
+                if (!window.pywebview || !window.pywebview.apiReady) {{
+                    console.log("La API de pywebview no está lista todavía, esperando...");
+                    setTimeout(initializeApp, 50); // Volver a comprobar en 50ms
+                    return;
+                }}
+
+                console.log("¡DOM y API listos! Inicializando la aplicación...");
+                window.quitting = false;
+
                 try {{
-                    console.log("pywebviewready -> setTimeout -> API check...");
                     // 1. Iniciar la cadena de llamadas a la API
                     pywebview.api.py_get_os_sep().then(sep => {{
                         osSep = sep || '/';
@@ -1202,7 +1221,7 @@ HTML_CONTENT = f"""
                              domPlayer.artist.textContent = "Fallo al conectar con Python.";
                         }});
                         
-                        // 3. Setear volumen inicial
+                        // 3. Setear volumen inicial (AHORA SEGURO)
                         setVolume();
 
                         // 4. Decidir qué pantalla mostrar
@@ -1227,11 +1246,14 @@ HTML_CONTENT = f"""
                 }} catch (e) {{ 
                     showLoadingError("Error Fatal", "API Python no disponible (catch principal): " + e); 
                 }}
-            }}, 400); // 100ms de retraso para asegurar que la API esté vinculada
+            }}
+
+            // Iniciar el proceso de inicialización
+            initializeApp();
 
 
-            // --- Adjuntar todos los demás listeners de UI aquí ---
-            // (Estos no se ejecutan hasta que el usuario hace clic, para entonces la API estará lista)
+            // --- Adjuntar todos los listeners de UI aquí ---
+            // (Ahora es seguro porque el DOM está cargado)
 
             // --- Asistente Listeners ---
             dom.wizard.btnAskYes.addEventListener('click', () => showWizardStep('find-manual'));
