@@ -1395,7 +1395,7 @@ HTML_CONTENT = """
                  const currentMinimizedWidth = dom.minimizedProgressBarFill.style.width;
                  dom.progressBar.style.transition = 'none'; // Desactivar transición para el salto
                  dom.progressBar.style.width = currentMinimizedWidth;
-                 setTimeout(() => { dom.progressBar.style.transition = 'width 0.3s ease'; }, 50); // Reactivar transición
+                 setTimeout(() => {{ dom.progressBar.style.transition = 'width 0.3s ease'; }}, 50); // Reactivar transición
 
                  dom.screens.progress.style.display = 'flex';
                  dom.screens.progress.classList.add('active');

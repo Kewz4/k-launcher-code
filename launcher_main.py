@@ -1072,14 +1072,14 @@ class ModpackLauncherAPI:
                     startupinfo.wShowWindow = subprocess.SW_HIDE
                     creationflags = subprocess.CREATE_NO_WINDOW
 
-            # (CORREGIDO) Establecer el directorio de trabajo a la carpeta del ejecutable de Prism
-            # Esto es CRUCIAL para que el modo portable funcione desde cualquier ubicación.
-            prism_dir = os.path.dirname(self.prism_exe_path)
+                # (CORREGIDO) Establecer el directorio de trabajo a la carpeta del ejecutable de Prism
+                # Esto es CRUCIAL para que el modo portable funcione desde cualquier ubicación.
+                prism_dir = os.path.dirname(self.prism_exe_path)
                 process = subprocess.Popen(command, startupinfo=startupinfo,
-                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                           creationflags=creationflags,
-                                           encoding='utf-8', errors='ignore',
-                                           cwd=prism_dir)
+                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                               creationflags=creationflags,
+                                               encoding='utf-8', errors='ignore',
+                                               cwd=prism_dir)
 
                 self._log(f"Comando de lanzamiento enviado a Prism Launcher (PID: {process.pid}).")
 
