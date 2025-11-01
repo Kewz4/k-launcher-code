@@ -3,33 +3,25 @@ import sys
 
 # --- HTML Content Definition ---
 
-# Fuentes e Iconos
-FONT_FAMILIES = ["Inter:wght@400;500;700;900", "Montserrat:wght@900"]
-FONT_IMPORT_URL = f"https://fonts.googleapis.com/css2?family={'&family='.join(f.replace(' ', '+') for f in FONT_FAMILIES)}&display=swap"
+# (MOVIDO) Las URLs ahora se inyectan como variables JS
+FONT_IMPORT_URL = f"https://fonts.googleapis.com/css2?family={'&family='.join(f.replace(' ', '+') for f in ['Inter:wght@400;500;700;900', 'Montserrat:wght@900'])}&display=swap"
 FONT_AWESOME_URL = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-
-# URL del logo desde GitLab
 LOGO_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main/minecraftlogo.png"
-
-# --- URLs de Música y Carátula desde GitLab (ACTUALIZADAS) ---
 URL_ALBUM_COVER = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/148f8426c0b238c82ff1d52cab94f0abbcb23685/albumcover.png"
-
-# Vimeo Embed Code con parámetros de fondo
 VIMEO_EMBED_SRC = "https://player.vimeo.com/video/1131522974?badge=0&autopause=0&player_id=0&app_id=58479&background=1&autoplay=1&loop=1&muted=1"
 
 
-# Escapar todas las llaves literales con {{ }}
-HTML_CONTENT = f"""
+# (CORREGIDO) Eliminado el .format() y se inyectarán las variables vía JS
+HTML_CONTENT = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vanilla+ Launcher</title>
-    <!-- Importar Fuentes -->
-    <link rel="stylesheet" href="{FONT_IMPORT_URL}">
-    <!-- Importar Font Awesome -->
-    <link rel="stylesheet" href="{FONT_AWESOME_URL}">
+    <!-- (MODIFICADO) Los links se establecerán dinámicamente -->
+    <link id="font-import-link" rel="stylesheet" href="">
+    <link id="font-awesome-link" rel="stylesheet" href="">
     <style>
         /* --- Reset y Fuentes --- */
         :root {{
@@ -355,14 +347,14 @@ HTML_CONTENT = f"""
     <div class="screen" id="screen-play">
         <!-- Iframe de Vimeo -->
         <iframe id="vimeo-bg"
-                src="{VIMEO_EMBED_SRC}"
+                src=""
                 frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen>
         </iframe>
         <!-- Video Overlay (Para Fade In) -->
         <div id="video-overlay"></div>
 
         <!-- Logo Minecraft -->
-        <img src="{LOGO_URL}" alt="Minecraft Logo" id="minecraft-logo">
+        <img src="" alt="Minecraft Logo" id="minecraft-logo">
 
         <!-- Gradiente Inferior -->
         <div id="bottom-gradient"></div>
@@ -485,7 +477,7 @@ HTML_CONTENT = f"""
                     <p>Selecciona una carpeta donde deseas instalar Prism Launcher.</p>
                 </div>
                 <div class="wizard-step-content">
-                     <p style="font-size: 13px; color: var(--color-text-muted);">Esto usará Winget (gestor de paquetes de Windows) para una instalación automática y segura.</p>
+                     <p style="font-size: 13px; color: var(--color-text-muted);">Esto descargará la versión portable más reciente de Prism Launcher y la instalará en la carpeta que elijas.</p>
                     <button class="btn btn-primary" id="wizard-btn-install-location">
                         <i class="fas fa-folder-open"></i>
                         <span>Elegir Carpeta de Instalación</span>
@@ -579,6 +571,15 @@ HTML_CONTENT = f"""
     </div>
 
     <script>
+        // --- (NUEVO) Inyección de variables desde Python ---
+        const pythonVars = {{
+            font_import: "{FONT_IMPORT_URL}",
+            font_awesome: "{FONT_AWESOME_URL}",
+            logo_url: "{LOGO_URL}",
+            vimeo_src: "{VIMEO_EMBED_SRC}",
+            album_cover_url: "{URL_ALBUM_COVER}"
+        }};
+
         // --- Puente JS <-> Python ---
         let osSep = '/';
         let lastUpdateWasSuccess = false;
@@ -616,7 +617,7 @@ HTML_CONTENT = f"""
             if (!isPlaying) {{
                 domPlayer.player.classList.remove('playing');
             }}
-            console.log(`Track loaded: ${{track.title}}`);
+            console.log('Track loaded: ' + track.title);
         }}
 
         function playTrack() {{
@@ -629,7 +630,7 @@ HTML_CONTENT = f"""
                 playPromise.then(_ => {{
                     isPlaying = true;
                     domPlayer.player.classList.add('playing');
-                    console.log(`Playing: ${{playlist[currentTrackIndex].title}}`);
+                    console.log('Playing: ' + playlist[currentTrackIndex].title);
                 }})
                 .catch(error => {{
                     console.error("Error starting playback:", error);
@@ -640,7 +641,7 @@ HTML_CONTENT = f"""
                  if (!domPlayer.audio.paused) {{
                       isPlaying = true;
                       domPlayer.player.classList.add('playing');
-                      console.log(`Playing (legacy): ${{playlist[currentTrackIndex].title}}`);
+                      console.log('Playing (legacy): ' + playlist[currentTrackIndex].title);
                  }} else {{
                       console.error("Playback failed (legacy).");
                       isPlaying = false;
@@ -653,7 +654,7 @@ HTML_CONTENT = f"""
             domPlayer.audio.pause();
             isPlaying = false;
             domPlayer.player.classList.remove('playing');
-            console.log(`Paused: ${{playlist[currentTrackIndex].title}}`);
+            console.log('Paused: ' + playlist[currentTrackIndex].title);
         }}
 
         function nextTrack() {{
@@ -672,7 +673,7 @@ HTML_CONTENT = f"""
         function updateProgressUI() {{
             if (domPlayer.audio.duration && isFinite(domPlayer.audio.duration)) {{
                 const percentage = (domPlayer.audio.currentTime / domPlayer.audio.duration) * 100;
-                domPlayer.progressBar.style.width = `${{percentage}}%`;
+                domPlayer.progressBar.style.width = percentage + '%';
             }} else {{
                 domPlayer.progressBar.style.width = '0%';
             }}
@@ -1093,8 +1094,8 @@ HTML_CONTENT = f"""
         }}
         
         function onTaskError(taskName, error) {{
-            console.error(`Error en tarea '${{taskName}}':`, error);
-            showResult(false, `Error en ${{taskName}}`, error);
+            console.error("Error en tarea '" + taskName + "':", error);
+            showResult(false, 'Error en ' + taskName, error);
             showWizardStep('ask-installed'); // Volver al inicio
         }}
 
@@ -1115,8 +1116,16 @@ HTML_CONTENT = f"""
         document.addEventListener('DOMContentLoaded', () => {{
             console.log("DOMContentLoaded: El DOM está completamente cargado.");
 
+            // (NUEVO) Inyectar las URLs desde el objeto pythonVars
+            document.getElementById('font-import-link').href = pythonVars.font_import;
+            document.getElementById('font-awesome-link').href = pythonVars.font_awesome;
+            document.getElementById('vimeo-bg').src = pythonVars.vimeo_src;
+            document.getElementById('minecraft-logo').src = pythonVars.logo_url;
+            document.getElementById('album-cover').src = pythonVars.album_cover_url;
+
+
             // (CORREGIDO) Asignar las constantes del DOM aquí, ahora que el HTML está cargado.
-            domPlayer = {
+            domPlayer = {{
                 player: document.getElementById('music-player'),
                 cover: document.getElementById('album-cover'),
                 title: document.getElementById('track-title'),
@@ -1129,18 +1138,18 @@ HTML_CONTENT = f"""
                 volumeContainer: document.getElementById('volume-container'),
                 volumeIcon: document.getElementById('volume-icon'),
                 volumeSlider: document.getElementById('volume-slider')
-            };
+            }};
 
-            dom = {
+            dom = {{
                 loadingOverlay: document.getElementById('loading-overlay'), loadingSpinner: document.getElementById('loading-spinner'), loadingTitle: document.getElementById('loading-title'), loadingDetails: document.getElementById('loading-details'),
                 mainContainer: document.getElementById('main-container'),
-                screens: {
+                screens: {{
                     initialSetup: document.getElementById('screen-initial-setup'),
                     settings: document.getElementById('screen-settings'),
                     play: document.getElementById('screen-play'),
                     progress: document.getElementById('screen-progress'),
-                },
-                wizard: {
+                }},
+                wizard: {{
                     steps: document.querySelectorAll('#screen-initial-setup .wizard-step'),
                     btnAskYes: document.getElementById('wizard-btn-ask-yes'),
                     btnAskNo: document.getElementById('wizard-btn-ask-no'),
@@ -1154,8 +1163,8 @@ HTML_CONTENT = f"""
                     progressBar: document.getElementById('wizard-progress-bar-fill'),
                     progressLabel: document.getElementById('wizard-progress-label'),
                     console: document.getElementById('wizard-console'),
-                },
-                settings: {
+                }},
+                settings: {{
                     prismDisplay: document.getElementById('settings-prism-exe-display'),
                     prismText: document.getElementById('settings-prism-exe-text'),
                     browsePrismBtn: document.getElementById('settings-browse-prism-btn'),
@@ -1163,7 +1172,7 @@ HTML_CONTENT = f"""
                     instanceText: document.getElementById('settings-instance-folder-text'),
                     browseInstanceBtn: document.getElementById('settings-browse-instance-btn'),
                     saveBtn: document.getElementById('save-settings-btn')
-                },
+                }},
                 playBtn: document.getElementById('play-btn'),
                 menuBtn: document.getElementById('menu-btn'),
                 sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'),
@@ -1176,13 +1185,13 @@ HTML_CONTENT = f"""
                 console: document.getElementById('console'),
                 scrollBottomBtn: document.getElementById('scroll-bottom-btn'),
                 changelogContent: document.getElementById('changelog-content'),
-                modal: { element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') },
+                modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
                 minimizeProgressBtn: document.getElementById('minimize-progress-btn'),
                 minimizedWidget: document.getElementById('minimized-progress-widget'),
                 minimizedProgressLabel: document.getElementById('minimized-progress-label'),
                 minimizedProgressPercent: document.getElementById('minimized-progress-percent'),
                 minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill')
-            };
+            }};
 
             // Función para iniciar la aplicación una vez que AMBOS eventos han ocurrido
             function initializeApp() {{
@@ -1204,7 +1213,7 @@ HTML_CONTENT = f"""
                         // 2. Cargar la música (paralelamente)
                         pywebview.api.py_get_playlist().then(newPlaylist => {{
                             if (newPlaylist && newPlaylist.length > 0) {{
-                                console.log(`Playlist cargada desde Python con ${{newPlaylist.length}} canciones.`);
+                                console.log('Playlist cargada desde Python con ' + newPlaylist.length + ' canciones.');
                                 playlist = newPlaylist;
                                 loadTrack(0);
                                 domPlayer.audio.play().then(() => {{
@@ -1412,7 +1421,7 @@ HTML_CONTENT = f"""
         <!-- Reproductor de Música -->
         <div id="music-player">
             <div class="player-top-row">
-                <img id="album-cover" src="{URL_ALBUM_COVER}" alt="Album Cover">
+                <img id="album-cover" src="" alt="Album Cover">
                 <div class="track-info">
                     <span id="track-title">Cargando...</span>
                     <span id="track-artist">...</span>
@@ -1441,5 +1450,10 @@ HTML_CONTENT = f"""
         <audio id="audio-element" preload="metadata"></audio>
 </body>
 </html>
-"""
-
+""".format(
+    FONT_IMPORT_URL=FONT_IMPORT_URL,
+    FONT_AWESOME_URL=FONT_AWESOME_URL,
+    LOGO_URL=LOGO_URL,
+    VIMEO_EMBED_SRC=VIMEO_EMBED_SRC,
+    URL_ALBUM_COVER=URL_ALBUM_COVER
+)
