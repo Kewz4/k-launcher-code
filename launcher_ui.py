@@ -203,14 +203,20 @@ HTML_CONTENT = f"""
         #music-player {{
             position: fixed; bottom: 15px; left: 15px;
             width: var(--player-width); height: var(--player-height);
-            background-color: transparent; backdrop-filter: none;
-            border-radius: var(--radius-md); border: none;
+            background-color: rgba(30, 30, 30, 0.5);
+            backdrop-filter: blur(5px);
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: var(--shadow);
-            z-index: 102;
+            z-index: 2000; /* (CORREGIDO) Aumentado para estar por encima de todo */
             display: none;
             flex-direction: column;
             padding: 8px 10px; overflow: visible;
             color: var(--color-text); text-shadow: var(--player-text-shadow);
+            transition: background-color 0.3s ease;
+        }}
+        #music-player:hover {{
+             background-color: rgba(40, 40, 40, 0.7);
         }}
         #music-player.visible {{
             display: flex;
