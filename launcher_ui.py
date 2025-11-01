@@ -12,7 +12,7 @@ VIMEO_EMBED_SRC = "https://player.vimeo.com/video/1131522974?badge=0&autopause=0
 
 
 # (CORREGIDO) Eliminado el .format() y se inyectarán las variables vía JS
-HTML_CONTENT = """
+HTML_CONTENT = f"""
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1388,7 +1388,7 @@ HTML_CONTENT = """
                 const currentMainWidth = dom.progressBar.style.width;
                 dom.minimizedProgressBarFill.style.transition = 'none';
                 dom.minimizedProgressBarFill.style.width = currentMainWidth;
-                setTimeout(() => { dom.minimizedProgressBarFill.style.transition = 'width 0.3s ease'; }, 50);
+                setTimeout(() => {{ dom.minimizedProgressBarFill.style.transition = 'width 0.3s ease'; }}, 50);
 
                 dom.screens.progress.style.display = 'none';
                 dom.screens.progress.classList.remove('active');
@@ -1457,10 +1457,4 @@ HTML_CONTENT = """
         <audio id="audio-element" preload="metadata"></audio>
 </body>
 </html>
-""".format(
-    FONT_IMPORT_URL=FONT_IMPORT_URL,
-    FONT_AWESOME_URL=FONT_AWESOME_URL,
-    LOGO_URL=LOGO_URL,
-    VIMEO_EMBED_SRC=VIMEO_EMBED_SRC,
-    URL_ALBUM_COVER=URL_ALBUM_COVER
-)
+"""
