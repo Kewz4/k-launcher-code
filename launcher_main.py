@@ -692,6 +692,7 @@ class ModpackLauncherAPI:
             "--accept-package-agreements",
             "--accept-source-agreements",
             "--force",
+            "--scope", "machine",
             "--location", dedicated_install_path  # <-- (CORREGIDO) Usar la nueva ruta
         ]
         
