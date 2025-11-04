@@ -60,6 +60,7 @@ except ImportError:
 
 REPO_ZIP_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/archive/main/vanilla-plus-main.zip"
 GITLAB_RAW_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main"
+VERSION_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/version.txt"
 
 # (NUEVO) Constantes para el nuevo flujo de instalación
 # (CORREGIDO) Lista de rutas comunes a comprobar, incluyendo la tuya
@@ -1580,22 +1581,54 @@ class ModpackLauncherAPI:
             if not os.path.isdir(folder_path):
                 raise FileNotFoundError(f"Carpeta instancia '{folder_path}' no existe.")
 
+            # --- 1. Verificación de Versión ANTES de descargar ---
+            self._log("Verificando versión del modpack...")
+            self._update_progress(0.05, "Verificando versión...")
+
+            user_version = 0.0
+            try:
+                user_version_files = [f for f in os.listdir(folder_path) if f.endswith('.txt') and re.match(r'^\d+(\.\d+)*\.txt$', f)]
+                if user_version_files:
+                    versions_found = [float(os.path.splitext(f)[0]) for f in user_version_files if re.fullmatch(r'\d+(\.\d+)*', os.path.splitext(f)[0])]
+                    user_version = max(versions_found) if versions_found else 0.0
+            except Exception as e:
+                self._log(f"Advertencia: No se pudo leer la versión local: {e}")
+
+            self._log(f"Versión actual local: {user_version}")
+
+            try:
+                response = requests.get(VERSION_URL, timeout=10)
+                response.raise_for_status()
+                latest_version_str = response.text.strip()
+                latest_version = float(latest_version_str)
+            except (requests.RequestException, ValueError) as e:
+                self._log(f"Error crítico: No se pudo obtener la versión más reciente desde {VERSION_URL}: {e}")
+                self._show_result(False, "Error de Red", "No se pudo comprobar la versión del modpack. Revisa tu conexión a internet.")
+                return False
+
+            self._log(f"Última versión disponible: {latest_version}")
+
+            if user_version >= latest_version:
+                self._log("El modpack ya está actualizado. Iniciando el juego...")
+                self._update_progress(1.0, "Modpack ya actualizado.")
+                time.sleep(1) # Pequeña pausa para que el usuario vea el mensaje
+                return True
+
+            # --- Si hay actualización, proceder con la descarga ---
             tmp_dir = tempfile.mkdtemp(prefix="vplus_update_")
             self._log(f"Directorio temporal: {tmp_dir}")
 
-            # --- 1. Descarga --- (Progreso 0% a 40%)
+            # --- 2. Descarga --- (Progreso 0% a 40%)
             self._log("Descargando paquete de actualización...")
             self._update_progress(0, "Iniciando descarga...")
             zip_path = os.path.join(tmp_dir, "paquete.zip")
             
-            # (MODIFICADO) Usar la nueva función de descarga
             self._download_file(REPO_ZIP_URL, zip_path, "update")
-            # La función _download_file maneja el progreso de 0 a 0.4 y las excepciones
             
             self._log(f"Descarga completa ({os.path.getsize(zip_path) / (1024*1024):.2f} MB).")
             self._update_progress(0.4, "Descarga completa")
 
-            # --- 2. Extracción --- (Progreso 40% a 50%)
+            # --- 3. Extracción --- (Progreso 40% a 50%)
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado post-descarga.")
             self._log("Extrayendo paquete...")
             self._update_progress(0.45, "Extrayendo...")
@@ -1618,21 +1651,9 @@ class ModpackLauncherAPI:
             self._log("'versions' encontrada y validada.")
             self._update_progress(0.50, "Extracción completa.")
 
-            # --- 3. Verificación Versión --- (Progreso 50% a 55%)
+            # --- 4. Verificación de Versiones a Aplicar --- (Progreso 50% a 55%)
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado post-extracción.")
-            self._log("Verificando versiones...")
-            self._update_progress(0.55, "Verificando...")
-            user_version = 0.0
-            user_version_files = []
-            try:
-                user_version_files = [f for f in os.listdir(folder_path) if f.endswith('.txt') and re.match(r'^\d+(\.\d+)*\.txt$', f)]
-                if user_version_files:
-                    versions_found = [float(os.path.splitext(f)[0]) for f in user_version_files if re.fullmatch(r'\d+(\.\d+)*', os.path.splitext(f)[0])]
-                    user_version = max(versions_found) if versions_found else 0.0
-            except Exception as e:
-                self._log(f"Warn: Error leyendo versión local: {e}")
             
-            self._log(f"Versión actual local: {user_version}")
             available_versions = []
             try:
                 dirs = [v for v in os.listdir(versions_path) if os.path.isdir(os.path.join(versions_path, v))]
@@ -1640,15 +1661,14 @@ class ModpackLauncherAPI:
                 if not available_versions_found:
                     raise FileNotFoundError("No hay carpetas de versión válidas en paquete.")
                 available_versions = sorted(available_versions_found)
-                latest_version = available_versions[-1]
             except Exception as e:
                 raise IOError(f"Error leyendo versiones del paquete: {e}")
-            
-            self._log(f"Última versión disponible: {latest_version}")
-            if user_version >= latest_version:
-                self._log("Ya actualizado."); self._update_progress(1.0, "Modpack ya actualizado."); return True
-                
+
             updates_to_apply = [v for v in available_versions if v > user_version]
+            if not updates_to_apply:
+                self._log("El paquete descargado no contiene una versión más nueva. Saltando actualización.")
+                return True
+
             self._log(f"Versiones a aplicar: {updates_to_apply}")
 
             # --- 4. (NUEVO) Procesar TODOS los Changelogs ANTES de aplicar --- (Progreso 55% a 75%)
