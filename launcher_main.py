@@ -76,7 +76,7 @@ PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/do
 
 
 # La línea que indica que el juego está listo
-LOG_TRIGGER_LINE = "[FANCYMENU] API initialized successfully"
+LOG_TRIGGER_LINE = "[net.minecraft.client.sounds.SoundEngine/SOUNDS]: Sound engine started"
 LOG_TRIGGER_LINE_2 = "[ModernFix/]: Game took"
 
 
@@ -85,20 +85,34 @@ class ModpackLauncherAPI:
     (Refactorizado)
     Clase que maneja la configuración, instalación, actualización y lanzamiento.
     """
-    # Lista de palabras clave para ignorar en el log pass-through
+    # (ACTUALIZADO) Lista de palabras clave para ignorar en el log de Forge 1.20.1
     LOG_IGNORE_KEYWORDS = [
-        "ForkJoinPool", "at java.base/java.util.concurrent", "at TRANSFORMER/",
-        "[Worker-ResourceReload-", "Unable to load model:", "Missing textures in model",
-        "Failed to load model", "com.google.gson.JsonParseException: Model loader",
-        "[EMF/]", "[Entity Texture Features/]", "[Puzzles Lib/]",
-        "[net.minecraft.client.sounds.SoundEngine/]: Missing sound for event:",
-        "[net.minecraft.client.resources.model.ModelBakery/]", "[net.minecraft.client.resources.model.ModelManager/]",
-        "[com.cerbon.beb.util.BEBConstants/]", "[Polytone/]", "[wiki.minecraft.heywiki.resource.WikiFamilyManager/]",
-        "[ShoulderSurfing/]", "[snownee.jade.Jade/]", "[JamLib/]", "[Configured/]",
-        "[CorgiLib/]", "[net.minecraft.server.LoggedPrintStream/]", "[Palladium/]",
-        "[Tooltip Overhaul/]", "[XaeroPlus/]", "[xaero.hud.minimap.MinimapLogs/]",
-        "[xaero.map.WorldMap/]", "[patchouli/]", "[com.teamabnormals.blueprint.core.Blueprint/]",
-        "[Straw Golem/]"
+        # General spam y ClassLoaders
+        "mixin/", "cpw.mods.modlauncher.", "net.minecraftforge.fml.", "net.minecraftforge.coremod.",
+        "net.minecraftforge.jarjar.", "org.sinytra.connector.", "org.groovymc.gml.",
+        "net.minecraftforge.common.MinecraftForge", "net.minecraftforge.common.ForgeMod",
+        # Mod Optimizers & Performance
+        "Mods Optimizer/", "ModernFix/", "Embeddium", "Radium", "C2ME ", "BadOptimizations",
+        "ImmediatelyFast", "ferritecore", "smoothboot", "blinkload", "AllTheLeaks",
+        # UI Mods
+        "de.keksuccino.fancymenu.", "Fancy Toasts/", "drippyloadingscreen", "Polytone/",
+        # Log spam de mods específicos
+        "Puzzles Lib/", "Oculus/", "XaeroPlus/", "xaero.map.", "xaero.hud.",
+        "Entity Texture Features", "EMF/", "Continuity/", "Sound Physics", "WhiteNoise/",
+        "JamLib/", "CorgiLib/", "Konkrete/", "ShoulderSurfing/", "YggdrasilAuthenticationService",
+        # Errores/Warnings comunes e inofensivos
+        "Unable to load model:", "Missing textures in model", "Failed to load model",
+        "Missing sound for event:", "Exception loading blockstate definition:",
+        "Invalid path in datapack:", "Missing sprite:", "Failed to find block entries for tag key:",
+        "Attribute 'Nullable' is not allowed", "File does not contain",
+        # Version Checkers & Reloading
+        "Forge Version Check", "Reloading ResourceManager:", "Starting version check",
+        # Líneas de inicialización genéricas
+        "ThreatenGL/", "Sound engine started", "OpenAL initialized", "Mojang DFU",
+        "Added resource packs:", "Backend library:", "Initializing Sound of Rain",
+        # Mixin warnings que no podemos controlar
+        "Reference map", "Method overwrite conflict", "Static binding violation",
+        "Error loading class:", "@Mixin target", "@Final field"
     ]
 
 
