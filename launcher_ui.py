@@ -12,7 +12,7 @@ VIMEO_EMBED_SRC = "https://player.vimeo.com/video/1131522974?badge=0&autopause=0
 
 
 # (CORREGIDO) Eliminado el .format() y se inyectarán las variables vía JS
-HTML_CONTENT = f"""
+HTML_CONTENT = """
 <!DOCTYPE html>
 <html lang="es">
 <head>

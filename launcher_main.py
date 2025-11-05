@@ -929,7 +929,7 @@ class ModpackLauncherAPI:
             self._log("[Audio] El control de audio solo es compatible con Windows. Hilo finalizado.")
             return
 
-        self._log("[Audio] Hilo de silenciamiento iniciado. Esperando procesos del juego...")
+        self._log("[Audio] Hilo de silenciamiento iniciado. Buscando procesos del juego...")
 
         from comtypes import CoInitialize, CoUninitialize
         from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
@@ -942,33 +942,51 @@ class ModpackLauncherAPI:
 
             # Bucle para encontrar los procesos y silenciarlos
             start_time = time.time()
-            while time.time() - start_time < 60: # Buscar durante 60 segundos
+            # (MODIFICADO) Aumentado el tiempo de búsqueda a 120s por si el juego tarda en aparecer
+            while time.time() - start_time < 120:
                 if self.cancel_event.is_set():
                     self._log("[Audio] Cancelación detectada. Deteniendo hilo de audio.")
                     return
 
-                sessions = AudioUtilities.GetAllSessions()
-                for session in sessions:
-                    if session.Process and session.Process.name().lower() in target_processes:
-                        # Evitar duplicados
-                        if session not in [s['session'] for s in muted_sessions]:
-                            try:
-                                volume = session.SimpleAudioVolume
-                                volume.SetMute(1, None)
-                                muted_sessions.append({'session': session, 'name': session.Process.name()})
-                                self._log(f"[Audio] Proceso silenciado: {session.Process.name()}")
-                            except Exception as e:
-                                self._log(f"[Audio] Error al intentar silenciar {session.Process.name()}: {e}")
+                try:
+                    sessions = AudioUtilities.GetAllSessions()
+                    # (NUEVO) Registro detallado para depuración
+                    all_processes = {session.Process.name().lower() for session in sessions if session.Process}
+                    self._log(f"[Audio Debug] Sesiones encontradas: {all_processes}")
+
+                    for session in sessions:
+                        if session.Process and session.Process.name().lower() in target_processes:
+                            # Evitar duplicados
+                            if session.Process.ProcessId not in [s['pid'] for s in muted_sessions]:
+                                try:
+                                    volume = session.SimpleAudioVolume
+                                    # (MODIFICADO) Silenciar inmediatamente y registrar
+                                    if not volume.GetMute():
+                                        volume.SetMute(1, None)
+                                        self._log(f"[Audio] Proceso SILENCIADO: {session.Process.name()} (PID: {session.Process.ProcessId})")
+                                    else:
+                                        self._log(f"[Audio] Proceso ya estaba silenciado: {session.Process.name()} (PID: {session.Process.ProcessId})")
+
+                                    muted_sessions.append({
+                                        'session': session,
+                                        'name': session.Process.name(),
+                                        'pid': session.Process.ProcessId
+                                    })
+                                except Exception as e:
+                                    self._log(f"[Audio] Error al intentar silenciar {session.Process.name()}: {e}")
+                except Exception as e:
+                    self._log(f"[Audio Debug] Error al obtener sesiones: {e}")
 
                 # Si hemos encontrado todos los procesos, salir del bucle de búsqueda
-                if len(muted_sessions) == len(target_processes):
-                    self._log("[Audio] Todos los procesos objetivo han sido silenciados.")
+                if len(muted_sessions) >= len(target_processes):
+                    self._log("[Audio] Todos los procesos objetivo han sido encontrados y silenciados.")
                     break
 
-                time.sleep(1)
+                # (MODIFICADO) Reducido el tiempo de espera para reaccionar más rápido
+                time.sleep(0.5)
 
             if not muted_sessions:
-                self._log("[Audio] ADVERTENCIA: No se encontraron procesos de audio para silenciar después de 60s.")
+                self._log("[Audio] ADVERTENCIA: No se encontraron procesos de audio para silenciar después de 120s.")
                 return
 
             # Esperar la señal para reactivar el sonido
@@ -1439,8 +1457,13 @@ class ModpackLauncherAPI:
                             self.unmute_event.set()
 
                     read_start_time = time.time()
+                    trigger_line_found = None
+                    for trigger in trigger_lines:
+                        if trigger in line_strip:
+                            trigger_line_found = trigger
+                            break
 
-                    if LOG_TRIGGER_LINE in line_strip:
+                    if trigger_line_found:
                         if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
                         self._log(f"[LOG_TRIGGER] {line_strip}")
 
