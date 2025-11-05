@@ -105,8 +105,11 @@ except ImportError:
 # --- Lógica de la Aplicación (Backend de Python) ---
 
 REPO_ZIP_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/archive/main/vanilla-plus-main.zip"
-GITLAB_RAW_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main"
+GITLAB_RAW_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main"
 VERSION_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/version.txt"
+# (NUEVO) URL para las opciones de resource packs y nombre del respaldo local
+RESOURCE_PACK_OPTIONS_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/resourcepacksoptions.txt"
+LOCAL_OPTIONS_BACKUP_FILENAME = "options_backup.txt"
 
 # (NUEVO) Constantes para el nuevo flujo de instalación
 # (CORREGIDO) Lista de rutas comunes a comprobar, incluyendo la tuya
@@ -1088,7 +1091,13 @@ class ModpackLauncherAPI:
     def _game_start_thread(self):
         """Hilo que maneja la secuencia completa de JUGAR."""
         try:
-            # --- Paso 1: Actualizar ---
+            # --- (NUEVO) Paso 1: Sincronizar options.txt ---
+            if not self._sync_options_txt():
+                self._log("La sincronización de options.txt falló. Abortando lanzamiento.")
+                # El mensaje de error ya se mostró en _sync_options_txt
+                return
+
+            # --- Paso 2: Actualizar ---
             self._log("Iniciando comprobación de actualizaciones...")
             self.added_files = []
             self.removed_files = []
@@ -1137,47 +1146,102 @@ class ModpackLauncherAPI:
                 try: self.window.on_top = False
                 except: pass
 
-    def _modify_options_file(self):
-        """Asegura que 'pauseOnLostFocus' esté en 'false' en options.txt."""
-        options_path = os.path.join(self.instance_mc_path, 'options.txt')
-        setting_key = "pauseOnLostFocus"
-        setting_value = "false"
+    def _sync_options_txt(self):
+        """
+        Sincroniza las opciones de resource packs desde GitLab con el options.txt del usuario,
+        preservando y respaldando sus otras configuraciones.
+        """
+        self._log("--- Iniciando Sincronización de options.txt ---")
+        self._update_progress(0.01, "Sincronizando opciones...")
 
-        if not os.path.exists(options_path):
-            self._log(f"Advertencia: No se encontró '{options_path}'.")
-            return
+        instance_options_path = os.path.join(self.instance_mc_path, 'options.txt')
+        backup_options_path = os.path.join(os.getcwd(), LOCAL_OPTIONS_BACKUP_FILENAME)
 
+        # 1. Descargar el archivo de resource packs
         try:
-            with open(options_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
+            self._log(f"Descargando lista de resource packs desde: {RESOURCE_PACK_OPTIONS_URL}")
+            response = requests.get(RESOURCE_PACK_OPTIONS_URL, timeout=15)
+            response.raise_for_status()
+            remote_options_content = response.text
+            self._log("Lista de resource packs descargada con éxito.")
+        except requests.RequestException as e:
+            self._log(f"ERROR CRÍTICO: No se pudo descargar la configuración de resource packs: {e}")
+            self._show_result(False, "Error de Red", f"No se pudo descargar la configuración de resource packs.<br>Revisa tu conexión a internet.<br><br>Error: {e}")
+            return False
 
-            new_lines = []
-            found = False
-            modified = False
-            for line in lines:
-                if line.strip().startswith(f"{setting_key}:"):
-                    current_value = line.strip().split(':', 1)[-1].strip()
-                    if current_value != setting_value:
-                        new_lines.append(f"{setting_key}:{setting_value}\n")
-                        self._log(f"'{setting_key}' actualizado a '{setting_value}'.")
-                        modified = True
-                    else:
-                        new_lines.append(line)
-                    found = True
-                else:
-                    new_lines.append(line)
+        # Extraer las líneas importantes del archivo descargado
+        new_rp_line, new_irp_line = None, None
+        for line in remote_options_content.splitlines():
+            if line.startswith("resourcePacks:"):
+                new_rp_line = line.strip()
+            elif line.startswith("incompatibleResourcePacks:"):
+                new_irp_line = line.strip()
 
-            if not found:
-                new_lines.append(f"\n{setting_key}:{setting_value}\n")
-                self._log(f"'{setting_key}' no encontrado. Añadiendo '{setting_value}'.")
-                modified = True
+        if not new_rp_line:
+            self._log("ERROR CRÍTICO: El archivo remoto no contiene la línea 'resourcePacks:'.")
+            self._show_result(False, "Error de Configuración Remota", "El archivo de resource packs descargado está corrupto o malformado.")
+            return False
 
-            if modified:
-                with open(options_path, 'w', encoding='utf-8') as f:
-                    f.writelines(new_lines)
+        # 2. Determinar el archivo base a usar
+        base_content_lines = []
+        if os.path.exists(backup_options_path):
+            self._log(f"Usando respaldo local '{LOCAL_OPTIONS_BACKUP_FILENAME}' como base.")
+            with open(backup_options_path, 'r', encoding='utf-8') as f:
+                base_content_lines = f.readlines()
+        elif os.path.exists(instance_options_path):
+            self._log("Usando 'options.txt' de la instancia como base (primera ejecución).")
+            with open(instance_options_path, 'r', encoding='utf-8') as f:
+                base_content_lines = f.readlines()
+        else:
+            self._log("ADVERTENCIA: No existe 'options.txt' ni respaldo. Se creará uno nuevo.")
+            # Se usará una lista vacía y se añadirán las líneas necesarias.
 
-        except Exception as e:
-            self._log(f"ERROR: No se pudo modificar 'options.txt': {e}")
+        # 3. Fusionar las configuraciones
+        final_lines = []
+        rp_found, irp_found, pof_found = False, False, False
+
+        for line in base_content_lines:
+            if line.startswith("resourcePacks:"):
+                final_lines.append(new_rp_line + '\n')
+                rp_found = True
+            elif line.startswith("incompatibleResourcePacks:"):
+                if new_irp_line:
+                    final_lines.append(new_irp_line + '\n')
+                else: # Si el remoto no lo tiene, mantener el del usuario
+                    final_lines.append(line)
+                irp_found = True
+            elif line.startswith("pauseOnLostFocus:"):
+                final_lines.append("pauseOnLostFocus:false\n")
+                pof_found = True
+            else:
+                final_lines.append(line)
+
+        # Si alguna línea no existía en el archivo base, añadirla
+        if not rp_found: final_lines.append(new_rp_line + '\n')
+        if not irp_found and new_irp_line: final_lines.append(new_irp_line + '\n')
+        if not pof_found: final_lines.append("pauseOnLostFocus:false\n")
+
+        final_content = "".join(final_lines)
+
+        # 4. Guardar los archivos actualizados
+        try:
+            # Guardar en la carpeta de la instancia
+            self._log(f"Guardando 'options.txt' actualizado en: {self.instance_mc_path}")
+            with open(instance_options_path, 'w', encoding='utf-8') as f:
+                f.write(final_content)
+
+            # Guardar el respaldo en la carpeta del launcher
+            self._log(f"Creando/actualizando respaldo '{LOCAL_OPTIONS_BACKUP_FILENAME}'.")
+            with open(backup_options_path, 'w', encoding='utf-8') as f:
+                f.write(final_content)
+
+        except IOError as e:
+            self._log(f"ERROR CRÍTICO: No se pudo escribir el archivo 'options.txt' o su respaldo: {e}")
+            self._show_result(False, "Error de Archivo", f"No se pudo guardar la configuración de opciones.<br>Asegúrate de que el launcher no esté en una carpeta protegida.<br><br>Error: {e}")
+            return False
+
+        self._log("--- Sincronización de options.txt completada con éxito ---")
+        return True
 
     def _launch_game(self):
         """Inicia el monitor de logs, la animación de carga y lanza el juego."""
@@ -1191,8 +1255,6 @@ class ModpackLauncherAPI:
 
             self._log(f"Iniciando instancia: '{instance_name}'")
             self._log(f"Usando ejecutable: {self.prism_exe_path}")
-
-            self._modify_options_file()
 
             log_path = os.path.join(self.instance_mc_path, 'logs', 'latest.log')
             if os.path.exists(log_path):
@@ -1890,36 +1952,6 @@ class ModpackLauncherAPI:
                         elif os.path.isfile(src_item_path):
                             self._backup_and_copy_file(src_item_path, dest_item_path, "")
                     except Exception as copy_err: self._log(f"        - ERROR procesando item raíz '{item_name}': {copy_err}")
-
-                # Fase options.txt
-                if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado antes de options.txt v{ver}.")
-                resourcepack_options_path = os.path.join(update_version_path, 'resourcepackoptions.txt')
-                if os.path.exists(resourcepack_options_path):
-                    self._log(f"  [{ver}] Actualizando options.txt para resource packs...")
-                    user_options_path = os.path.join(folder_path, 'options.txt')
-                    if os.path.exists(user_options_path):
-                        try:
-                            with open(resourcepack_options_path, 'r', encoding='utf-8') as f_new: new_rp_lines_content = f_new.read()
-                            with open(user_options_path, 'r', encoding='utf-8') as f_user: user_options_content = f_user.read()
-                            rp_match = re.search(r'^resourcePacks:(\[.*?\])$', new_rp_lines_content, re.MULTILINE | re.DOTALL); irp_match = re.search(r'^incompatibleResourcePacks:(\[.*?\])$', new_rp_lines_content, re.MULTILINE | re.DOTALL)
-                            new_rp = rp_match.group(0) if rp_match else None; new_irp = irp_match.group(0) if irp_match else None
-                            if not new_rp: continue
-                            backup_unique_name = "ROOT_options.txt"
-                            if not any(rf[0] == ("", "options.txt") for rf in self.removed_files):
-                                try:
-                                    backup_options_path = os.path.join(self.backup_dir, backup_unique_name); os.makedirs(os.path.dirname(backup_options_path), exist_ok=True); shutil.copy2(user_options_path, backup_options_path); self.removed_files.append((("", "options.txt"), backup_unique_name))
-                                except Exception as bk_err: self._log(f"        - CRITICAL ERROR backing up options.txt: {bk_err}. Skipping update."); continue
-                            modified_content = user_options_content; changed = False; pattern_rp = r'^resourcePacks:\[.*?\]$'; pattern_irp = r'^incompatibleResourcePacks:\[.*?\]$'
-                            if re.search(pattern_rp, modified_content, re.MULTILINE | re.DOTALL): modified_content, c = re.subn(pattern_rp, new_rp, modified_content, 1, re.MULTILINE | re.DOTALL); changed |= c > 0
-                            else: modified_content = modified_content.rstrip() + "\n" + new_rp + "\n"; changed = True
-                            if new_irp:
-                                if re.search(pattern_irp, modified_content, re.MULTILINE | re.DOTALL): modified_content, c = re.subn(pattern_irp, new_irp, modified_content, 1, re.MULTILINE | re.DOTALL); changed |= c > 0
-                                else: modified_content = modified_content.rstrip() + "\n" + new_irp + "\n"; changed = True
-                            if changed:
-                                with open(user_options_path, 'w', encoding='utf-8') as f_user_w: f_user_w.write(modified_content)
-                                if not any(af == ("", 'options.txt') for af in self.added_files): self.added_files.append(("", 'options.txt'))
-                                self._log("        - options.txt actualizado.")
-                        except Exception as opt_err: self._log(f"        - ERROR actualizando options.txt: {opt_err}")
 
             # --- 6. Finalización --- (Progreso 95% a 100%)
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado después de aplicar versiones.")
