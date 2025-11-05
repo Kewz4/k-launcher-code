@@ -77,8 +77,7 @@ PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/do
 
 
 # La línea que indica que el juego está listo
-LOG_TRIGGER_LINE = "[net.minecraft.client.sounds.SoundEngine/SOUNDS]: Sound engine started"
-LOG_TRIGGER_LINE_2 = "[ModernFix/]: Game took"
+LOG_TRIGGER_LINE = "[ModernFix/]: Game took"
 
 
 class ModpackLauncherAPI:
@@ -1208,7 +1207,7 @@ class ModpackLauncherAPI:
         """Vigila 'latest.log', inicia on_top, guarda tiempo de carga y llama a fadeOut."""
         log_filename = os.path.basename(log_path)
         self._log(f"Vigilando el log: {log_filename}")
-        self._log(f"Buscando líneas gatillo: '{LOG_TRIGGER_LINE}' o '{LOG_TRIGGER_LINE_2}'")
+        self._log(f"Buscando línea gatillo: '{LOG_TRIGGER_LINE}'")
 
         file_handle = None
         self.on_top_thread = None
@@ -1249,7 +1248,6 @@ class ModpackLauncherAPI:
 
             read_start_time = time.time()
             read_timeout_seconds = 180
-            trigger_lines = [LOG_TRIGGER_LINE, LOG_TRIGGER_LINE_2]
             line_batch = []
             last_batch_time = time.time()
 
@@ -1282,25 +1280,19 @@ class ModpackLauncherAPI:
                     if not line_strip: continue
 
                     read_start_time = time.time()
-                    trigger_line_found = None
-                    for trigger in trigger_lines:
-                        if trigger in line_strip:
-                            trigger_line_found = trigger
-                            break
 
-                    if trigger_line_found:
+                    if LOG_TRIGGER_LINE in line_strip:
                         if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
                         self._log(f"[LOG_TRIGGER] {line_strip}")
 
-                        if trigger_line_found == LOG_TRIGGER_LINE_2:
-                            match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
-                            if match:
-                                try:
-                                    game_load_time = float(match.group(1))
-                                    self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
-                                    threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
-                                except Exception as e:
-                                    self._log(f"Error al parsear tiempo de carga: {e}")
+                        match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
+                        if match:
+                            try:
+                                game_load_time = float(match.group(1))
+                                self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
+                                threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
+                            except Exception as e:
+                                self._log(f"Error al parsear tiempo de carga: {e}")
 
                         if self.window:
                             try:
