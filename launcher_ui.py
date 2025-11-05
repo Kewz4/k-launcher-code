@@ -841,48 +841,48 @@ HTML_CONTENT = f"""
             }} catch(e) {{ console.error("Error en setLoadScreen:", e); }} 
         }}
         
-        function startLoadingAnimation(durationSeconds) {{ 
-            if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); }} 
-            const startTime = performance.now(); 
+        function startLoadingAnimation(durationSeconds) {
+            if (loadingAnimationId) {
+                cancelAnimationFrame(loadingAnimationId);
+            }
+            const startTime = performance.now();
             const durationMs = (durationSeconds || 400) * 1000;
-            
-            dom.progressBar.style.transition = 'none'; 
+
+            // Resetear estilos y eliminar transiciones CSS para un control total.
+            dom.progressBar.style.transition = 'none';
             dom.progressBar.style.width = '0%';
             dom.minimizedProgressBarFill.style.transition = 'none';
             dom.minimizedProgressBarFill.style.width = '0%';
-            dom.progressLabel.textContent = "Cargando el Modpack..."; 
+            dom.progressLabel.textContent = "Cargando el Modpack...";
             dom.minimizedProgressLabel.textContent = "Cargando el Modpack...";
 
-            function animateProgress(currentTime) {{ 
-                const elapsedTime = currentTime - startTime; 
-                let progress = Math.min(0.99, elapsedTime / durationMs); 
-                let percent = (progress * 100);
-                let percentText = Math.round(percent) + '%';
-                dom.progressBar.style.width = percent + '%'; 
+            function animateProgress(currentTime) {
+                const elapsedTime = currentTime - startTime;
+                // Calcular el progreso, asegurando que no exceda el 99% para esperar la señal final.
+                const progress = Math.min(0.99, elapsedTime / durationMs);
+                const percent = progress * 100;
+                const percentText = Math.round(percent) + '%';
+
+                // Actualizar ambas barras de progreso simultáneamente.
+                dom.progressBar.style.width = percent + '%';
                 dom.minimizedProgressBarFill.style.width = percent + '%';
                 dom.minimizedProgressPercent.textContent = percentText;
-                
-                if (loadingAnimationId && elapsedTime < durationMs) {{ 
-                    loadingAnimationId = requestAnimationFrame(animateProgress); 
-                }} else if (loadingAnimationId) {{ 
-                    dom.progressBar.style.width = '99%'; 
+
+                // Continuar la animación si el tiempo no ha transcurrido.
+                if (elapsedTime < durationMs) {
+                    loadingAnimationId = requestAnimationFrame(animateProgress);
+                } else {
+                    // La animación ha terminado, asegurar que se detenga en 99%.
+                    dom.progressBar.style.width = '99%';
                     dom.minimizedProgressBarFill.style.width = '99%';
                     dom.minimizedProgressPercent.textContent = '99%';
-                    loadingAnimationId = null; 
-                }} 
-            }} 
+                    loadingAnimationId = null;
+                }
+            }
             
-            requestAnimationFrame(() => {{ 
-                dom.progressBar.style.transition = 'none'; 
-                dom.minimizedProgressBarFill.style.transition = 'none';
-                requestAnimationFrame(() => {{ 
-                    const transitionStyle = 'width ' + (durationMs / 1000) + 's linear';
-                    dom.progressBar.style.transition = transitionStyle; 
-                    dom.minimizedProgressBarFill.style.transition = transitionStyle;
-                    loadingAnimationId = requestAnimationFrame(animateProgress); 
-                }}); 
-            }}); 
-        }}
+            // Iniciar el bucle de animación.
+            loadingAnimationId = requestAnimationFrame(animateProgress);
+        }
 
         function showResult(success, title, details) {{ try {{ lastUpdateWasSuccess = !!success; dom.modal.icon.textContent = success ? '✅' : '❌'; dom.modal.title.textContent = title || (success ? 'Éxito' : 'Error'); dom.modal.details.innerHTML = details || (success ? "Proceso completado." : "Ocurrió un error."); dom.modal.element.style.display = 'flex'; }} catch (e) {{ console.error("Error en showResult:", e); }} }}
         
