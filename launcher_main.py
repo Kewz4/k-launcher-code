@@ -12,6 +12,18 @@ import json
 import subprocess  # Para lanzar Prism y Winget
 import psutil      # Para terminar procesos
 import webview     # Necesitarás: pip install pywebview requests
+
+# (NUEVO) Importar pycaw si está disponible (solo para Windows)
+try:
+    from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+    PYCAW_AVAILABLE = True
+    print("pycaw importado exitosamente.")
+except (ImportError, OSError, IOError) as e:
+    print(f"ADVERTENCIA: pycaw no encontrado o no se pudo inicializar ({e}). El silenciamiento de audio no funcionará.")
+    AudioUtilities = None
+    ISimpleAudioVolume = None
+    PYCAW_AVAILABLE = False
+
 try:
     from music_player import MusicLibrary
 except ImportError:
@@ -59,12 +71,7 @@ except ImportError:
 # --- Lógica de la Aplicación (Backend de Python) ---
 
 REPO_ZIP_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/archive/main/vanilla-plus-main.zip"
-GITLAB_RAW_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main" # (CORREGIDO) Restaurado a su valor original para el reproductor de música
-MUSIC_DATA_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main" # (NUEVO) URL dedicada para el reproductor
-VERSION_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/version.txt"
-# (NUEVO) URL para las opciones de resource packs y nombre del respaldo local
-RESOURCE_PACK_OPTIONS_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/resourcepacksoptions.txt"
-LOCAL_OPTIONS_BACKUP_FILENAME = "options_backup.txt"
+GITLAB_RAW_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main"
 
 # (NUEVO) Constantes para el nuevo flujo de instalación
 # (CORREGIDO) Lista de rutas comunes a comprobar, incluyendo la tuya
@@ -77,14 +84,11 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
 MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 # (ACTUALIZADO) Nueva URL de Dropbox (confirmado que es .ZIP)
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/n09t1j88vvohgxcvn6t6u/Kewz-s-Vanilla-True-Modpack.zip?rlkey=tg8v655uq2h30oc6k9qunsktl&st=eg2zn3h6&dl=1"
-PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
 
 # La línea que indica que el juego está listo
-LOG_TRIGGER_LINE = "[ModernFix/]: Game took"
-LOG_TRIGGER_LINE_2 = "[Iris] Game took" # (NUEVO) Gatillo alternativo
-# (NUEVO) Línea que indica que los recursos cargaron y el sonido puede activarse
-UNMUTE_TRIGGER_LINE = "[FANCYMENU] Minecraft resource reload: FINISHED"
+LOG_TRIGGER_LINE = "[FANCYMENU] API initialized successfully"
+LOG_TRIGGER_LINE_2 = "[ModernFix/]: Game took"
 
 
 class ModpackLauncherAPI:
@@ -114,7 +118,6 @@ class ModpackLauncherAPI:
         self.hwnd = None # Handle de la ventana (solo Windows)
         self.cancel_event = threading.Event()
         self.game_ready_event = threading.Event()
-        self.unmute_event = threading.Event() # (NUEVO) Evento para el audio
         self.on_top_thread = None
         self.prism_exe_path = None
         self.instance_mc_path = None
@@ -124,8 +127,10 @@ class ModpackLauncherAPI:
         self.changelog_processed_items = set()
 
         self.config_lock = threading.Lock()
-        self.avg_launch_time_sec = 400.0
+        self.avg_launch_time_sec = 60.0
         self.music_library = None
+        self.audio_muter_thread = None
+        self.fancymenu_trigger_count = 0
         
         # (NUEVO) Estado para el hilo de tareas
         self.current_task_thread = None
@@ -215,14 +220,14 @@ class ModpackLauncherAPI:
                                 self.avg_launch_time_sec = sum(valid_times) / len(valid_times)
                                 print(f"Tiempo de carga promedio cargado: {self.avg_launch_time_sec:.2f}s ({len(valid_times)} muestras)")
                             else:
-                                self.avg_launch_time_sec = 400.0
-                                print("No hay tiempos de carga válidos guardados, usando default (400s).")
+                                self.avg_launch_time_sec = 60.0
+                                print("No hay tiempos de carga válidos guardados, usando default (60s).")
                         except Exception as e:
                             print(f"Error calculando promedio de carga, usando default: {e}")
-                            self.avg_launch_time_sec = 400.0
+                            self.avg_launch_time_sec = 60.0
                     else:
-                        self.avg_launch_time_sec = 400.0
-                        print("No se encontró historial de tiempos de carga, usando default (400s).")
+                        self.avg_launch_time_sec = 60.0
+                        print("No se encontró historial de tiempos de carga, usando default (60s).")
 
                     return True
                 else:
@@ -640,84 +645,121 @@ class ModpackLauncherAPI:
 
     def _task_install_prism(self, install_location_base):
         """
-        (REESCRITO) Tarea en hilo: Descarga y extrae la versión portable de Prism.
+        (NUEVO) Tarea en hilo: Instala Prism usando Winget.
         Llama a JS: onPrismInstallComplete(success, path, error)
         """
         
-        dedicated_install_path = os.path.join(install_location_base, "Prism Launcher")
-        self._update_install_status(f"Creando directorio de instalación en: {dedicated_install_path}")
+        # (CORREGIDO) Crear una subcarpeta dedicada para la instalación
+        dedicated_install_path = os.path.join(install_location_base, "PrismLauncher")
+        self._update_install_status(f"Creando directorio de instalación dedicado en: {dedicated_install_path}")
         
-        tmp_dir = None
         try:
             os.makedirs(dedicated_install_path, exist_ok=True)
+        except Exception as e:
+            msg = f"Fallo al crear directorio dedicado '{dedicated_install_path}': {e}"
+            self._log(msg)
+            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
+            return
             
-            if self.cancel_event.is_set():
-                raise InterruptedError("Instalación cancelada por el usuario.")
+        if self.cancel_event.is_set():
+            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, "Instalación cancelada.")')
+            return
 
-            tmp_dir = tempfile.mkdtemp(prefix="prism_portable_")
-            self._update_install_status(f"Directorio temporal creado: {os.path.basename(tmp_dir)}")
-            zip_path = os.path.join(tmp_dir, "prismlauncher.zip")
+        # (NUEVO) Paso 1: Intentar desinstalar cualquier versión "fantasma"
+        self._update_install_status("Intentando limpiar instalaciones anteriores de Prism (por si acaso)...")
+        uninstall_command = [
+            "winget", "uninstall", "PrismLauncher.PrismLauncher",
+            "--silent",
+            "--accept-source-agreements"
+        ]
+        try:
+            # Ejecutar esto y esperar a que termine, pero no fallar si no encuentra nada
+            uninstall_process = subprocess.Popen(uninstall_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+            while True:
+                output = uninstall_process.stdout.readline()
+                if output == '' and uninstall_process.poll() is not None:
+                    break
+                if output:
+                    self._update_install_status(f"[Limpieza] {output.strip()}")
 
-            # 1. Descargar
-            self._update_install_status(f"Descargando Prism Launcher desde: {PRISM_PORTABLE_URL}")
-            self._download_file(PRISM_PORTABLE_URL, zip_path, "wizard_install")
-
-            if self.cancel_event.is_set(): raise InterruptedError("Descarga cancelada.")
-
-            # 2. Extraer
-            self._update_install_status("Descarga completa. Extrayendo archivos...")
-
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                if zf.testzip() is not None:
-                    raise zipfile.BadZipFile("Archivo ZIP de Prism Launcher corrupto.")
-
-                total_files = len(zf.infolist())
-                extracted_count = 0
-                last_update_time = time.time()
-
-                for member in zf.infolist():
-                    if self.cancel_event.is_set(): raise InterruptedError("Extracción cancelada.")
-                    zf.extract(member, dedicated_install_path)
-                    extracted_count += 1
-
-                    now = time.time()
-                    if now - last_update_time > 0.1 or extracted_count == total_files:
-                        pct = extracted_count / total_files if total_files > 0 else 0
-                        self._update_install_status(f"Extrayendo: {member.filename}")
-                        if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
-                        last_update_time = now
-
-            self._update_install_status("Extracción completa. Verificando ejecutable...")
-
-            final_exe_path = os.path.join(dedicated_install_path, "PrismLauncher.exe")
-            final_exe_path_lower = os.path.join(dedicated_install_path, "prismlauncher.exe")
-
-            if self._validate_prism_path(final_exe_path):
-                self._update_install_status("¡Prism Launcher instalado con éxito!")
-                if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path)}, null)')
-            elif self._validate_prism_path(final_exe_path_lower):
-                self._update_install_status("¡Prism Launcher instalado con éxito!")
-                if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path_lower)}, null)')
+            uninstall_return_code = uninstall_process.poll()
+            if uninstall_return_code == 0:
+                self._update_install_status("Limpieza completada.")
             else:
-                msg = f"Se extrajo el ZIP, pero no se encontró 'PrismLauncher.exe' en '{dedicated_install_path}'."
+                # Esto es normal si no se encontró nada
+                self._update_install_status("No se encontró instalación fantasma (o la limpieza falló, no es crítico).")
+
+        except Exception as e:
+            self._update_install_status(f"Error durante la limpieza (no es crítico): {e}")
+
+        if self.cancel_event.is_set():
+             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, "Instalación cancelada.")')
+             return
+
+        # (NUEVO) Paso 2: Instalar en la RUTA DEDICADA
+        self._update_install_status(f"Iniciando Winget para instalar Prism en: {dedicated_install_path}")
+        self._update_install_status("(Esto puede tardar varios minutos)...")
+
+        install_command = [
+            "winget", "install", "PrismLauncher.PrismLauncher",
+            "--silent",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--location", dedicated_install_path  # <-- (CORREGIDO) Usar la nueva ruta
+        ]
+
+        # (CORREGIDO) Winget a veces usa P mayúscula
+        final_exe_path = os.path.join(dedicated_install_path, "PrismLauncher.exe")
+        final_exe_path_lower = os.path.join(dedicated_install_path, "prismlauncher.exe")
+
+        try:
+            # Usar Popen para leer la salida en tiempo real
+            process = subprocess.Popen(install_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+
+            while True:
+                if self.cancel_event.is_set():
+                    self._log("Cancelación detectada. Intentando terminar Winget...")
+                    process.terminate()
+                    process.wait(timeout=5)
+                    raise InterruptedError("Instalación cancelada por el usuario.")
+
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    self._update_install_status(output.strip())
+
+            return_code = process.poll()
+
+            if return_code == 0:
+                self._update_install_status("Winget completado. Verificando ejecutable...")
+                # (CORREGIDO) Comprobar ambas capitalizaciones
+                if self._validate_prism_path(final_exe_path):
+                    self._update_install_status("¡Prism Launcher instalado con éxito!")
+                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path)}, null)')
+                elif self._validate_prism_path(final_exe_path_lower):
+                    self._update_install_status("¡Prism Launcher instalado con éxito!")
+                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path_lower)}, null)')
+                else:
+                    msg = f"Winget reportó éxito, pero no se encontró 'PrismLauncher.exe' en '{dedicated_install_path}'."
+                    self._log(msg)
+                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
+            else:
+                msg = f"Winget falló con código de error: {return_code}"
                 self._log(msg)
                 if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
 
-        except (InterruptedError, FileNotFoundError, zipfile.BadZipFile, IOError, Exception) as e:
-            msg = f"Fallo en la instalación de Prism Launcher: {e}"
+        except InterruptedError as e:
+            msg = str(e)
+            self._log(msg)
+            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
+        except Exception as e:
+            msg = f"Error fatal al ejecutar Winget: {e}"
             self._log(msg)
             import traceback
             self._log(traceback.format_exc())
             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
             
-        finally:
-            if tmp_dir and os.path.exists(tmp_dir):
-                try:
-                    shutil.rmtree(tmp_dir)
-                    self._log(f"Temporal de instalación '{os.path.basename(tmp_dir)}' eliminado.")
-                except Exception as e:
-                    self._log(f"Warn: Fallo eliminando temporal de instalación: {e}")
-
     def _task_install_modpack(self, prism_exe_path, instance_base_path):
         """
         (NUEVO) Tarea en hilo: Descarga y extrae el modpack.
@@ -764,12 +806,31 @@ class ModpackLauncherAPI:
                         if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
                         last_update_time = now
 
-            # 2. Crear directorio de destino y extraer
-            self._update_install_status(f"Creando directorio de instancia: {os.path.basename(final_instance_path)}")
+            self._update_install_status("Extracción completa. Verificando archivos...")
+
+            # Asumir que el ZIP contiene directamente la carpeta "Kewz's Vanilla+ True"
+            src_folder_path = os.path.join(extract_target, MODPACK_INSTANCE_NAME)
+
+            if not os.path.isdir(src_folder_path) or not os.path.isdir(os.path.join(src_folder_path, "minecraft")):
+                # Fallback: buscar si está en una subcarpeta (común en GitLab/Dropbox)
+                found_correct_folder = False
+                for root, dirs, _ in os.walk(extract_target):
+                    if MODPACK_INSTANCE_NAME in dirs:
+                        src_folder_path = os.path.join(root, MODPACK_INSTANCE_NAME)
+                        if os.path.isdir(os.path.join(src_folder_path, "minecraft")):
+                             self._update_install_status("Carpeta de instancia encontrada dentro del ZIP.")
+                             found_correct_folder = True
+                             break
+                if not found_correct_folder:
+                    raise FileNotFoundError(f"El ZIP no contiene la carpeta de instancia '{MODPACK_INSTANCE_NAME}' esperada.")
+
+            # 3. Mover a la carpeta de instancias
+            self._update_install_status(f"Moviendo '{MODPACK_INSTANCE_NAME}' a '{instance_base_path}'...")
 
             # (CORREGIDO) Asegurarse de que la carpeta 'instances' exista
             try:
                 os.makedirs(instance_base_path, exist_ok=True)
+                self._update_install_status(f"Carpeta 'instances' asegurada en: {instance_base_path}")
             except Exception as e:
                 raise IOError(f"No se pudo crear el directorio 'instances': {e}")
 
@@ -780,32 +841,7 @@ class ModpackLauncherAPI:
                 except Exception as e:
                     raise IOError(f"No se pudo eliminar la instancia antigua: {e}")
 
-            os.makedirs(final_instance_path, exist_ok=True)
-
-            self._update_install_status("Extrayendo archivos de modpack...")
-
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                if zf.testzip() is not None:
-                    raise zipfile.BadZipFile("Archivo ZIP del modpack corrupto.")
-
-                total_files = len(zf.infolist())
-                extracted_count = 0
-                last_update_time = time.time()
-
-                for member in zf.infolist():
-                    if self.cancel_event.is_set(): raise InterruptedError("Extracción cancelada.")
-                    # Extraer directamente en la carpeta de instancia final
-                    zf.extract(member, final_instance_path)
-                    extracted_count += 1
-
-                    now = time.time()
-                    if now - last_update_time > 0.1 or extracted_count == total_files:
-                        pct = extracted_count / total_files if total_files > 0 else 0
-                        self._update_install_status(f"Extrayendo: {member.filename}")
-                        if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
-                        last_update_time = now
-
-            self._update_install_status("Extracción completa. Verificando...")
+            shutil.move(src_folder_path, instance_base_path) # Mueve la carpeta
             
             self._update_install_status("Verificación final de la instancia...")
             if self._validate_instance_path(final_mc_path):
@@ -913,112 +949,12 @@ class ModpackLauncherAPI:
     def py_quit_launcher(self):
         """Cierra la aplicación (llamado por JS después del fade-out)."""
         self._log("Cerrando el launcher vía JS.")
+        self.game_ready_event.set() # Asegurarse de que hilos como el de audio se detengan
         if self.window:
             try:
                 self.window.destroy()
             except Exception as e:
                 print(f"Error closing window via JS: {e}")
-
-    # --- (NUEVO) Lógica de Control de Audio ---
-    def _audio_muter_thread(self):
-        """
-        Hilo que busca y silencia prismlauncher.exe y javaw.exe,
-        y espera una señal para reactivar el sonido.
-        """
-        if not IS_WINDOWS:
-            self._log("[Audio] El control de audio solo es compatible con Windows. Hilo finalizado.")
-            return
-
-        self._log("[Audio] Hilo de silenciamiento iniciado. Buscando procesos del juego...")
-
-        from comtypes import CoInitialize, CoUninitialize
-        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
-
-        target_processes = {"prismlauncher.exe", "javaw.exe"}
-        muted_sessions = []
-
-        try:
-            CoInitialize()
-
-            # Bucle para encontrar los procesos y silenciarlos
-            start_time = time.time()
-            # (MODIFICADO) Aumentado el tiempo de búsqueda a 120s por si el juego tarda en aparecer
-            while time.time() - start_time < 120:
-                if self.cancel_event.is_set():
-                    self._log("[Audio] Cancelación detectada. Deteniendo hilo de audio.")
-                    return
-
-                try:
-                    sessions = AudioUtilities.GetAllSessions()
-                    # (NUEVO) Registro detallado para depuración
-                    all_processes = {session.Process.name().lower() for session in sessions if session.Process}
-                    self._log(f"[Audio Debug] Sesiones encontradas: {all_processes}")
-
-                    for session in sessions:
-                        if session.Process and session.Process.name().lower() in target_processes:
-                            # Evitar duplicados
-                            if session.Process.ProcessId not in [s['pid'] for s in muted_sessions]:
-                                try:
-                                    volume = session.SimpleAudioVolume
-                                    # (MODIFICADO) Silenciar inmediatamente y registrar
-                                    if not volume.GetMute():
-                                        volume.SetMute(1, None)
-                                        self._log(f"[Audio] Proceso SILENCIADO: {session.Process.name()} (PID: {session.Process.ProcessId})")
-                                    else:
-                                        self._log(f"[Audio] Proceso ya estaba silenciado: {session.Process.name()} (PID: {session.Process.ProcessId})")
-
-                                    muted_sessions.append({
-                                        'session': session,
-                                        'name': session.Process.name(),
-                                        'pid': session.Process.ProcessId
-                                    })
-                                except Exception as e:
-                                    self._log(f"[Audio] Error al intentar silenciar {session.Process.name()}: {e}")
-                except Exception as e:
-                    self._log(f"[Audio Debug] Error al obtener sesiones: {e}")
-
-                # Si hemos encontrado todos los procesos, salir del bucle de búsqueda
-                if len(muted_sessions) >= len(target_processes):
-                    self._log("[Audio] Todos los procesos objetivo han sido encontrados y silenciados.")
-                    break
-
-                # (MODIFICADO) Reducido el tiempo de espera para reaccionar más rápido
-                time.sleep(0.5)
-
-            if not muted_sessions:
-                self._log("[Audio] ADVERTENCIA: No se encontraron procesos de audio para silenciar después de 120s.")
-                return
-
-            # Esperar la señal para reactivar el sonido
-            self._log("[Audio] Esperando señal para reactivar el sonido...")
-            unmuted = self.unmute_event.wait(timeout=300) # Esperar hasta 5 minutos
-
-            if unmuted:
-                self._log("[Audio] Señal recibida. Reactivando el sonido de los procesos...")
-            else:
-                self._log("[Audio] ADVERTENCIA: Timeout esperando la señal de reactivación. Reactivando sonido igualmente.")
-
-            for item in muted_sessions:
-                try:
-                    volume = item['session'].SimpleAudioVolume
-                    volume.SetMute(0, None)
-                    self._log(f"[Audio] Sonido reactivado para: {item['name']}")
-                except Exception as e:
-                    self._log(f"[Audio] Error al reactivar el sonido para {item['name']}: {e}")
-
-        except ImportError as e:
-             self._log(f"[Audio] ERROR CRÍTICO: Falta una dependencia para el control de audio ({e}).")
-             self._log("[Audio] Asegúrate de que 'pycaw' y 'comtypes' están instalados.")
-        except Exception as e:
-            self._log(f"[Audio] Error inesperado en el hilo de audio: {e}")
-            import traceback
-            self._log(traceback.format_exc())
-        finally:
-            self._log("[Audio] Hilo de silenciamiento finalizado.")
-            try:
-                CoUninitialize()
-            except Exception:
-                pass
 
 
     # --- Lógica de Validación ---
@@ -1064,13 +1000,7 @@ class ModpackLauncherAPI:
     def _game_start_thread(self):
         """Hilo que maneja la secuencia completa de JUGAR."""
         try:
-            # --- (NUEVO) Paso 1: Sincronizar options.txt ---
-            if not self._sync_options_txt():
-                self._log("La sincronización de options.txt falló. Abortando lanzamiento.")
-                # El mensaje de error ya se mostró en _sync_options_txt
-                return
-
-            # --- Paso 2: Actualizar ---
+            # --- Paso 1: Actualizar ---
             self._log("Iniciando comprobación de actualizaciones...")
             self.added_files = []
             self.removed_files = []
@@ -1119,104 +1049,47 @@ class ModpackLauncherAPI:
                 try: self.window.on_top = False
                 except: pass
 
-    def _sync_options_txt(self):
-        """
-        Sincroniza las opciones de resource packs desde GitLab con el options.txt del usuario,
-        preservando y respaldando sus otras configuraciones.
-        """
-        self._log("--- Iniciando Sincronización de options.txt ---")
-        self._update_progress(0.01, "Sincronizando opciones...")
+    def _modify_options_file(self):
+        """Asegura que 'pauseOnLostFocus' esté en 'false' en options.txt."""
+        options_path = os.path.join(self.instance_mc_path, 'options.txt')
+        setting_key = "pauseOnLostFocus"
+        setting_value = "false"
 
-        instance_options_path = os.path.join(self.instance_mc_path, 'options.txt')
-        backup_options_path = os.path.join(os.getcwd(), LOCAL_OPTIONS_BACKUP_FILENAME)
+        if not os.path.exists(options_path):
+            self._log(f"Advertencia: No se encontró '{options_path}'.")
+            return
 
-        # 1. Descargar el archivo de resource packs
         try:
-            self._log(f"Descargando lista de resource packs desde: {RESOURCE_PACK_OPTIONS_URL}")
-            response = requests.get(RESOURCE_PACK_OPTIONS_URL, timeout=15)
-            response.raise_for_status()
-            remote_options_content = response.text
-            self._log("Lista de resource packs descargada con éxito.")
-        except requests.RequestException as e:
-            self._log(f"ERROR CRÍTICO: No se pudo descargar la configuración de resource packs: {e}")
-            self._show_result(False, "Error de Red", f"No se pudo descargar la configuración de resource packs.<br>Revisa tu conexión a internet.<br><br>Error: {e}")
-            return False
+            with open(options_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
 
-        # Extraer las líneas importantes del archivo descargado
-        new_rp_line, new_irp_line = None, None
-        for line in remote_options_content.splitlines():
-            if line.startswith("resourcePacks:"):
-                new_rp_line = line.strip()
-            elif line.startswith("incompatibleResourcePacks:"):
-                new_irp_line = line.strip()
+            new_lines = []
+            found = False
+            modified = False
+            for line in lines:
+                if line.strip().startswith(f"{setting_key}:"):
+                    current_value = line.strip().split(':', 1)[-1].strip()
+                    if current_value != setting_value:
+                        new_lines.append(f"{setting_key}:{setting_value}\n")
+                        self._log(f"'{setting_key}' actualizado a '{setting_value}'.")
+                        modified = True
+                    else:
+                        new_lines.append(line)
+                    found = True
+                else:
+                    new_lines.append(line)
 
-        if not new_rp_line:
-            self._log("ERROR CRÍTICO: El archivo remoto no contiene la línea 'resourcePacks:'.")
-            self._show_result(False, "Error de Configuración Remota", "El archivo de resource packs descargado está corrupto o malformado.")
-            return False
+            if not found:
+                new_lines.append(f"\n{setting_key}:{setting_value}\n")
+                self._log(f"'{setting_key}' no encontrado. Añadiendo '{setting_value}'.")
+                modified = True
 
-        # 2. Determinar el archivo base a usar (NUEVA LÓGICA)
-        base_content_lines = []
-        # PRIORIDAD 1: El options.txt actual del juego, para capturar cambios del usuario.
-        if os.path.exists(instance_options_path):
-            self._log("Usando 'options.txt' de la instancia como base (prioridad #1).")
-            with open(instance_options_path, 'r', encoding='utf-8') as f:
-                base_content_lines = f.readlines()
-        # PRIORIDAD 2: El respaldo local, si el del juego se corrompió o borró.
-        elif os.path.exists(backup_options_path):
-            self._log(f"ADVERTENCIA: No se encontró options.txt en la instancia. Usando respaldo local '{LOCAL_OPTIONS_BACKUP_FILENAME}' como base.")
-            with open(backup_options_path, 'r', encoding='utf-8') as f:
-                base_content_lines = f.readlines()
-        else:
-            self._log("ADVERTENCIA: No existe 'options.txt' ni respaldo. Se creará uno desde cero.")
-            # Se usará una lista vacía y se añadirán las líneas necesarias.
+            if modified:
+                with open(options_path, 'w', encoding='utf-8') as f:
+                    f.writelines(new_lines)
 
-        # 3. Fusionar las configuraciones
-        final_lines = []
-        rp_found, irp_found, pof_found = False, False, False
-
-        for line in base_content_lines:
-            if line.startswith("resourcePacks:"):
-                final_lines.append(new_rp_line + '\n')
-                rp_found = True
-            elif line.startswith("incompatibleResourcePacks:"):
-                if new_irp_line:
-                    final_lines.append(new_irp_line + '\n')
-                else: # Si el remoto no lo tiene, mantener el del usuario
-                    final_lines.append(line)
-                irp_found = True
-            elif line.startswith("pauseOnLostFocus:"):
-                final_lines.append("pauseOnLostFocus:false\n")
-                pof_found = True
-            else:
-                final_lines.append(line)
-
-        # Si alguna línea no existía en el archivo base, añadirla
-        if not rp_found: final_lines.append(new_rp_line + '\n')
-        if not irp_found and new_irp_line: final_lines.append(new_irp_line + '\n')
-        if not pof_found: final_lines.append("pauseOnLostFocus:false\n")
-
-        final_content = "".join(final_lines)
-
-        # 4. Guardar los archivos actualizados
-        try:
-            # Guardar en la carpeta de la instancia
-            self._log(f"Guardando 'options.txt' actualizado en: {self.instance_mc_path}")
-            with open(instance_options_path, 'w', encoding='utf-8') as f:
-                f.write(final_content)
-
-            # Guardar el respaldo en la carpeta del launcher
-            self._log(f"Creando/actualizando respaldo '{LOCAL_OPTIONS_BACKUP_FILENAME}'.")
-            with open(backup_options_path, 'w', encoding='utf-8') as f:
-                f.write(final_content)
-
-        except IOError as e:
-            self._log(f"ERROR CRÍTICO: No se pudo escribir el archivo 'options.txt' o su respaldo: {e}")
-            self._show_result(False, "Error de Archivo", f"No se pudo guardar la configuración de opciones.<br>Asegúrate de que el launcher no esté en una carpeta protegida.<br><br>Error: {e}")
-            return False
-
-        self._log("--- Sincronización de options.txt completada con éxito ---")
-        return True
+        except Exception as e:
+            self._log(f"ERROR: No se pudo modificar 'options.txt': {e}")
 
     def _launch_game(self):
         """Inicia el monitor de logs, la animación de carga y lanza el juego."""
@@ -1230,6 +1103,14 @@ class ModpackLauncherAPI:
 
             self._log(f"Iniciando instancia: '{instance_name}'")
             self._log(f"Usando ejecutable: {self.prism_exe_path}")
+
+            self._modify_options_file()
+
+            # (NUEVO) Resetear contador y empezar el hilo de silenciamiento
+            self.fancymenu_trigger_count = 0
+            self.game_ready_event.clear() # Asegurarse de que el evento esté limpio
+            self.audio_muter_thread = threading.Thread(target=self._audio_muter_thread, daemon=True)
+            self.audio_muter_thread.start()
 
             log_path = os.path.join(self.instance_mc_path, 'logs', 'latest.log')
             if os.path.exists(log_path):
@@ -1246,12 +1127,6 @@ class ModpackLauncherAPI:
                     self.window.evaluate_js(f'startLoadingAnimation({self.avg_launch_time_sec})')
             except Exception as e:
                 self._log(f"Error al iniciar animación JS: {e}")
-
-            # (NUEVO) Iniciar el hilo de silenciamiento de audio
-            self.unmute_event.clear()
-            audio_thread = threading.Thread(target=self._audio_muter_thread, name="AudioMuterThread")
-            audio_thread.daemon = True
-            audio_thread.start()
 
             watch_thread = threading.Thread(target=self._watch_log, args=(log_path,), name="LogWatcherThread")
             watch_thread.daemon = True
@@ -1373,6 +1248,67 @@ class ModpackLauncherAPI:
                     pass
             self._log("Limpieza finalizada.")
 
+    def _audio_muter_thread(self):
+        """
+        (NUEVO) Hilo que busca y silencia el proceso 'javaw.exe' hasta que el juego esté listo.
+        """
+        if not IS_WINDOWS or not PYCAW_AVAILABLE:
+            self._log("[AudioMuter] Hilo iniciado, pero no se ejecutará (No es Windows o pycaw no está disponible).")
+            return
+
+        self._log("[AudioMuter] Hilo iniciado. Buscando proceso 'javaw.exe'...")
+        javaw_sessions = []
+        found_process = False
+
+        # Bucle para encontrar el proceso
+        search_start_time = time.time()
+        while not self.game_ready_event.is_set() and time.time() - search_start_time < 60: # Timeout de 60s
+            try:
+                sessions = AudioUtilities.GetAllSessions()
+                for session in sessions:
+                    if session.Process and session.Process.name().lower() == 'javaw.exe':
+                        self._log(f"[AudioMuter] Proceso 'javaw.exe' encontrado (PID: {session.Process.pid}).")
+                        javaw_sessions.append(session)
+                        found_process = True
+
+                if found_process:
+                    break # Salir del bucle de búsqueda
+            except Exception as e:
+                self._log(f"[AudioMuter] Error buscando sesiones de audio: {e}")
+            time.sleep(1)
+
+        if not found_process:
+            self._log("[AudioMuter] No se encontró el proceso 'javaw.exe' después de 60 segundos. Hilo terminado.")
+            return
+
+        # Bucle para mantener el silencio
+        try:
+            while not self.game_ready_event.is_set():
+                for session in javaw_sessions:
+                    try:
+                        volume = session.SimpleAudioVolume
+                        if volume.GetMute() == 0:
+                            volume.SetMute(1, None)
+                            self._log(f"[AudioMuter] Silenciado PID: {session.Process.pid}")
+                    except Exception:
+                        # El proceso puede haber muerto, lo eliminamos de la lista
+                        javaw_sessions.remove(session)
+                time.sleep(0.2)
+        except Exception as e:
+            self._log(f"[AudioMuter] Error en el bucle de silenciamiento: {e}")
+        finally:
+            self._log("[AudioMuter] Evento de 'juego listo' recibido. Desilenciando...")
+            # Bucle final para desilenciar
+            for session in javaw_sessions:
+                try:
+                    volume = session.SimpleAudioVolume
+                    if volume.GetMute() == 1:
+                        volume.SetMute(0, None)
+                        self._log(f"[AudioMuter] Desilenciado PID: {session.Process.pid}")
+                except Exception as e:
+                    self._log(f"[AudioMuter] No se pudo desilenciar PID {session.Process.pid if session.Process else 'N/A'}: {e}")
+            self._log("[AudioMuter] Hilo terminado.")
+
 
     def _watch_log(self, log_path):
         """Vigila 'latest.log', inicia on_top, guarda tiempo de carga y llama a fadeOut."""
@@ -1422,8 +1358,6 @@ class ModpackLauncherAPI:
             line_batch = []
             last_batch_time = time.time()
 
-            unmute_trigger_count = 0 # (NUEVO) Contador para el trigger de audio
-
             while True:
                 if not self.window or self.cancel_event.is_set() or self.game_ready_event.is_set():
                     self._log("Vigilante: Ventana cerrada, cancelado o ya listo. Deteniendo lectura.")
@@ -1452,38 +1386,41 @@ class ModpackLauncherAPI:
                     line_strip = line.strip()
                     if not line_strip: continue
 
-                    # (MODIFICADO) Comprobar el trigger de audio y usar un contador
-                    if UNMUTE_TRIGGER_LINE in line_strip:
-                        if not self.unmute_event.is_set():
-                            unmute_trigger_count += 1
-                            self._log(f"[UNMUTE_TRIGGER] Detectado '{UNMUTE_TRIGGER_LINE}' ({unmute_trigger_count}/2)")
-                            if unmute_trigger_count >= 2:
-                                self._log("[UNMUTE_TRIGGER] Límite alcanzado. Enviando señal para reactivar audio.")
-                                self.unmute_event.set()
-
                     read_start_time = time.time()
                     trigger_line_found = None
-                    for trigger in trigger_lines:
-                        if trigger in line_strip:
-                            trigger_line_found = trigger
-                            break
+                    # (MODIFICADO) Comprobar solo la línea de FANCYMENU primero
+                    if LOG_TRIGGER_LINE in line_strip:
+                        self.fancymenu_trigger_count += 1
+                        self._log(f"[LOG_TRIGGER] Línea de FANCYMENU detectada. Conteo: {self.fancymenu_trigger_count}.")
+
+                        if self.fancymenu_trigger_count >= 2:
+                            self._log("[LOG_TRIGGER] Segundo trigger de FANCYMENU alcanzado. ¡Desilenciando y ocultando launcher!")
+                            trigger_line_found = LOG_TRIGGER_LINE
+                        else:
+                            self._log("[LOG_TRIGGER] Este es el primer trigger. El audio permanecerá silenciado.")
+
+                    # Si no es el segundo trigger de FANCYMENU, comprobar el otro
+                    elif LOG_TRIGGER_LINE_2 in line_strip:
+                        trigger_line_found = LOG_TRIGGER_LINE_2
+
 
                     if trigger_line_found:
                         if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
-                        self._log(f"[LOG_TRIGGER] {line_strip}")
+                        self._log(f"[LOG_TRIGGER] Línea final procesada: {line_strip}")
 
-                        match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
-                        if match:
-                            try:
-                                game_load_time = float(match.group(1))
-                                self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
-                                threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
-                            except Exception as e:
-                                self._log(f"Error al parsear tiempo de carga: {e}")
+                        if trigger_line_found == LOG_TRIGGER_LINE_2:
+                            match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
+                            if match:
+                                try:
+                                    game_load_time = float(match.group(1))
+                                    self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
+                                    threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
+                                except Exception as e:
+                                    self._log(f"Error al parsear tiempo de carga: {e}")
 
                         if self.window:
                             try:
-                                self.game_ready_event.set()
+                                self.game_ready_event.set() # <-- Esto detiene el hilo de silenciamiento
                                 self.window.evaluate_js('fadeLauncherOut()')
                             except Exception as e:
                                 self._log(f"Error calling fadeLauncherOut: {e}")
@@ -1764,54 +1701,22 @@ class ModpackLauncherAPI:
             if not os.path.isdir(folder_path):
                 raise FileNotFoundError(f"Carpeta instancia '{folder_path}' no existe.")
 
-            # --- 1. Verificación de Versión ANTES de descargar ---
-            self._log("Verificando versión del modpack...")
-            self._update_progress(0.05, "Verificando versión...")
-
-            user_version = 0.0
-            try:
-                user_version_files = [f for f in os.listdir(folder_path) if f.endswith('.txt') and re.match(r'^\d+(\.\d+)*\.txt$', f)]
-                if user_version_files:
-                    versions_found = [float(os.path.splitext(f)[0]) for f in user_version_files if re.fullmatch(r'\d+(\.\d+)*', os.path.splitext(f)[0])]
-                    user_version = max(versions_found) if versions_found else 0.0
-            except Exception as e:
-                self._log(f"Advertencia: No se pudo leer la versión local: {e}")
-
-            self._log(f"Versión actual local: {user_version}")
-
-            try:
-                response = requests.get(VERSION_URL, timeout=10)
-                response.raise_for_status()
-                latest_version_str = response.text.strip()
-                latest_version = float(latest_version_str)
-            except (requests.RequestException, ValueError) as e:
-                self._log(f"Error crítico: No se pudo obtener la versión más reciente desde {VERSION_URL}: {e}")
-                self._show_result(False, "Error de Red", "No se pudo comprobar la versión del modpack. Revisa tu conexión a internet.")
-                return False
-
-            self._log(f"Última versión disponible: {latest_version}")
-
-            if user_version >= latest_version:
-                self._log("El modpack ya está actualizado. Iniciando el juego...")
-                self._update_progress(1.0, "Modpack ya actualizado.")
-                time.sleep(1) # Pequeña pausa para que el usuario vea el mensaje
-                return True
-
-            # --- Si hay actualización, proceder con la descarga ---
             tmp_dir = tempfile.mkdtemp(prefix="vplus_update_")
             self._log(f"Directorio temporal: {tmp_dir}")
 
-            # --- 2. Descarga --- (Progreso 0% a 40%)
+            # --- 1. Descarga --- (Progreso 0% a 40%)
             self._log("Descargando paquete de actualización...")
             self._update_progress(0, "Iniciando descarga...")
             zip_path = os.path.join(tmp_dir, "paquete.zip")
             
+            # (MODIFICADO) Usar la nueva función de descarga
             self._download_file(REPO_ZIP_URL, zip_path, "update")
+            # La función _download_file maneja el progreso de 0 a 0.4 y las excepciones
             
             self._log(f"Descarga completa ({os.path.getsize(zip_path) / (1024*1024):.2f} MB).")
             self._update_progress(0.4, "Descarga completa")
 
-            # --- 3. Extracción --- (Progreso 40% a 50%)
+            # --- 2. Extracción --- (Progreso 40% a 50%)
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado post-descarga.")
             self._log("Extrayendo paquete...")
             self._update_progress(0.45, "Extrayendo...")
@@ -1834,9 +1739,21 @@ class ModpackLauncherAPI:
             self._log("'versions' encontrada y validada.")
             self._update_progress(0.50, "Extracción completa.")
 
-            # --- 4. Verificación de Versiones a Aplicar --- (Progreso 50% a 55%)
+            # --- 3. Verificación Versión --- (Progreso 50% a 55%)
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado post-extracción.")
+            self._log("Verificando versiones...")
+            self._update_progress(0.55, "Verificando...")
+            user_version = 0.0
+            user_version_files = []
+            try:
+                user_version_files = [f for f in os.listdir(folder_path) if f.endswith('.txt') and re.match(r'^\d+(\.\d+)*\.txt$', f)]
+                if user_version_files:
+                    versions_found = [float(os.path.splitext(f)[0]) for f in user_version_files if re.fullmatch(r'\d+(\.\d+)*', os.path.splitext(f)[0])]
+                    user_version = max(versions_found) if versions_found else 0.0
+            except Exception as e:
+                self._log(f"Warn: Error leyendo versión local: {e}")
             
+            self._log(f"Versión actual local: {user_version}")
             available_versions = []
             try:
                 dirs = [v for v in os.listdir(versions_path) if os.path.isdir(os.path.join(versions_path, v))]
@@ -1844,14 +1761,15 @@ class ModpackLauncherAPI:
                 if not available_versions_found:
                     raise FileNotFoundError("No hay carpetas de versión válidas en paquete.")
                 available_versions = sorted(available_versions_found)
+                latest_version = available_versions[-1]
             except Exception as e:
                 raise IOError(f"Error leyendo versiones del paquete: {e}")
 
-            updates_to_apply = [v for v in available_versions if v > user_version]
-            if not updates_to_apply:
-                self._log("El paquete descargado no contiene una versión más nueva. Saltando actualización.")
-                return True
+            self._log(f"Última versión disponible: {latest_version}")
+            if user_version >= latest_version:
+                self._log("Ya actualizado."); self._update_progress(1.0, "Modpack ya actualizado."); return True
 
+            updates_to_apply = [v for v in available_versions if v > user_version]
             self._log(f"Versiones a aplicar: {updates_to_apply}")
 
             # --- 4. (NUEVO) Procesar TODOS los Changelogs ANTES de aplicar --- (Progreso 55% a 75%)
