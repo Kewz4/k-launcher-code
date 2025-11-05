@@ -1422,6 +1422,8 @@ class ModpackLauncherAPI:
             line_batch = []
             last_batch_time = time.time()
 
+            unmute_trigger_count = 0 # (NUEVO) Contador para el trigger de audio
+
             while True:
                 if not self.window or self.cancel_event.is_set() or self.game_ready_event.is_set():
                     self._log("Vigilante: Ventana cerrada, cancelado o ya listo. Deteniendo lectura.")
@@ -1450,11 +1452,14 @@ class ModpackLauncherAPI:
                     line_strip = line.strip()
                     if not line_strip: continue
 
-                    # (NUEVO) Comprobar el trigger de audio ANTES del trigger de carga
+                    # (MODIFICADO) Comprobar el trigger de audio y usar un contador
                     if UNMUTE_TRIGGER_LINE in line_strip:
                         if not self.unmute_event.is_set():
-                            self._log(f"[UNMUTE_TRIGGER] {line_strip}")
-                            self.unmute_event.set()
+                            unmute_trigger_count += 1
+                            self._log(f"[UNMUTE_TRIGGER] Detectado '{UNMUTE_TRIGGER_LINE}' ({unmute_trigger_count}/2)")
+                            if unmute_trigger_count >= 2:
+                                self._log("[UNMUTE_TRIGGER] Límite alcanzado. Enviando señal para reactivar audio.")
+                                self.unmute_event.set()
 
                     read_start_time = time.time()
                     trigger_line_found = None
