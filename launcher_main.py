@@ -77,10 +77,12 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
 MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 # (ACTUALIZADO) Nueva URL de Dropbox (confirmado que es .ZIP)
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/n09t1j88vvohgxcvn6t6u/Kewz-s-Vanilla-True-Modpack.zip?rlkey=tg8v655uq2h30oc6k9qunsktl&st=eg2zn3h6&dl=1"
+PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
 
 # La línea que indica que el juego está listo
 LOG_TRIGGER_LINE = "[ModernFix/]: Game took"
+LOG_TRIGGER_LINE_2 = "[Iris] Game took" # (NUEVO) Gatillo alternativo
 # (NUEVO) Línea que indica que los recursos cargaron y el sonido puede activarse
 UNMUTE_TRIGGER_LINE = "[FANCYMENU] Minecraft resource reload: FINISHED"
 
@@ -342,8 +344,7 @@ class ModpackLauncherAPI:
         if self.music_library is None:
             self._log("Inicializando MusicLibrary...")
             try:
-                # (CORREGIDO) Usar la nueva constante dedicada para la música
-                self.music_library = MusicLibrary(gitlab_raw_url=MUSIC_DATA_URL)
+                self.music_library = MusicLibrary(gitlab_raw_url=GITLAB_RAW_URL)
             except Exception as e:
                 self._log(f"ERROR CRÍTICO: No se pudo inicializar MusicLibrary: {e}")
                 return []
@@ -639,121 +640,84 @@ class ModpackLauncherAPI:
 
     def _task_install_prism(self, install_location_base):
         """
-        (NUEVO) Tarea en hilo: Instala Prism usando Winget.
+        (REESCRITO) Tarea en hilo: Descarga y extrae la versión portable de Prism.
         Llama a JS: onPrismInstallComplete(success, path, error)
         """
         
-        # (CORREGIDO) Crear una subcarpeta dedicada para la instalación
-        dedicated_install_path = os.path.join(install_location_base, "PrismLauncher")
-        self._update_install_status(f"Creando directorio de instalación dedicado en: {dedicated_install_path}")
+        dedicated_install_path = os.path.join(install_location_base, "Prism Launcher")
+        self._update_install_status(f"Creando directorio de instalación en: {dedicated_install_path}")
         
+        tmp_dir = None
         try:
             os.makedirs(dedicated_install_path, exist_ok=True)
-        except Exception as e:
-            msg = f"Fallo al crear directorio dedicado '{dedicated_install_path}': {e}"
-            self._log(msg)
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-            return
             
-        if self.cancel_event.is_set():
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, "Instalación cancelada.")')
-            return
+            if self.cancel_event.is_set():
+                raise InterruptedError("Instalación cancelada por el usuario.")
 
-        # (NUEVO) Paso 1: Intentar desinstalar cualquier versión "fantasma"
-        self._update_install_status("Intentando limpiar instalaciones anteriores de Prism (por si acaso)...")
-        uninstall_command = [
-            "winget", "uninstall", "PrismLauncher.PrismLauncher",
-            "--silent",
-            "--accept-source-agreements"
-        ]
-        try:
-            # Ejecutar esto y esperar a que termine, pero no fallar si no encuentra nada
-            uninstall_process = subprocess.Popen(uninstall_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
-            while True:
-                output = uninstall_process.stdout.readline()
-                if output == '' and uninstall_process.poll() is not None:
-                    break
-                if output:
-                    self._update_install_status(f"[Limpieza] {output.strip()}")
-            
-            uninstall_return_code = uninstall_process.poll()
-            if uninstall_return_code == 0:
-                self._update_install_status("Limpieza completada.")
+            tmp_dir = tempfile.mkdtemp(prefix="prism_portable_")
+            self._update_install_status(f"Directorio temporal creado: {os.path.basename(tmp_dir)}")
+            zip_path = os.path.join(tmp_dir, "prismlauncher.zip")
+
+            # 1. Descargar
+            self._update_install_status(f"Descargando Prism Launcher desde: {PRISM_PORTABLE_URL}")
+            self._download_file(PRISM_PORTABLE_URL, zip_path, "wizard_install")
+
+            if self.cancel_event.is_set(): raise InterruptedError("Descarga cancelada.")
+
+            # 2. Extraer
+            self._update_install_status("Descarga completa. Extrayendo archivos...")
+
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                if zf.testzip() is not None:
+                    raise zipfile.BadZipFile("Archivo ZIP de Prism Launcher corrupto.")
+
+                total_files = len(zf.infolist())
+                extracted_count = 0
+                last_update_time = time.time()
+
+                for member in zf.infolist():
+                    if self.cancel_event.is_set(): raise InterruptedError("Extracción cancelada.")
+                    zf.extract(member, dedicated_install_path)
+                    extracted_count += 1
+
+                    now = time.time()
+                    if now - last_update_time > 0.1 or extracted_count == total_files:
+                        pct = extracted_count / total_files if total_files > 0 else 0
+                        self._update_install_status(f"Extrayendo: {member.filename}")
+                        if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
+                        last_update_time = now
+
+            self._update_install_status("Extracción completa. Verificando ejecutable...")
+
+            final_exe_path = os.path.join(dedicated_install_path, "PrismLauncher.exe")
+            final_exe_path_lower = os.path.join(dedicated_install_path, "prismlauncher.exe")
+
+            if self._validate_prism_path(final_exe_path):
+                self._update_install_status("¡Prism Launcher instalado con éxito!")
+                if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path)}, null)')
+            elif self._validate_prism_path(final_exe_path_lower):
+                self._update_install_status("¡Prism Launcher instalado con éxito!")
+                if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path_lower)}, null)')
             else:
-                # Esto es normal si no se encontró nada
-                self._update_install_status("No se encontró instalación fantasma (o la limpieza falló, no es crítico).")
-                
-        except Exception as e:
-            self._update_install_status(f"Error durante la limpieza (no es crítico): {e}")
-
-        if self.cancel_event.is_set():
-             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, "Instalación cancelada.")')
-             return
-
-        # (NUEVO) Paso 2: Instalar en la RUTA DEDICADA
-        self._update_install_status(f"Iniciando Winget para instalar Prism en: {dedicated_install_path}")
-        self._update_install_status("(Esto puede tardar varios minutos)...")
-
-        install_command = [
-            "winget", "install", "PrismLauncher.PrismLauncher",
-            "--silent",
-            "--accept-package-agreements",
-            "--accept-source-agreements",
-            "--location", dedicated_install_path  # <-- (CORREGIDO) Usar la nueva ruta
-        ]
-
-        # (CORREGIDO) Winget a veces usa P mayúscula
-        final_exe_path = os.path.join(dedicated_install_path, "PrismLauncher.exe")
-        final_exe_path_lower = os.path.join(dedicated_install_path, "prismlauncher.exe")
-
-        try:
-            # Usar Popen para leer la salida en tiempo real
-            process = subprocess.Popen(install_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
-            
-            while True:
-                if self.cancel_event.is_set():
-                    self._log("Cancelación detectada. Intentando terminar Winget...")
-                    process.terminate()
-                    process.wait(timeout=5)
-                    raise InterruptedError("Instalación cancelada por el usuario.")
-
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    self._update_install_status(output.strip())
-
-            return_code = process.poll()
-
-            if return_code == 0:
-                self._update_install_status("Winget completado. Verificando ejecutable...")
-                # (CORREGIDO) Comprobar ambas capitalizaciones
-                if self._validate_prism_path(final_exe_path):
-                    self._update_install_status("¡Prism Launcher instalado con éxito!")
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path)}, null)')
-                elif self._validate_prism_path(final_exe_path_lower):
-                    self._update_install_status("¡Prism Launcher instalado con éxito!")
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path_lower)}, null)')
-                else:
-                    msg = f"Winget reportó éxito, pero no se encontró 'PrismLauncher.exe' en '{dedicated_install_path}'."
-                    self._log(msg)
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-            else:
-                msg = f"Winget falló con código de error: {return_code}"
+                msg = f"Se extrajo el ZIP, pero no se encontró 'PrismLauncher.exe' en '{dedicated_install_path}'."
                 self._log(msg)
                 if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
 
-        except InterruptedError as e:
-            msg = str(e)
-            self._log(msg)
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-        except Exception as e:
-            msg = f"Error fatal al ejecutar Winget: {e}"
+        except (InterruptedError, FileNotFoundError, zipfile.BadZipFile, IOError, Exception) as e:
+            msg = f"Fallo en la instalación de Prism Launcher: {e}"
             self._log(msg)
             import traceback
             self._log(traceback.format_exc())
             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
             
+        finally:
+            if tmp_dir and os.path.exists(tmp_dir):
+                try:
+                    shutil.rmtree(tmp_dir)
+                    self._log(f"Temporal de instalación '{os.path.basename(tmp_dir)}' eliminado.")
+                except Exception as e:
+                    self._log(f"Warn: Fallo eliminando temporal de instalación: {e}")
+
     def _task_install_modpack(self, prism_exe_path, instance_base_path):
         """
         (NUEVO) Tarea en hilo: Descarga y extrae el modpack.
@@ -800,31 +764,12 @@ class ModpackLauncherAPI:
                         if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
                         last_update_time = now
 
-            self._update_install_status("Extracción completa. Verificando archivos...")
-
-            # Asumir que el ZIP contiene directamente la carpeta "Kewz's Vanilla+ True"
-            src_folder_path = os.path.join(extract_target, MODPACK_INSTANCE_NAME)
-
-            if not os.path.isdir(src_folder_path) or not os.path.isdir(os.path.join(src_folder_path, "minecraft")):
-                # Fallback: buscar si está en una subcarpeta (común en GitLab/Dropbox)
-                found_correct_folder = False
-                for root, dirs, _ in os.walk(extract_target):
-                    if MODPACK_INSTANCE_NAME in dirs:
-                        src_folder_path = os.path.join(root, MODPACK_INSTANCE_NAME)
-                        if os.path.isdir(os.path.join(src_folder_path, "minecraft")):
-                             self._update_install_status("Carpeta de instancia encontrada dentro del ZIP.")
-                             found_correct_folder = True
-                             break
-                if not found_correct_folder:
-                    raise FileNotFoundError(f"El ZIP no contiene la carpeta de instancia '{MODPACK_INSTANCE_NAME}' esperada.")
-
-            # 3. Mover a la carpeta de instancias
-            self._update_install_status(f"Moviendo '{MODPACK_INSTANCE_NAME}' a '{instance_base_path}'...")
+            # 2. Crear directorio de destino y extraer
+            self._update_install_status(f"Creando directorio de instancia: {os.path.basename(final_instance_path)}")
 
             # (CORREGIDO) Asegurarse de que la carpeta 'instances' exista
             try:
                 os.makedirs(instance_base_path, exist_ok=True)
-                self._update_install_status(f"Carpeta 'instances' asegurada en: {instance_base_path}")
             except Exception as e:
                 raise IOError(f"No se pudo crear el directorio 'instances': {e}")
 
@@ -835,7 +780,32 @@ class ModpackLauncherAPI:
                 except Exception as e:
                     raise IOError(f"No se pudo eliminar la instancia antigua: {e}")
 
-            shutil.move(src_folder_path, instance_base_path) # Mueve la carpeta
+            os.makedirs(final_instance_path, exist_ok=True)
+
+            self._update_install_status("Extrayendo archivos de modpack...")
+
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                if zf.testzip() is not None:
+                    raise zipfile.BadZipFile("Archivo ZIP del modpack corrupto.")
+
+                total_files = len(zf.infolist())
+                extracted_count = 0
+                last_update_time = time.time()
+
+                for member in zf.infolist():
+                    if self.cancel_event.is_set(): raise InterruptedError("Extracción cancelada.")
+                    # Extraer directamente en la carpeta de instancia final
+                    zf.extract(member, final_instance_path)
+                    extracted_count += 1
+
+                    now = time.time()
+                    if now - last_update_time > 0.1 or extracted_count == total_files:
+                        pct = extracted_count / total_files if total_files > 0 else 0
+                        self._update_install_status(f"Extrayendo: {member.filename}")
+                        if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
+                        last_update_time = now
+
+            self._update_install_status("Extracción completa. Verificando...")
             
             self._update_install_status("Verificación final de la instancia...")
             if self._validate_instance_path(final_mc_path):
@@ -1924,6 +1894,35 @@ class ModpackLauncherAPI:
                             self._backup_and_copy_file(src_item_path, dest_item_path, "")
                     except Exception as copy_err: self._log(f"        - ERROR procesando item raíz '{item_name}': {copy_err}")
 
+                # Fase options.txt
+                if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado antes de options.txt v{ver}.")
+                resourcepack_options_path = os.path.join(update_version_path, 'resourcepackoptions.txt')
+                if os.path.exists(resourcepack_options_path):
+                    self._log(f"  [{ver}] Actualizando options.txt para resource packs...")
+                    user_options_path = os.path.join(folder_path, 'options.txt')
+                    if os.path.exists(user_options_path):
+                        try:
+                            with open(resourcepack_options_path, 'r', encoding='utf-8') as f_new: new_rp_lines_content = f_new.read()
+                            with open(user_options_path, 'r', encoding='utf-8') as f_user: user_options_content = f_user.read()
+                            rp_match = re.search(r'^resourcePacks:(\[.*?\])$', new_rp_lines_content, re.MULTILINE | re.DOTALL); irp_match = re.search(r'^incompatibleResourcePacks:(\[.*?\])$', new_rp_lines_content, re.MULTILINE | re.DOTALL)
+                            new_rp = rp_match.group(0) if rp_match else None; new_irp = irp_match.group(0) if irp_match else None
+                            if not new_rp: continue
+                            backup_unique_name = "ROOT_options.txt"
+                            if not any(rf[0] == ("", "options.txt") for rf in self.removed_files):
+                                try:
+                                    backup_options_path = os.path.join(self.backup_dir, backup_unique_name); os.makedirs(os.path.dirname(backup_options_path), exist_ok=True); shutil.copy2(user_options_path, backup_options_path); self.removed_files.append((("", "options.txt"), backup_unique_name))
+                                except Exception as bk_err: self._log(f"        - CRITICAL ERROR backing up options.txt: {bk_err}. Skipping update."); continue
+                            modified_content = user_options_content; changed = False; pattern_rp = r'^resourcePacks:\[.*?\]$'; pattern_irp = r'^incompatibleResourcePacks:\[.*?\]$'
+                            if re.search(pattern_rp, modified_content, re.MULTILINE | re.DOTALL): modified_content, c = re.subn(pattern_rp, new_rp, modified_content, 1, re.MULTILINE | re.DOTALL); changed |= c > 0
+                            else: modified_content = modified_content.rstrip() + "\n" + new_rp + "\n"; changed = True
+                            if new_irp:
+                                if re.search(pattern_irp, modified_content, re.MULTILINE | re.DOTALL): modified_content, c = re.subn(pattern_irp, new_irp, modified_content, 1, re.MULTILINE | re.DOTALL); changed |= c > 0
+                                else: modified_content = modified_content.rstrip() + "\n" + new_irp + "\n"; changed = True
+                            if changed:
+                                with open(user_options_path, 'w', encoding='utf-8') as f_user_w: f_user_w.write(modified_content)
+                                if not any(af == ("", 'options.txt') for af in self.added_files): self.added_files.append(("", 'options.txt'))
+                                self._log("        - options.txt actualizado.")
+                        except Exception as opt_err: self._log(f"        - ERROR actualizando options.txt: {opt_err}")
 
             # --- 6. Finalización --- (Progreso 95% a 100%)
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado después de aplicar versiones.")
