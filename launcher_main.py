@@ -12,6 +12,52 @@ import json
 import subprocess  # Para lanzar Prism y Winget
 import psutil      # Para terminar procesos
 import webview     # Necesitarás: pip install pywebview requests
+
+
+# --- (NUEVO) Gestión de Dependencias ---
+def check_and_install_dependencies():
+    """Comprueba si las dependencias en requirements.txt están instaladas e intenta instalarlas si no lo están."""
+    try:
+        with open('requirements.txt', 'r') as f:
+            required = {line.strip().lower() for line in f if line.strip()}
+    except FileNotFoundError:
+        print("ADVERTENCIA: No se encontró requirements.txt. No se pueden verificar las dependencias.")
+        return
+
+    try:
+        import pkg_resources
+        installed = {pkg.key for pkg in pkg_resources.working_set}
+    except ImportError:
+        print("ADVERTENCIA: pkg_resources no disponible. No se pueden verificar las dependencias de forma fiable.")
+        return
+
+    missing = required - installed
+
+    if missing:
+        print(f"Faltan dependencias: {', '.join(missing)}. Intentando instalar...")
+        try:
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', *missing])
+            print("Dependencias instaladas con éxito.")
+            # (IMPORTANTE) Forzar la recarga de los paquetes recién instalados
+            import importlib
+            import site
+            importlib.reload(site)
+            print("Módulos recargados.")
+        except subprocess.CalledProcessError as e:
+            print(f"ERROR CRÍTICO: No se pudieron instalar las dependencias: {e}")
+            print("Por favor, instala manualmente los paquetes listados en 'requirements.txt' y vuelve a ejecutar.")
+            sys.exit(1)
+        except Exception as e:
+            print(f"ERROR INESPERADO durante la instalación de dependencias: {e}")
+            sys.exit(1)
+    else:
+        print("Todas las dependencias están satisfechas.")
+
+# Llamar a la función de comprobación al inicio
+check_and_install_dependencies()
+# --- Fin de la Gestión de Dependencias ---
+
+
 try:
     from music_player import MusicLibrary
 except ImportError:
@@ -78,6 +124,8 @@ PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/do
 
 # La línea que indica que el juego está listo
 LOG_TRIGGER_LINE = "[ModernFix/]: Game took"
+# (NUEVO) Línea que indica que los recursos cargaron y el sonido puede activarse
+UNMUTE_TRIGGER_LINE = "[FANCYMENU] Minecraft resource reload: FINISHED"
 
 
 class ModpackLauncherAPI:
@@ -121,6 +169,7 @@ class ModpackLauncherAPI:
         self.hwnd = None # Handle de la ventana (solo Windows)
         self.cancel_event = threading.Event()
         self.game_ready_event = threading.Event()
+        self.unmute_event = threading.Event() # (NUEVO) Evento para el audio
         self.on_top_thread = None
         self.prism_exe_path = None
         self.instance_mc_path = None
@@ -912,6 +961,89 @@ class ModpackLauncherAPI:
             except Exception as e:
                 print(f"Error closing window via JS: {e}")
 
+    # --- (NUEVO) Lógica de Control de Audio ---
+    def _audio_muter_thread(self):
+        """
+        Hilo que busca y silencia prismlauncher.exe y javaw.exe,
+        y espera una señal para reactivar el sonido.
+        """
+        if not IS_WINDOWS:
+            self._log("[Audio] El control de audio solo es compatible con Windows. Hilo finalizado.")
+            return
+
+        self._log("[Audio] Hilo de silenciamiento iniciado. Esperando procesos del juego...")
+
+        from comtypes import CoInitialize, CoUninitialize
+        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+
+        target_processes = {"prismlauncher.exe", "javaw.exe"}
+        muted_sessions = []
+
+        try:
+            CoInitialize()
+
+            # Bucle para encontrar los procesos y silenciarlos
+            start_time = time.time()
+            while time.time() - start_time < 60: # Buscar durante 60 segundos
+                if self.cancel_event.is_set():
+                    self._log("[Audio] Cancelación detectada. Deteniendo hilo de audio.")
+                    return
+
+                sessions = AudioUtilities.GetAllSessions()
+                for session in sessions:
+                    if session.Process and session.Process.name().lower() in target_processes:
+                        # Evitar duplicados
+                        if session not in [s['session'] for s in muted_sessions]:
+                            try:
+                                volume = session.SimpleAudioVolume
+                                volume.SetMute(1, None)
+                                muted_sessions.append({'session': session, 'name': session.Process.name()})
+                                self._log(f"[Audio] Proceso silenciado: {session.Process.name()}")
+                            except Exception as e:
+                                self._log(f"[Audio] Error al intentar silenciar {session.Process.name()}: {e}")
+
+                # Si hemos encontrado todos los procesos, salir del bucle de búsqueda
+                if len(muted_sessions) == len(target_processes):
+                    self._log("[Audio] Todos los procesos objetivo han sido silenciados.")
+                    break
+
+                time.sleep(1)
+
+            if not muted_sessions:
+                self._log("[Audio] ADVERTENCIA: No se encontraron procesos de audio para silenciar después de 60s.")
+                return
+
+            # Esperar la señal para reactivar el sonido
+            self._log("[Audio] Esperando señal para reactivar el sonido...")
+            unmuted = self.unmute_event.wait(timeout=300) # Esperar hasta 5 minutos
+
+            if unmuted:
+                self._log("[Audio] Señal recibida. Reactivando el sonido de los procesos...")
+            else:
+                self._log("[Audio] ADVERTENCIA: Timeout esperando la señal de reactivación. Reactivando sonido igualmente.")
+
+            for item in muted_sessions:
+                try:
+                    volume = item['session'].SimpleAudioVolume
+                    volume.SetMute(0, None)
+                    self._log(f"[Audio] Sonido reactivado para: {item['name']}")
+                except Exception as e:
+                    self._log(f"[Audio] Error al reactivar el sonido para {item['name']}: {e}")
+
+        except ImportError as e:
+             self._log(f"[Audio] ERROR CRÍTICO: Falta una dependencia para el control de audio ({e}).")
+             self._log("[Audio] Asegúrate de que 'pycaw' y 'comtypes' están instalados.")
+        except Exception as e:
+            self._log(f"[Audio] Error inesperado en el hilo de audio: {e}")
+            import traceback
+            self._log(traceback.format_exc())
+        finally:
+            self._log("[Audio] Hilo de silenciamiento finalizado.")
+            try:
+                CoUninitialize()
+            except Exception:
+                pass
+
 
     # --- Lógica de Validación ---
 
@@ -1078,6 +1210,12 @@ class ModpackLauncherAPI:
             except Exception as e:
                 self._log(f"Error al iniciar animación JS: {e}")
 
+            # (NUEVO) Iniciar el hilo de silenciamiento de audio
+            self.unmute_event.clear()
+            audio_thread = threading.Thread(target=self._audio_muter_thread, name="AudioMuterThread")
+            audio_thread.daemon = True
+            audio_thread.start()
+
             watch_thread = threading.Thread(target=self._watch_log, args=(log_path,), name="LogWatcherThread")
             watch_thread.daemon = True
             watch_thread.start()
@@ -1154,7 +1292,7 @@ class ModpackLauncherAPI:
         self._log(f"[OnTopThread] Iniciado (HWND: {hwnd}, Usando pywin32: {IS_WINDOWS and hwnd and win32gui}).")
         is_using_win32 = IS_WINDOWS and hwnd and win32gui
         try:
-            while not self.game_ready_event.wait(0.1):
+            while not self.game_ready_event.wait(0.05): # (MODIFICADO) Más agresivo
                 if is_using_win32:
                     try:
                         if win32gui.IsWindow(hwnd):
@@ -1214,19 +1352,31 @@ class ModpackLauncherAPI:
 
         try:
             start_wait = time.time()
-            timeout_seconds = 120
+            timeout_seconds = 180  # Aumentado a 3 minutos
             log_found = False
+            self._log(f"Vigilante: Buscando '{log_filename}' durante {timeout_seconds}s...")
+
             while time.time() - start_wait < timeout_seconds:
                 if not self.window or self.cancel_event.is_set() or self.game_ready_event.is_set():
-                    self._log("Vigilante: Ventana cerrada o cancelado/listo, deteniendo espera.")
+                    self._log("Vigilante: Cancelado durante la espera del log.")
                     return
-                if os.path.exists(log_path) and os.path.getsize(log_path) > 0:
-                    log_found = True
-                    break
-                time.sleep(0.5)
+
+                try:
+                    # Comprobar si existe Y no está vacío.
+                    if os.path.exists(log_path) and os.path.getsize(log_path) > 0:
+                        self._log(f"Vigilante: '{log_filename}' encontrado y no está vacío.")
+                        log_found = True
+                        break
+                except FileNotFoundError:
+                    # Esto puede pasar en raras condiciones de carrera
+                    pass
+                except Exception as e:
+                    self._log(f"Vigilante: Error inesperado al comprobar el log: {e}")
+
+                time.sleep(1) # Reintentar cada segundo
 
             if not log_found:
-                self._log(f"Error: Timeout ({timeout_seconds}s) esperando por '{log_filename}'.")
+                self._log(f"Error: Timeout ({timeout_seconds}s) esperando por '{log_filename}'. El archivo no apareció o estaba vacío.")
                 if self.window:
                     try:
                         self.window.evaluate_js('returnToPlayScreen()')
@@ -1278,6 +1428,12 @@ class ModpackLauncherAPI:
                 if line:
                     line_strip = line.strip()
                     if not line_strip: continue
+
+                    # (NUEVO) Comprobar el trigger de audio ANTES del trigger de carga
+                    if UNMUTE_TRIGGER_LINE in line_strip:
+                        if not self.unmute_event.is_set():
+                            self._log(f"[UNMUTE_TRIGGER] {line_strip}")
+                            self.unmute_event.set()
 
                     read_start_time = time.time()
 
@@ -2007,6 +2163,21 @@ def main():
        sys.exit(1)
 
 if __name__ == "__main__":
+    # --- (NUEVO) Redirección de salida para .exe compilado ---
+    # Si el script se ejecuta como un paquete de PyInstaller, oculta la consola
+    # redirigiendo la salida a un archivo.
+    if getattr(sys, 'frozen', False):
+        try:
+            log_dir = os.path.dirname(sys.executable)
+            log_file_path = os.path.join(log_dir, 'launcher_output.log')
+            sys.stdout = open(log_file_path, 'w', encoding='utf-8', buffering=1)
+            sys.stderr = sys.stdout
+            print("--- Redirección de salida activada ---")
+        except Exception as e:
+            # No se puede hacer mucho si esto falla, pero al menos no crashea.
+            pass
+    # --- Fin de la redirección ---
+
     # (NUEVO) Lógica para solicitar permisos de Administrador en Windows
     if IS_WINDOWS and ctypes:
         try:
