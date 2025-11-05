@@ -154,8 +154,11 @@ class ModpackLauncherAPI:
         if self.window:
             safe_message_for_gui = json.dumps(message)[1:-1]
             try:
-                self.window.evaluate_js(f'requestAnimationFrame(() => logToConsole("{safe_message_for_gui}"))')
-            except Exception as e:
+                # (NUEVO) Comprobación robusta antes de evaluar JS
+                if self.window._webview_ready and not self.window.minimized:
+                    self.window.evaluate_js(f'requestAnimationFrame(() => logToConsole("{safe_message_for_gui}"))')
+            except Exception:
+                # Si la ventana se está cerrando, esto puede fallar. Es seguro ignorarlo.
                 pass
 
     def _update_progress(self, percentage, label=""):
@@ -164,8 +167,9 @@ class ModpackLauncherAPI:
             safe_label = json.dumps(label)[1:-1]
             try:
                 self.window.evaluate_js(f'updateProgress({percentage}, "{safe_label}")')
-            except Exception as e:
-                print(f"Error evaluating JS for progress: {e}")
+            except Exception:
+                # Si la ventana se está cerrando, esto puede fallar. Es seguro ignorarlo.
+                pass
 
     def _show_result(self, success, title, details=""):
         """Muestra la pantalla de resultado (éxito o error)."""
@@ -174,8 +178,9 @@ class ModpackLauncherAPI:
             safe_details_html = json.dumps(details)[1:-1].replace('\\n', '<br>')
             try:
                 self.window.evaluate_js(f'showResult({str(success).lower()}, "{safe_title}", "{safe_details_html}")')
-            except Exception as e:
-                print(f"Error evaluating JS for result: {e}")
+            except Exception:
+                # Si la ventana se está cerrando, esto puede fallar. Es seguro ignorarlo.
+                pass
                 
     # (NUEVO) Función para enviar estado al asistente de instalación
     def _update_install_status(self, message):
@@ -185,8 +190,9 @@ class ModpackLauncherAPI:
             safe_message = json.dumps(message)[1:-1]
             try:
                 self.window.evaluate_js(f'updateInstallStatus("{safe_message}")')
-            except Exception as e:
-                pass # Evitar bucles
+            except Exception:
+                # Si la ventana se está cerrando, esto puede fallar. Es seguro ignorarlo.
+                pass
 
 
     # --- (ACTUALIZADO) Funciones de Configuración QoL ---
@@ -230,14 +236,14 @@ class ModpackLauncherAPI:
                                 self.avg_launch_time_sec = sum(valid_times) / len(valid_times)
                                 print(f"Tiempo de carga promedio cargado: {self.avg_launch_time_sec:.2f}s ({len(valid_times)} muestras)")
                             else:
-                                self.avg_launch_time_sec = 60.0
-                                print("No hay tiempos de carga válidos guardados, usando default (60s).")
+                                self.avg_launch_time_sec = 180.0
+                                print("No hay tiempos de carga válidos guardados, usando default (180s).")
                         except Exception as e:
                             print(f"Error calculando promedio de carga, usando default: {e}")
-                            self.avg_launch_time_sec = 60.0
+                            self.avg_launch_time_sec = 180.0
                     else:
-                        self.avg_launch_time_sec = 60.0
-                        print("No se encontró historial de tiempos de carga, usando default (60s).")
+                        self.avg_launch_time_sec = 180.0
+                        print("No se encontró historial de tiempos de carga, usando default (180s).")
 
                     return True
                 else:
@@ -1244,7 +1250,7 @@ class ModpackLauncherAPI:
             self._log("Monitoreando nuevas líneas en tiempo real...")
 
             read_start_time = time.time()
-            read_timeout_seconds = 300
+            read_timeout_seconds = 180
             trigger_lines = [LOG_TRIGGER_LINE, LOG_TRIGGER_LINE_2]
             line_batch = []
             last_batch_time = time.time()
@@ -1321,7 +1327,7 @@ class ModpackLauncherAPI:
                     if self.window:
                         try:
                             self.window.evaluate_js('returnToPlayScreen()')
-                            self._show_result(False, "Error de Timeout", "El juego se inició pero no respondió en 5 minutos.")
+                            self._show_result(False, "Error de Timeout", "El juego se inició pero no respondió en 3 minutos.")
                         except Exception as e: self._log(f"Error al llamar returnToPlayScreen: {e}")
                     return
 
