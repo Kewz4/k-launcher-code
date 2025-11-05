@@ -2150,6 +2150,7 @@ def main():
     api = ModpackLauncherAPI()
     window_title = "Vanilla+ Launcher"
     try:
+        webview.settings['REMOTE_DEBUGGING_PORT'] = 9222
         window = webview.create_window(
             window_title,
             html=HTML_CONTENT,
