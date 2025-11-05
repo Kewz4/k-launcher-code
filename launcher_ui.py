@@ -844,7 +844,7 @@ HTML_CONTENT = f"""
         function startLoadingAnimation(durationSeconds) {{ 
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); }} 
             const startTime = performance.now(); 
-            const durationMs = (durationSeconds || 180) * 1000;
+            const durationMs = (durationSeconds || 400) * 1000;
             
             dom.progressBar.style.transition = 'none'; 
             dom.progressBar.style.width = '0%';

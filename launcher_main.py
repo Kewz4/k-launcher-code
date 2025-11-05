@@ -80,8 +80,9 @@ MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/n09t1j88vvohgxcvn6t6u/
 
 
 # La línea que indica que el juego está listo
-LOG_TRIGGER_LINE = "[FANCYMENU] API initialized successfully"
-LOG_TRIGGER_LINE_2 = "[ModernFix/]: Game took"
+LOG_TRIGGER_LINE = "[ModernFix/]: Game took"
+# (NUEVO) Línea que indica que los recursos cargaron y el sonido puede activarse
+UNMUTE_TRIGGER_LINE = "[FANCYMENU] Minecraft resource reload: FINISHED"
 
 
 class ModpackLauncherAPI:
@@ -111,6 +112,7 @@ class ModpackLauncherAPI:
         self.hwnd = None # Handle de la ventana (solo Windows)
         self.cancel_event = threading.Event()
         self.game_ready_event = threading.Event()
+        self.unmute_event = threading.Event() # (NUEVO) Evento para el audio
         self.on_top_thread = None
         self.prism_exe_path = None
         self.instance_mc_path = None
@@ -120,7 +122,7 @@ class ModpackLauncherAPI:
         self.changelog_processed_items = set()
 
         self.config_lock = threading.Lock()
-        self.avg_launch_time_sec = 60.0
+        self.avg_launch_time_sec = 400.0
         self.music_library = None
         
         # (NUEVO) Estado para el hilo de tareas
@@ -211,14 +213,14 @@ class ModpackLauncherAPI:
                                 self.avg_launch_time_sec = sum(valid_times) / len(valid_times)
                                 print(f"Tiempo de carga promedio cargado: {self.avg_launch_time_sec:.2f}s ({len(valid_times)} muestras)")
                             else:
-                                self.avg_launch_time_sec = 60.0
-                                print("No hay tiempos de carga válidos guardados, usando default (60s).")
+                                self.avg_launch_time_sec = 400.0
+                                print("No hay tiempos de carga válidos guardados, usando default (400s).")
                         except Exception as e:
                             print(f"Error calculando promedio de carga, usando default: {e}")
-                            self.avg_launch_time_sec = 60.0
+                            self.avg_launch_time_sec = 400.0
                     else:
-                        self.avg_launch_time_sec = 60.0
-                        print("No se encontró historial de tiempos de carga, usando default (60s).")
+                        self.avg_launch_time_sec = 400.0
+                        print("No se encontró historial de tiempos de carga, usando default (400s).")
 
                     return True
                 else:
@@ -947,6 +949,89 @@ class ModpackLauncherAPI:
             except Exception as e:
                 print(f"Error closing window via JS: {e}")
 
+    # --- (NUEVO) Lógica de Control de Audio ---
+    def _audio_muter_thread(self):
+        """
+        Hilo que busca y silencia prismlauncher.exe y javaw.exe,
+        y espera una señal para reactivar el sonido.
+        """
+        if not IS_WINDOWS:
+            self._log("[Audio] El control de audio solo es compatible con Windows. Hilo finalizado.")
+            return
+
+        self._log("[Audio] Hilo de silenciamiento iniciado. Esperando procesos del juego...")
+
+        from comtypes import CoInitialize, CoUninitialize
+        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+
+        target_processes = {"prismlauncher.exe", "javaw.exe"}
+        muted_sessions = []
+
+        try:
+            CoInitialize()
+
+            # Bucle para encontrar los procesos y silenciarlos
+            start_time = time.time()
+            while time.time() - start_time < 60: # Buscar durante 60 segundos
+                if self.cancel_event.is_set():
+                    self._log("[Audio] Cancelación detectada. Deteniendo hilo de audio.")
+                    return
+
+                sessions = AudioUtilities.GetAllSessions()
+                for session in sessions:
+                    if session.Process and session.Process.name().lower() in target_processes:
+                        # Evitar duplicados
+                        if session not in [s['session'] for s in muted_sessions]:
+                            try:
+                                volume = session.SimpleAudioVolume
+                                volume.SetMute(1, None)
+                                muted_sessions.append({'session': session, 'name': session.Process.name()})
+                                self._log(f"[Audio] Proceso silenciado: {session.Process.name()}")
+                            except Exception as e:
+                                self._log(f"[Audio] Error al intentar silenciar {session.Process.name()}: {e}")
+
+                # Si hemos encontrado todos los procesos, salir del bucle de búsqueda
+                if len(muted_sessions) == len(target_processes):
+                    self._log("[Audio] Todos los procesos objetivo han sido silenciados.")
+                    break
+
+                time.sleep(1)
+
+            if not muted_sessions:
+                self._log("[Audio] ADVERTENCIA: No se encontraron procesos de audio para silenciar después de 60s.")
+                return
+
+            # Esperar la señal para reactivar el sonido
+            self._log("[Audio] Esperando señal para reactivar el sonido...")
+            unmuted = self.unmute_event.wait(timeout=300) # Esperar hasta 5 minutos
+
+            if unmuted:
+                self._log("[Audio] Señal recibida. Reactivando el sonido de los procesos...")
+            else:
+                self._log("[Audio] ADVERTENCIA: Timeout esperando la señal de reactivación. Reactivando sonido igualmente.")
+
+            for item in muted_sessions:
+                try:
+                    volume = item['session'].SimpleAudioVolume
+                    volume.SetMute(0, None)
+                    self._log(f"[Audio] Sonido reactivado para: {item['name']}")
+                except Exception as e:
+                    self._log(f"[Audio] Error al reactivar el sonido para {item['name']}: {e}")
+
+        except ImportError as e:
+             self._log(f"[Audio] ERROR CRÍTICO: Falta una dependencia para el control de audio ({e}).")
+             self._log("[Audio] Asegúrate de que 'pycaw' y 'comtypes' están instalados.")
+        except Exception as e:
+            self._log(f"[Audio] Error inesperado en el hilo de audio: {e}")
+            import traceback
+            self._log(traceback.format_exc())
+        finally:
+            self._log("[Audio] Hilo de silenciamiento finalizado.")
+            try:
+                CoUninitialize()
+            except Exception:
+                pass
+
 
     # --- Lógica de Validación ---
 
@@ -1174,6 +1259,12 @@ class ModpackLauncherAPI:
             except Exception as e:
                 self._log(f"Error al iniciar animación JS: {e}")
 
+            # (NUEVO) Iniciar el hilo de silenciamiento de audio
+            self.unmute_event.clear()
+            audio_thread = threading.Thread(target=self._audio_muter_thread, name="AudioMuterThread")
+            audio_thread.daemon = True
+            audio_thread.start()
+
             watch_thread = threading.Thread(target=self._watch_log, args=(log_path,), name="LogWatcherThread")
             watch_thread.daemon = True
             watch_thread.start()
@@ -1371,26 +1462,26 @@ class ModpackLauncherAPI:
                     line_strip = line.strip()
                     if not line_strip: continue
 
-                    read_start_time = time.time()
-                    trigger_line_found = None
-                    for trigger in trigger_lines:
-                        if trigger in line_strip:
-                            trigger_line_found = trigger
-                            break
+                    # (NUEVO) Comprobar el trigger de audio ANTES del trigger de carga
+                    if UNMUTE_TRIGGER_LINE in line_strip:
+                        if not self.unmute_event.is_set():
+                            self._log(f"[UNMUTE_TRIGGER] {line_strip}")
+                            self.unmute_event.set()
 
-                    if trigger_line_found:
+                    read_start_time = time.time()
+
+                    if LOG_TRIGGER_LINE in line_strip:
                         if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
                         self._log(f"[LOG_TRIGGER] {line_strip}")
 
-                        if trigger_line_found == LOG_TRIGGER_LINE_2:
-                            match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
-                            if match:
-                                try:
-                                    game_load_time = float(match.group(1))
-                                    self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
-                                    threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
-                                except Exception as e:
-                                    self._log(f"Error al parsear tiempo de carga: {e}")
+                        match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
+                        if match:
+                            try:
+                                game_load_time = float(match.group(1))
+                                self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
+                                threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
+                            except Exception as e:
+                                self._log(f"Error al parsear tiempo de carga: {e}")
 
                         if self.window:
                             try:
