@@ -154,9 +154,7 @@ class ModpackLauncherAPI:
         if self.window:
             safe_message_for_gui = json.dumps(message)[1:-1]
             try:
-                # (NUEVO) Comprobación robusta antes de evaluar JS
-                if self.window._webview_ready and not self.window.minimized:
-                    self.window.evaluate_js(f'requestAnimationFrame(() => logToConsole("{safe_message_for_gui}"))')
+                self.window.evaluate_js(f'requestAnimationFrame(() => logToConsole("{safe_message_for_gui}"))')
             except Exception:
                 # Si la ventana se está cerrando, esto puede fallar. Es seguro ignorarlo.
                 pass
