@@ -890,7 +890,7 @@ HTML_CONTENT = f"""
 
                 document.body.style.animation = 'fadeOut 1s forwards'; 
                 document.body.addEventListener('animationend', function handler(event) {{ if (event.animationName === 'fadeOut') {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} document.body.removeEventListener('animationend', handler); }} }}, {{once: true}});
-                setTimeout(() => {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} }}}, 1200);
+                setTimeout(() => {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} }}, 1200);
             }} catch (e) {{ console.error("Error en fadeLauncherOut:", e); }}
         }}
 
