@@ -87,7 +87,6 @@ MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/n09t1j88vvohgxcvn6t6u/
 
 
 # Las líneas que indican que el juego está listo
-LOG_TRIGGER_FANCYMENU_1 = "[FANCYMENU] API initialized successfully"
 LOG_TRIGGER_FANCYMENU_2 = "[FANCYMENU] Minecraft resource reload: FINISHED"
 LOG_TRIGGER_GAME_TOOK = "[ModernFix/]: Game took"
 
@@ -115,8 +114,7 @@ class ModpackLauncherAPI:
 
     # (NUEVO) Estructura para el panel de Debug
     DEBUG_TRIGGERS = [
-        {"key": "fancymenu_api", "label": "FANCYMENU API init", "pattern": "[FANCYMENU] API initialized successfully"},
-        {"key": "fancymenu_reload", "label": "FANCYMENU reload finished", "pattern": "[FANCYMENU] Minecraft resource reload: FINISHED"},
+        {"key": "fancymenu_reload", "label": "FANCYMENU reload finished", "pattern": "[FANCYMENU] Minecraft resource reload: FINISHED", "count_target": 2},
         {"key": "gametook", "label": "ModernFix Game Took", "pattern": "[ModernFix/]: Game took"}
     ]
 
@@ -176,14 +174,14 @@ class ModpackLauncherAPI:
             except Exception as e:
                 print(f"Error evaluating JS for result: {e}")
 
-    def _update_debug_trigger_state(self, key, detected=True):
+    def _update_debug_trigger_state(self, key, state_value):
         """(NUEVO) Actualiza el estado de un trigger y notifica a la UI."""
-        state = "detected" if detected else "waiting"
-        self.debug_trigger_states[key] = state
-        self._log(f"[Debug] Trigger '{key}' actualizado a '{state}'.")
+        self.debug_trigger_states[key] = state_value
+        self._log(f"[Debug] Trigger '{key}' actualizado a '{state_value}'.")
         if self.window:
             try:
-                self.window.evaluate_js(f'updateDebugTriggerState("{key}", {str(detected).lower()})')
+                # Enviar el valor directamente (puede ser un número o un booleano)
+                self.window.evaluate_js(f'updateDebugTriggerState("{key}", {json.dumps(state_value)})')
             except Exception as e:
                 self._log(f"Error enviando actualización de debug a JS para '{key}': {e}")
                 
@@ -1139,7 +1137,8 @@ class ModpackLauncherAPI:
 
             # Resetear estados de los triggers de debug
             for trigger in self.DEBUG_TRIGGERS:
-                self._update_debug_trigger_state(trigger["key"], False)
+                initial_state = 0 if "count_target" in trigger else False
+                self._update_debug_trigger_state(trigger["key"], initial_state)
 
             log_path = os.path.join(self.instance_mc_path, 'logs', 'latest.log')
             if os.path.exists(log_path):
@@ -1427,8 +1426,15 @@ class ModpackLauncherAPI:
 
                     # 1. Actualizar panel de debug (siempre)
                     for trigger in self.DEBUG_TRIGGERS:
-                        if self.debug_trigger_states.get(trigger["key"]) != "detected" and trigger["pattern"] in line_strip:
-                            self._update_debug_trigger_state(trigger["key"], True)
+                        current_state = self.debug_trigger_states.get(trigger["key"])
+
+                        if trigger["pattern"] in line_strip:
+                            if "count_target" in trigger:
+                                if current_state < trigger["count_target"]:
+                                    new_state = current_state + 1
+                                    self._update_debug_trigger_state(trigger["key"], new_state)
+                            elif not current_state:
+                                self._update_debug_trigger_state(trigger["key"], True)
 
                     # 2. Lógica de audio: reactivar en el SEGUNDO FANCYMENU_2
                     if not self.game_ready_event.is_set() and LOG_TRIGGER_FANCYMENU_2 in line_strip:
