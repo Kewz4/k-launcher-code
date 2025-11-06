@@ -19,7 +19,7 @@ try:
     PYCAW_AVAILABLE = True
     print("pycaw importado exitosamente.")
 except (ImportError, OSError, IOError) as e:
-    print(f"ADVERTENCIA: pycaw no encontrado o no se pudo inicializar ({e}). El silenciamiento de audio no funcionará.")
+    print(f"ADVERTENCIA: pycaw no encontrado o no se pudo inicializar ({{e}}). El silenciamiento de audio no funcionará.")
     AudioUtilities = None
     ISimpleAudioVolume = None
     PYCAW_AVAILABLE = False
@@ -86,9 +86,10 @@ MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/n09t1j88vvohgxcvn6t6u/Kewz-s-Vanilla-True-Modpack.zip?rlkey=tg8v655uq2h30oc6k9qunsktl&st=eg2zn3h6&dl=1"
 
 
-# La línea que indica que el juego está listo
-LOG_TRIGGER_LINE = "[FANCYMENU] API initialized successfully"
-LOG_TRIGGER_LINE_2 = "[ModernFix/]: Game took"
+# Las líneas que indican que el juego está listo
+LOG_TRIGGER_FANCYMENU_1 = "[FANCYMENU] API initialized successfully"
+LOG_TRIGGER_FANCYMENU_2 = "[FANCYMENU] Minecraft resource reload: FINISHED"
+LOG_TRIGGER_GAME_TOOK = "[ModernFix/]: Game took"
 
 
 class ModpackLauncherAPI:
@@ -112,6 +113,13 @@ class ModpackLauncherAPI:
         "[Straw Golem/]"
     ]
 
+    # (NUEVO) Estructura para el panel de Debug
+    DEBUG_TRIGGERS = [
+        {"key": "fancymenu_api", "label": "FANCYMENU API init", "pattern": "[FANCYMENU] API initialized successfully"},
+        {"key": "fancymenu_reload", "label": "FANCYMENU reload finished", "pattern": "[FANCYMENU] Minecraft resource reload: FINISHED"},
+        {"key": "gametook", "label": "ModernFix Game Took", "pattern": "[ModernFix/]: Game took"}
+    ]
+
 
     def __init__(self):
         self.window = None
@@ -131,6 +139,7 @@ class ModpackLauncherAPI:
         self.music_library = None
         self.audio_muter_thread = None
         self.fancymenu_trigger_count = 0
+        self.debug_trigger_states = {}
         
         # (NUEVO) Estado para el hilo de tareas
         self.current_task_thread = None
@@ -166,6 +175,17 @@ class ModpackLauncherAPI:
                 self.window.evaluate_js(f'showResult({str(success).lower()}, "{safe_title}", "{safe_details_html}")')
             except Exception as e:
                 print(f"Error evaluating JS for result: {e}")
+
+    def _update_debug_trigger_state(self, key, detected=True):
+        """(NUEVO) Actualiza el estado de un trigger y notifica a la UI."""
+        state = "detected" if detected else "waiting"
+        self.debug_trigger_states[key] = state
+        self._log(f"[Debug] Trigger '{key}' actualizado a '{state}'.")
+        if self.window:
+            try:
+                self.window.evaluate_js(f'updateDebugTriggerState("{key}", {str(detected).lower()})')
+            except Exception as e:
+                self._log(f"Error enviando actualización de debug a JS para '{key}': {e}")
                 
     # (NUEVO) Función para enviar estado al asistente de instalación
     def _update_install_status(self, message):
@@ -372,6 +392,11 @@ class ModpackLauncherAPI:
 
     def py_get_os_sep(self):
         return os.path.sep
+
+    def py_get_debug_triggers(self):
+        """(NUEVO) Devuelve la lista de triggers para que la UI pueda dibujarlos."""
+        self._log("JS solicitó la lista de triggers de depuración.")
+        return self.DEBUG_TRIGGERS
 
     # --- (MODIFICADO) API de Configuración Antigua (Ahora usada por Ajustes) ---
 
@@ -895,7 +920,7 @@ class ModpackLauncherAPI:
         """Establece eventos de cancelación E inicia hilo para terminar procesos."""
         self._log("Cancelación solicitada por el usuario...")
         self.cancel_event.set()
-        self.game_ready_event.set() # Detener bucle on_top si se cancela
+            self.game_ready_event.set() # Detener bucle on_top y de audio si se cancela
 
         self._log("Iniciando hilo de terminación de procesos...")
         kill_thread = threading.Thread(target=self._terminate_game_processes)
@@ -1112,6 +1137,10 @@ class ModpackLauncherAPI:
             self.audio_muter_thread = threading.Thread(target=self._audio_muter_thread, daemon=True)
             self.audio_muter_thread.start()
 
+            # Resetear estados de los triggers de debug
+            for trigger in self.DEBUG_TRIGGERS:
+                self._update_debug_trigger_state(trigger["key"], False)
+
             log_path = os.path.join(self.instance_mc_path, 'logs', 'latest.log')
             if os.path.exists(log_path):
                 self._log("Limpiando log anterior ('latest.log')...")
@@ -1250,63 +1279,66 @@ class ModpackLauncherAPI:
 
     def _audio_muter_thread(self):
         """
-        (NUEVO) Hilo que busca y silencia el proceso 'javaw.exe' hasta que el juego esté listo.
+        (NUEVO) Hilo que busca y silencia los procesos 'javaw.exe' y 'prismlauncher.exe'
+        hasta que el juego esté listo para el audio.
         """
         if not IS_WINDOWS or not PYCAW_AVAILABLE:
             self._log("[AudioMuter] Hilo iniciado, pero no se ejecutará (No es Windows o pycaw no está disponible).")
             return
 
-        self._log("[AudioMuter] Hilo iniciado. Buscando proceso 'javaw.exe'...")
-        javaw_sessions = []
-        found_process = False
+        self._log("[AudioMuter] Hilo iniciado. Buscando procesos objetivo...")
+        target_processes = ["javaw.exe", "prismlauncher.exe"]
+        target_sessions = []
+        found_processes = set()
 
-        # Bucle para encontrar el proceso
+        # Bucle para encontrar los procesos
         search_start_time = time.time()
-        while not self.game_ready_event.is_set() and time.time() - search_start_time < 60: # Timeout de 60s
+        while not self.game_ready_event.is_set() and time.time() - search_start_time < 60:
             try:
                 sessions = AudioUtilities.GetAllSessions()
                 for session in sessions:
-                    if session.Process and session.Process.name().lower() == 'javaw.exe':
-                        self._log(f"[AudioMuter] Proceso 'javaw.exe' encontrado (PID: {session.Process.pid}).")
-                        javaw_sessions.append(session)
-                        found_process = True
+                    if session.Process and session.Process.name().lower() in target_processes:
+                        process_name = session.Process.name().lower()
+                        if process_name not in found_processes:
+                            self._log(f"[AudioMuter] Proceso '{process_name}' encontrado (PID: {session.Process.pid}).")
+                            target_sessions.append(session)
+                            found_processes.add(process_name)
 
-                if found_process:
-                    break # Salir del bucle de búsqueda
+                if len(found_processes) == len(target_processes):
+                    self._log("[AudioMuter] Todos los procesos objetivo han sido encontrados.")
+                    break
             except Exception as e:
                 self._log(f"[AudioMuter] Error buscando sesiones de audio: {e}")
             time.sleep(1)
 
-        if not found_process:
-            self._log("[AudioMuter] No se encontró el proceso 'javaw.exe' después de 60 segundos. Hilo terminado.")
+        if not target_sessions:
+            self._log("[AudioMuter] No se encontró ningún proceso objetivo después de 60 segundos. Hilo terminado.")
             return
 
         # Bucle para mantener el silencio
         try:
-            while not self.game_ready_event.is_set():
-                for session in javaw_sessions:
+            while not self.game_ready_event.wait(0.2): # Esperar en pequeños intervalos
+                for session in list(target_sessions): # Iterar sobre una copia
                     try:
                         volume = session.SimpleAudioVolume
                         if volume.GetMute() == 0:
                             volume.SetMute(1, None)
-                            self._log(f"[AudioMuter] Silenciado PID: {session.Process.pid}")
+                            self._log(f"[AudioMuter] Silenciado {session.Process.name()} (PID: {session.Process.pid})")
                     except Exception:
                         # El proceso puede haber muerto, lo eliminamos de la lista
-                        javaw_sessions.remove(session)
-                time.sleep(0.2)
+                        target_sessions.remove(session)
         except Exception as e:
             self._log(f"[AudioMuter] Error en el bucle de silenciamiento: {e}")
         finally:
-            self._log("[AudioMuter] Evento de 'juego listo' recibido. Desilenciando...")
-            # Bucle final para desilenciar
-            for session in javaw_sessions:
+            self._log("[AudioMuter] Evento de 'audio listo' recibido. Desilenciando...")
+            for session in target_sessions:
                 try:
                     volume = session.SimpleAudioVolume
                     if volume.GetMute() == 1:
                         volume.SetMute(0, None)
-                        self._log(f"[AudioMuter] Desilenciado PID: {session.Process.pid}")
+                        self._log(f"[AudioMuter] Desilenciado {session.Process.name()} (PID: {session.Process.pid})")
                 except Exception as e:
-                    self._log(f"[AudioMuter] No se pudo desilenciar PID {session.Process.pid if session.Process else 'N/A'}: {e}")
+                    self._log(f"[AudioMuter] No se pudo desilenciar {session.Process.name() if session.Process else 'N/A'}: {e}")
             self._log("[AudioMuter] Hilo terminado.")
 
 
@@ -1314,7 +1346,7 @@ class ModpackLauncherAPI:
         """Vigila 'latest.log', inicia on_top, guarda tiempo de carga y llama a fadeOut."""
         log_filename = os.path.basename(log_path)
         self._log(f"Vigilando el log: {log_filename}")
-        self._log(f"Buscando líneas gatillo: '{LOG_TRIGGER_LINE}' o '{LOG_TRIGGER_LINE_2}'")
+        self._log(f"Buscando triggers: '{LOG_TRIGGER_FANCYMENU_1}' -> '{LOG_TRIGGER_FANCYMENU_2}'")
 
         file_handle = None
         self.on_top_thread = None
@@ -1354,13 +1386,16 @@ class ModpackLauncherAPI:
 
             read_start_time = time.time()
             read_timeout_seconds = 300
-            trigger_lines = [LOG_TRIGGER_LINE, LOG_TRIGGER_LINE_2]
             line_batch = []
             last_batch_time = time.time()
 
-            while True:
-                if not self.window or self.cancel_event.is_set() or self.game_ready_event.is_set():
-                    self._log("Vigilante: Ventana cerrada, cancelado o ya listo. Deteniendo lectura.")
+            # (NUEVO) Lógica de estado para los triggers
+            launcher_should_close = False
+
+            while not launcher_should_close:
+                if not self.window or self.cancel_event.is_set():
+                    self._log("Vigilante: Ventana cerrada o cancelado. Deteniendo lectura.")
+                    self.game_ready_event.set() # Asegurarse de que el hilo de audio pare
                     return
 
                 try:
@@ -1379,6 +1414,7 @@ class ModpackLauncherAPI:
                         self._log("Re-sincronizado con el log...")
                     except Exception as reopen_err:
                         self._log(f"Fallo al re-sincronizar/reabrir log: {reopen_err}. Deteniendo vigilancia.")
+                        self.game_ready_event.set()
                         raise
                     continue
 
@@ -1386,45 +1422,37 @@ class ModpackLauncherAPI:
                     line_strip = line.strip()
                     if not line_strip: continue
 
-                    read_start_time = time.time()
-                    trigger_line_found = None
-                    # (MODIFICADO) Comprobar solo la línea de FANCYMENU primero
-                    if LOG_TRIGGER_LINE in line_strip:
+                    read_start_time = time.time() # Resetear timeout si hay actividad
+
+                    # --- Lógica de Detección para DEBUG y FUNCIONALIDAD ---
+
+                    # 1. Actualizar panel de debug
+                    for trigger in self.DEBUG_TRIGGERS:
+                        if self.debug_trigger_states.get(trigger["key"]) != "detected" and trigger["pattern"] in line_strip:
+                            self._update_debug_trigger_state(trigger["key"], True)
+
+                    # 2. Lógica de audio (reactivar en el segundo FANCYMENU_2)
+                    if not self.game_ready_event.is_set() and LOG_TRIGGER_FANCYMENU_2 in line_strip:
                         self.fancymenu_trigger_count += 1
-                        self._log(f"[LOG_TRIGGER] Línea de FANCYMENU detectada. Conteo: {self.fancymenu_trigger_count}.")
-
+                        self._log(f"[AudioTrigger] Trigger de recarga de Fancymenu detectado. Conteo: {self.fancymenu_trigger_count}.")
                         if self.fancymenu_trigger_count >= 2:
-                            self._log("[LOG_TRIGGER] Segundo trigger de FANCYMENU alcanzado. ¡Desilenciando y ocultando launcher!")
-                            trigger_line_found = LOG_TRIGGER_LINE
-                        else:
-                            self._log("[LOG_TRIGGER] Este es el primer trigger. El audio permanecerá silenciado.")
+                            self._log("[AudioTrigger] Conteo de 2 alcanzado. ¡Reactivando audio!")
+                            self.game_ready_event.set() # Esto detiene el hilo de silenciamiento
 
-                    # Si no es el segundo trigger de FANCYMENU, comprobar el otro
-                    elif LOG_TRIGGER_LINE_2 in line_strip:
-                        trigger_line_found = LOG_TRIGGER_LINE_2
+                    # 3. Lógica de cierre del launcher
+                    if LOG_TRIGGER_GAME_TOOK in line_strip:
+                        self._log("[CloseTrigger] Trigger 'Game Took' detectado. El launcher se cerrará.")
+                        launcher_should_close = True
 
-
-                    if trigger_line_found:
-                        if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
-                        self._log(f"[LOG_TRIGGER] Línea final procesada: {line_strip}")
-
-                        if trigger_line_found == LOG_TRIGGER_LINE_2:
-                            match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
-                            if match:
-                                try:
-                                    game_load_time = float(match.group(1))
-                                    self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
-                                    threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
-                                except Exception as e:
-                                    self._log(f"Error al parsear tiempo de carga: {e}")
-
-                        if self.window:
+                        # Parsear el tiempo de carga
+                        match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
+                        if match:
                             try:
-                                self.game_ready_event.set() # <-- Esto detiene el hilo de silenciamiento
-                                self.window.evaluate_js('fadeLauncherOut()')
+                                game_load_time = float(match.group(1))
+                                self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
+                                threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
                             except Exception as e:
-                                self._log(f"Error calling fadeLauncherOut: {e}")
-                        return
+                                self._log(f"Error al parsear tiempo de carga: {e}")
 
                     is_spam = any(keyword in line_strip for keyword in self.LOG_IGNORE_KEYWORDS)
                     if is_spam: continue
@@ -1440,13 +1468,22 @@ class ModpackLauncherAPI:
                     self._log(f"Error: Timeout ({read_timeout_seconds}s) de inactividad del log esperando trigger.")
                     if self.window:
                         try:
+                            self.game_ready_event.set() # Asegurarse de que el audio se reactive
                             self.window.evaluate_js('returnToPlayScreen()')
                             self._show_result(False, "Error de Timeout", "El juego se inició pero no respondió en 5 minutos.")
                         except Exception as e: self._log(f"Error al llamar returnToPlayScreen: {e}")
                     return
 
                 if not line: time.sleep(0.1)
-        
+
+            # --- Fin del bucle while ---
+            if launcher_should_close and self.window:
+                try:
+                    self._log("Cerrando el launcher ahora...")
+                    self.window.evaluate_js('fadeLauncherOut()')
+                except Exception as e:
+                    self._log(f"Error calling fadeLauncherOut: {e}")
+
         except FileNotFoundError as e:
             self._log(f"Error crítico: Archivo de log no encontrado o inaccesible: {e}")
             if self.window:

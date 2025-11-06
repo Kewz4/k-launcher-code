@@ -190,6 +190,64 @@ HTML_CONTENT = f"""
         #menu-btn:hover {{ transform: scale(1.05); }}
         #menu-btn:active {{ transform: scale(0.95); }}
 
+        /* (NUEVO) Estilos para el panel de Debug */
+        #debug-panel {{
+            position: fixed;
+            bottom: calc(var(--player-height) + 25px); /* Justo encima del reproductor de música */
+            left: 15px;
+            width: var(--player-width); /* Mismo ancho que el reproductor */
+            background-color: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-md);
+            padding: 10px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            color: #ccc;
+            z-index: 1999; /* Debajo del reproductor pero encima de otros elementos */
+            display: none; /* Oculto por defecto */
+            backdrop-filter: blur(5px);
+        }}
+        #debug-panel h4 {{
+            margin-top: 0;
+            margin-bottom: 8px;
+            color: #fff;
+            font-weight: normal;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 5px;
+            font-size: 13px;
+        }}
+        #debug-panel ul {{
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }}
+        #debug-panel li {{
+            margin-bottom: 4px;
+            transition: color 0.3s;
+            display: flex;
+            align-items: center;
+        }}
+        #debug-panel li .icon {{
+            margin-right: 8px;
+            width: 14px;
+            text-align: center;
+        }}
+        #debug-panel li .fa-times-circle {{
+            color: #e74c3c;
+        }}
+        #debug-panel li.detected {{
+            color: #2ecc71; /* Verde brillante */
+        }}
+        #debug-panel li.detected .fa-times-circle {{
+            display: none;
+        }}
+        #debug-panel li .fa-check-circle {{
+            display: none;
+        }}
+        #debug-panel li.detected .fa-check-circle {{
+            display: inline-block;
+        }}
+
         /* --- Estilos Reproductor de Música --- */
         #music-player {{
             position: fixed; bottom: 15px; left: 15px;
@@ -376,6 +434,10 @@ HTML_CONTENT = f"""
             <i class="fas fa-cog"></i>
             <span>Configuración</span>
         </button>
+        <button class="panel-button" id="panel-debug-btn">
+            <i class="fas fa-bug"></i>
+            <span>Debug Triggers</span>
+        </button>
         <button class="panel-button" id="panel-quit-btn">
             <i class="fas fa-sign-out-alt"></i>
             <span>Salir del Launcher</span>
@@ -557,6 +619,14 @@ HTML_CONTENT = f"""
              </div>
              <button class="btn btn-primary" id="save-settings-btn" disabled>Guardar y Volver</button>
         </div>
+    </div>
+
+    <!-- (NUEVO) Panel de Debug -->
+    <div id="debug-panel">
+        <h4>Log Triggers Status</h4>
+        <ul id="debug-trigger-list">
+            <!-- Los triggers se llenarán aquí con JS -->
+        </ul>
     </div>
 
     <!-- Modal de Resultado -->
@@ -1089,6 +1159,48 @@ HTML_CONTENT = f"""
             showWizardStep('ask-installed'); // Volver al inicio
         }}
 
+        // --- (NUEVO) Lógica del Panel de Debug ---
+
+        function populateDebugTriggers() {{
+            try {{
+                pywebview.api.py_get_debug_triggers().then(triggers => {{
+                    if (!triggers) return;
+                    dom.debug.triggerList.innerHTML = '';
+                    triggers.forEach(trigger => {{
+                        const li = document.createElement('li');
+                        li.id = `debug-trigger-${{trigger.key}}`;
+                        li.innerHTML = `
+                            <span class="icon">
+                                <i class="fas fa-times-circle"></i>
+                                <i class="fas fa-check-circle"></i>
+                            </span>
+                            <span>${{trigger.label}}</span>
+                        `;
+                        dom.debug.triggerList.appendChild(li);
+                    }});
+                }});
+            }} catch(e) {{
+                console.error("Error populando triggers de debug:", e);
+            }}
+        }}
+
+        function updateDebugTriggerState(key, detected) {{
+            const triggerElement = document.getElementById(`debug-trigger-${{key}}`);
+            if (triggerElement) {{
+                if (detected) {{
+                    triggerElement.classList.add('detected');
+                }} else {{
+                    triggerElement.classList.remove('detected');
+                }}
+            }}
+        }}
+
+        function toggleDebugPanel() {{
+            const isVisible = dom.debug.panel.style.display === 'block';
+            dom.debug.panel.style.display = isVisible ? 'none' : 'block';
+            console.log(`Debug panel {{isVisible ? 'hidden' : 'shown'}}`);
+        }}
+
 
         // --- Event Listeners ---
         // (CORREGIDO) Separar la lógica de pywebviewready y DOMContentLoaded
@@ -1159,7 +1271,12 @@ HTML_CONTENT = f"""
                 menuBtn: document.getElementById('menu-btn'),
                 sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'),
                 panelSettingsBtn: document.getElementById('panel-settings-btn'),
+                panelDebugBtn: document.getElementById('panel-debug-btn'),
                 panelQuitBtn: document.getElementById('panel-quit-btn'),
+                debug: {{
+                    panel: document.getElementById('debug-panel'),
+                    triggerList: document.getElementById('debug-trigger-list'),
+                }},
                 cancelBtn: document.getElementById('cancel-btn'),
                 progressTitle: document.getElementById('progress-title'),
                 progressBar: document.getElementById('progress-fill'),
@@ -1229,6 +1346,10 @@ HTML_CONTENT = f"""
                              pywebview.api.py_toggle_fullscreen();
                              startInitialSetupWizard();
                         }}
+
+                        // (NUEVO) Popular el panel de debug independientemente del resultado
+                        populateDebugTriggers();
+
                     }}).catch(e => {{
                         // Error en la cadena py_get_os_sep o py_load_saved_paths
                         console.error("Error en la cadena de carga inicial:", e);
@@ -1354,6 +1475,10 @@ HTML_CONTENT = f"""
                 switchScreen('settings');
                 validateSettings();
              }});
+            dom.panelDebugBtn.addEventListener('click', () => {{
+                toggleDebugPanel();
+                closeSidePanel(); // Cerrar el menú lateral después de hacer clic
+            }});
             dom.panelQuitBtn.addEventListener('click', () => {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} }});
 
             // --- Progress Screen Listeners ---
