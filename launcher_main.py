@@ -920,7 +920,7 @@ class ModpackLauncherAPI:
         """Establece eventos de cancelación E inicia hilo para terminar procesos."""
         self._log("Cancelación solicitada por el usuario...")
         self.cancel_event.set()
-            self.game_ready_event.set() # Detener bucle on_top y de audio si se cancela
+        self.game_ready_event.set() # Detener bucle on_top y de audio si se cancela
 
         self._log("Iniciando hilo de terminación de procesos...")
         kill_thread = threading.Thread(target=self._terminate_game_processes)
@@ -1389,13 +1389,11 @@ class ModpackLauncherAPI:
             line_batch = []
             last_batch_time = time.time()
 
-            # (NUEVO) Lógica de estado para los triggers
-            launcher_should_close = False
-
-            while not launcher_should_close:
+            while True: # Bucle infinito hasta que se cumpla la condición de cierre
                 if not self.window or self.cancel_event.is_set():
                     self._log("Vigilante: Ventana cerrada o cancelado. Deteniendo lectura.")
-                    self.game_ready_event.set() # Asegurarse de que el hilo de audio pare
+                    if not self.game_ready_event.is_set():
+                        self.game_ready_event.set()
                     return
 
                 try:
@@ -1414,7 +1412,8 @@ class ModpackLauncherAPI:
                         self._log("Re-sincronizado con el log...")
                     except Exception as reopen_err:
                         self._log(f"Fallo al re-sincronizar/reabrir log: {reopen_err}. Deteniendo vigilancia.")
-                        self.game_ready_event.set()
+                        if not self.game_ready_event.is_set():
+                            self.game_ready_event.set()
                         raise
                     continue
 
@@ -1422,41 +1421,46 @@ class ModpackLauncherAPI:
                     line_strip = line.strip()
                     if not line_strip: continue
 
-                    read_start_time = time.time() # Resetear timeout si hay actividad
+                    read_start_time = time.time()
 
-                    # --- Lógica de Detección para DEBUG y FUNCIONALIDAD ---
+                    # --- Lógica de Detección ---
 
-                    # 1. Actualizar panel de debug
+                    # 1. Actualizar panel de debug (siempre)
                     for trigger in self.DEBUG_TRIGGERS:
                         if self.debug_trigger_states.get(trigger["key"]) != "detected" and trigger["pattern"] in line_strip:
                             self._update_debug_trigger_state(trigger["key"], True)
 
-                    # 2. Lógica de audio (reactivar en el segundo FANCYMENU_2)
+                    # 2. Lógica de audio: reactivar en el SEGUNDO FANCYMENU_2
                     if not self.game_ready_event.is_set() and LOG_TRIGGER_FANCYMENU_2 in line_strip:
                         self.fancymenu_trigger_count += 1
-                        self._log(f"[AudioTrigger] Trigger de recarga de Fancymenu detectado. Conteo: {self.fancymenu_trigger_count}.")
+                        self._log(f"[AudioTrigger] Conteo de Fancymenu Reload: {self.fancymenu_trigger_count}.")
                         if self.fancymenu_trigger_count >= 2:
-                            self._log("[AudioTrigger] Conteo de 2 alcanzado. ¡Reactivando audio!")
-                            self.game_ready_event.set() # Esto detiene el hilo de silenciamiento
+                            self._log("[AudioTrigger] Conteo 2 alcanzado. ¡Reactivando audio!")
+                            self.game_ready_event.set() # Desilencia pero NO cierra
 
-                    # 3. Lógica de cierre del launcher
+                    # 3. Lógica de cierre: SOLO con Game Took
                     if LOG_TRIGGER_GAME_TOOK in line_strip:
-                        self._log("[CloseTrigger] Trigger 'Game Took' detectado. El launcher se cerrará.")
-                        launcher_should_close = True
+                        self._log("[CloseTrigger] 'Game Took' detectado. Cerrando launcher.")
 
-                        # Parsear el tiempo de carga
                         match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
                         if match:
                             try:
                                 game_load_time = float(match.group(1))
-                                self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
+                                self._log(f"Juego cargado en {game_load_time:.2f}s!")
                                 threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
                             except Exception as e:
                                 self._log(f"Error al parsear tiempo de carga: {e}")
 
+                        if self.window:
+                            try:
+                                self.window.evaluate_js('fadeLauncherOut()')
+                            except Exception as e:
+                                self._log(f"Error llamando a fadeLauncherOut: {e}")
+                        return # Salir de la función _watch_log
+
+                    # Lógica de passthrough y spam
                     is_spam = any(keyword in line_strip for keyword in self.LOG_IGNORE_KEYWORDS)
                     if is_spam: continue
-
                     line_batch.append(f"[LOG_PASSTHROUGH] {line_strip}")
 
                 current_time = time.time()
@@ -1465,24 +1469,16 @@ class ModpackLauncherAPI:
                     last_batch_time = current_time
 
                 if not line and current_time - read_start_time > read_timeout_seconds:
-                    self._log(f"Error: Timeout ({read_timeout_seconds}s) de inactividad del log esperando trigger.")
+                    self._log(f"Error: Timeout ({read_timeout_seconds}s) esperando actividad en el log.")
                     if self.window:
                         try:
-                            self.game_ready_event.set() # Asegurarse de que el audio se reactive
+                            if not self.game_ready_event.is_set(): self.game_ready_event.set()
                             self.window.evaluate_js('returnToPlayScreen()')
-                            self._show_result(False, "Error de Timeout", "El juego se inició pero no respondió en 5 minutos.")
+                            self._show_result(False, "Error de Timeout", "El juego no respondió en 5 minutos.")
                         except Exception as e: self._log(f"Error al llamar returnToPlayScreen: {e}")
                     return
 
                 if not line: time.sleep(0.1)
-
-            # --- Fin del bucle while ---
-            if launcher_should_close and self.window:
-                try:
-                    self._log("Cerrando el launcher ahora...")
-                    self.window.evaluate_js('fadeLauncherOut()')
-                except Exception as e:
-                    self._log(f"Error calling fadeLauncherOut: {e}")
 
         except FileNotFoundError as e:
             self._log(f"Error crítico: Archivo de log no encontrado o inaccesible: {e}")
