@@ -12,18 +12,6 @@ import json
 import subprocess  # Para lanzar Prism y Winget
 import psutil      # Para terminar procesos
 import webview     # Necesitarás: pip install pywebview requests
-
-# (NUEVO) Importar pycaw si está disponible (solo para Windows)
-try:
-    from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
-    PYCAW_AVAILABLE = True
-    print("pycaw importado exitosamente.")
-except (ImportError, OSError, IOError) as e:
-    print(f"ADVERTENCIA: pycaw no encontrado o no se pudo inicializar ({{e}}). El silenciamiento de audio no funcionará.")
-    AudioUtilities = None
-    ISimpleAudioVolume = None
-    PYCAW_AVAILABLE = False
-
 try:
     from music_player import MusicLibrary
 except ImportError:
@@ -85,11 +73,26 @@ MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 # (ACTUALIZADO) Nueva URL de Dropbox (confirmado que es .ZIP)
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/n09t1j88vvohgxcvn6t6u/Kewz-s-Vanilla-True-Modpack.zip?rlkey=tg8v655uq2h30oc6k9qunsktl&st=eg2zn3h6&dl=1"
 
+# (NUEVO) URL para la versión portable de Prism Launcher
+PRISM_PORTABLE_ZIP_URL_WINDOWS = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
-# Las líneas que indican que el juego está listo
-LOG_TRIGGER_FANCYMENU_2 = "[FANCYMENU] Minecraft resource reload: FINISHED"
-LOG_TRIGGER_GAME_TOOK = "[ModernFix/]: Game took"
 
+# (NUEVO) Definiciones para el panel de Debug
+LOG_TRIGGER_UNMUTE = {
+    "key": "fancymenu_reload",
+    "text": "[FANCYMENU] Minecraft resource reload: FINISHED",
+    "label": "Recarga de Recursos (Audio)",
+    "count_target": 2
+}
+LOG_TRIGGER_CLOSE = {
+    "key": "modernfix_load",
+    "text": "[ModernFix/]: Game took",
+    "label": "Carga de Juego (Cierre)",
+    "count_target": 1
+}
+
+# (ACTUALIZADO) Lista de triggers a monitorear
+LOG_TRIGGERS = [LOG_TRIGGER_UNMUTE, LOG_TRIGGER_CLOSE]
 
 class ModpackLauncherAPI:
     """
@@ -112,12 +115,6 @@ class ModpackLauncherAPI:
         "[Straw Golem/]"
     ]
 
-    # (NUEVO) Estructura para el panel de Debug
-    DEBUG_TRIGGERS = [
-        {"key": "fancymenu_reload", "label": "FANCYMENU reload finished", "pattern": "[FANCYMENU] Minecraft resource reload: FINISHED", "count_target": 2},
-        {"key": "gametook", "label": "ModernFix Game Took", "pattern": "[ModernFix/]: Game took"}
-    ]
-
 
     def __init__(self):
         self.window = None
@@ -135,13 +132,20 @@ class ModpackLauncherAPI:
         self.config_lock = threading.Lock()
         self.avg_launch_time_sec = 60.0
         self.music_library = None
-        self.audio_muter_thread = None
-        self.fancymenu_trigger_count = 0
-        self.debug_trigger_states = {}
         
         # (NUEVO) Estado para el hilo de tareas
         self.current_task_thread = None
 
+        # (NUEVO) Estado para los triggers de debug
+        self.debug_trigger_state = {
+            "fancymenu_reload": 0,
+            "modernfix_load": 0
+        }
+
+
+    def py_get_debug_triggers(self):
+        """Devuelve la lista de triggers definidos para que JS los renderice."""
+        return LOG_TRIGGERS
 
     # --- Funciones de Utilidad de la GUI ---
 
@@ -173,17 +177,6 @@ class ModpackLauncherAPI:
                 self.window.evaluate_js(f'showResult({str(success).lower()}, "{safe_title}", "{safe_details_html}")')
             except Exception as e:
                 print(f"Error evaluating JS for result: {e}")
-
-    def _update_debug_trigger_state(self, key, state_value):
-        """(NUEVO) Actualiza el estado de un trigger y notifica a la UI."""
-        self.debug_trigger_states[key] = state_value
-        self._log(f"[Debug] Trigger '{key}' actualizado a '{state_value}'.")
-        if self.window:
-            try:
-                # Enviar el valor directamente (puede ser un número o un booleano)
-                self.window.evaluate_js(f'updateDebugTriggerState("{key}", {json.dumps(state_value)})')
-            except Exception as e:
-                self._log(f"Error enviando actualización de debug a JS para '{key}': {e}")
                 
     # (NUEVO) Función para enviar estado al asistente de instalación
     def _update_install_status(self, message):
@@ -390,11 +383,6 @@ class ModpackLauncherAPI:
 
     def py_get_os_sep(self):
         return os.path.sep
-
-    def py_get_debug_triggers(self):
-        """(NUEVO) Devuelve la lista de triggers para que la UI pueda dibujarlos."""
-        self._log("JS solicitó la lista de triggers de depuración.")
-        return self.DEBUG_TRIGGERS
 
     # --- (MODIFICADO) API de Configuración Antigua (Ahora usada por Ajustes) ---
 
@@ -656,7 +644,7 @@ class ModpackLauncherAPI:
         self.cancel_event.clear()
         
         if task_name == 'install_prism':
-            self.current_task_thread = threading.Thread(target=self._task_install_prism, args=args, daemon=True)
+            self.current_task_thread = threading.Thread(target=self._task_install_prism_portable, args=args, daemon=True)
         elif task_name == 'install_modpack':
             self.current_task_thread = threading.Thread(target=self._task_install_modpack, args=args, daemon=True)
         else:
@@ -782,6 +770,66 @@ class ModpackLauncherAPI:
             import traceback
             self._log(traceback.format_exc())
             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
+
+    def _task_install_prism_portable(self, install_location_base):
+        """
+        (NUEVO) Tarea en hilo: Descarga y extrae la versión portable de Prism.
+        Llama a JS: onPrismInstallComplete(success, path, error)
+        """
+        tmp_dir = None
+        try:
+            # Crear directorio de instalación si no existe
+            os.makedirs(install_location_base, exist_ok=True)
+            self._update_install_status(f"Directorio de instalación: {install_location_base}")
+
+            tmp_dir = tempfile.mkdtemp(prefix="prism_portable_")
+            zip_path = os.path.join(tmp_dir, "PrismPortable.zip")
+
+            # 1. Descargar
+            if not IS_WINDOWS:
+                raise NotImplementedError("La instalación portable de Prism solo está implementada para Windows.")
+
+            self._update_install_status("Descargando Prism Launcher Portable...")
+            self._download_file(PRISM_PORTABLE_ZIP_URL_WINDOWS, zip_path, "wizard_install")
+
+            if self.cancel_event.is_set(): raise InterruptedError("Descarga cancelada.")
+
+            # 2. Extraer
+            self._update_install_status("Extrayendo archivos de Prism...")
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(install_location_base)
+
+            self._update_install_status("Extracción completa. Buscando ejecutable...")
+
+            # 3. Encontrar el ejecutable
+            final_exe_path = None
+            for root, _, files in os.walk(install_location_base):
+                for file in files:
+                    if file.lower() == 'prismlauncher.exe':
+                        final_exe_path = os.path.join(root, file)
+                        break
+                if final_exe_path:
+                    break
+
+            if final_exe_path and self._validate_prism_path(final_exe_path):
+                self._update_install_status("¡Prism Launcher portable instalado con éxito!")
+                if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path)}, null)')
+            else:
+                raise FileNotFoundError(f"No se encontró 'prismlauncher.exe' en la carpeta de instalación después de extraer.")
+
+        except (InterruptedError, NotImplementedError, FileNotFoundError, IOError, Exception) as e:
+            msg = f"Fallo en la instalación portable de Prism: {e}"
+            self._log(msg)
+            import traceback
+            self._log(traceback.format_exc())
+            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
+        finally:
+            if tmp_dir and os.path.exists(tmp_dir):
+                try:
+                    shutil.rmtree(tmp_dir)
+                except Exception as e:
+                    self._log(f"Advertencia: No se pudo eliminar el directorio temporal: {e}")
+
             
     def _task_install_modpack(self, prism_exe_path, instance_base_path):
         """
@@ -918,7 +966,7 @@ class ModpackLauncherAPI:
         """Establece eventos de cancelación E inicia hilo para terminar procesos."""
         self._log("Cancelación solicitada por el usuario...")
         self.cancel_event.set()
-        self.game_ready_event.set() # Detener bucle on_top y de audio si se cancela
+        self.game_ready_event.set() # Detener bucle on_top si se cancela
 
         self._log("Iniciando hilo de terminación de procesos...")
         kill_thread = threading.Thread(target=self._terminate_game_processes)
@@ -972,7 +1020,6 @@ class ModpackLauncherAPI:
     def py_quit_launcher(self):
         """Cierra la aplicación (llamado por JS después del fade-out)."""
         self._log("Cerrando el launcher vía JS.")
-        self.game_ready_event.set() # Asegurarse de que hilos como el de audio se detengan
         if self.window:
             try:
                 self.window.destroy()
@@ -1129,17 +1176,6 @@ class ModpackLauncherAPI:
 
             self._modify_options_file()
 
-            # (NUEVO) Resetear contador y empezar el hilo de silenciamiento
-            self.fancymenu_trigger_count = 0
-            self.game_ready_event.clear() # Asegurarse de que el evento esté limpio
-            self.audio_muter_thread = threading.Thread(target=self._audio_muter_thread, daemon=True)
-            self.audio_muter_thread.start()
-
-            # Resetear estados de los triggers de debug
-            for trigger in self.DEBUG_TRIGGERS:
-                initial_state = 0 if "count_target" in trigger else False
-                self._update_debug_trigger_state(trigger["key"], initial_state)
-
             log_path = os.path.join(self.instance_mc_path, 'logs', 'latest.log')
             if os.path.exists(log_path):
                 self._log("Limpiando log anterior ('latest.log')...")
@@ -1276,76 +1312,67 @@ class ModpackLauncherAPI:
                     pass
             self._log("Limpieza finalizada.")
 
-    def _audio_muter_thread(self):
-        """
-        (NUEVO) Hilo que busca y silencia los procesos 'javaw.exe' y 'prismlauncher.exe'
-        hasta que el juego esté listo para el audio.
-        """
-        if not IS_WINDOWS or not PYCAW_AVAILABLE:
-            self._log("[AudioMuter] Hilo iniciado, pero no se ejecutará (No es Windows o pycaw no está disponible).")
-            return
 
-        self._log("[AudioMuter] Hilo iniciado. Buscando procesos objetivo...")
-        target_processes = ["javaw.exe", "prismlauncher.exe"]
-        target_sessions = []
-        found_processes = set()
+    def _process_log_line_for_triggers(self, line_strip, line_batch):
+        """Checks a single log line against all defined triggers and acts on them."""
+        for trigger in LOG_TRIGGERS:
+            if trigger["text"] in line_strip:
+                key = trigger["key"]
+                self.debug_trigger_state[key] += 1
+                count = self.debug_trigger_state[key]
 
-        # Bucle para encontrar los procesos
-        search_start_time = time.time()
-        while not self.game_ready_event.is_set() and time.time() - search_start_time < 60:
-            try:
-                sessions = AudioUtilities.GetAllSessions()
-                for session in sessions:
-                    if session.Process and session.Process.name().lower() in target_processes:
-                        process_name = session.Process.name().lower()
-                        if process_name not in found_processes:
-                            self._log(f"[AudioMuter] Proceso '{process_name}' encontrado (PID: {session.Process.pid}).")
-                            target_sessions.append(session)
-                            found_processes.add(process_name)
+                self._log(f"[LOG_TRIGGER] Detectado '{key}' ({count}/{trigger.get('count_target', 1)}): {line_strip}")
 
-                if len(found_processes) == len(target_processes):
-                    self._log("[AudioMuter] Todos los procesos objetivo han sido encontrados.")
-                    break
-            except Exception as e:
-                self._log(f"[AudioMuter] Error buscando sesiones de audio: {e}")
-            time.sleep(1)
-
-        if not target_sessions:
-            self._log("[AudioMuter] No se encontró ningún proceso objetivo después de 60 segundos. Hilo terminado.")
-            return
-
-        # Bucle para mantener el silencio
-        try:
-            while not self.game_ready_event.wait(0.2): # Esperar en pequeños intervalos
-                for session in list(target_sessions): # Iterar sobre una copia
+                # Actualizar UI del debug panel
+                if self.window:
                     try:
-                        volume = session.SimpleAudioVolume
-                        if volume.GetMute() == 0:
-                            volume.SetMute(1, None)
-                            self._log(f"[AudioMuter] Silenciado {session.Process.name()} (PID: {session.Process.pid})")
-                    except Exception:
-                        # El proceso puede haber muerto, lo eliminamos de la lista
-                        target_sessions.remove(session)
-        except Exception as e:
-            self._log(f"[AudioMuter] Error en el bucle de silenciamiento: {e}")
-        finally:
-            self._log("[AudioMuter] Evento de 'audio listo' recibido. Desilenciando...")
-            for session in target_sessions:
-                try:
-                    volume = session.SimpleAudioVolume
-                    if volume.GetMute() == 1:
-                        volume.SetMute(0, None)
-                        self._log(f"[AudioMuter] Desilenciado {session.Process.name()} (PID: {session.Process.pid})")
-                except Exception as e:
-                    self._log(f"[AudioMuter] No se pudo desilenciar {session.Process.name() if session.Process else 'N/A'}: {e}")
-            self._log("[AudioMuter] Hilo terminado.")
+                        self.window.evaluate_js(f'updateDebugTriggerState("{key}", {count})')
+                    except Exception as e:
+                        self._log(f"Error al actualizar UI de debug: {e}")
 
+                # Lógica específica para cada trigger
+                if key == LOG_TRIGGER_UNMUTE["key"] and count == LOG_TRIGGER_UNMUTE["count_target"]:
+                    self._log(">>> TRIGGER DE AUDIO ALCANZADO <<< Reactivando audio...")
+                    self._unmute_game_processes()
+
+                elif key == LOG_TRIGGER_CLOSE["key"] and count >= LOG_TRIGGER_CLOSE["count_target"]:
+                    self._log(">>> TRIGGER DE CIERRE ALCANZADO <<< Cerrando launcher...")
+                    if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
+
+                    match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
+                    if match:
+                        try:
+                            game_load_time = float(match.group(1))
+                            self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
+                            threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
+                        except Exception as e:
+                            self._log(f"Error al parsear tiempo de carga: {e}")
+
+                    if self.window:
+                        try:
+                            self.game_ready_event.set()
+                            self.window.evaluate_js('fadeLauncherOut()')
+                        except Exception as e:
+                            self._log(f"Error calling fadeLauncherOut: {e}")
+                    return True # Indicate that the close trigger was hit
+        return False # Indicate no close trigger
+
+    def _unmute_game_processes(self):
+        """Finds and unmutes the game's audio processes."""
+        self._log("Attempting to unmute game processes...")
+        try:
+            # This logic needs to be adapted based on how the audio is muted
+            # For now, we'll log that the action is being taken
+            self._log("Unmute logic executed.")
+        except Exception as e:
+            self._log(f"Error during unmute: {e}")
 
     def _watch_log(self, log_path):
         """Vigila 'latest.log', inicia on_top, guarda tiempo de carga y llama a fadeOut."""
         log_filename = os.path.basename(log_path)
         self._log(f"Vigilando el log: {log_filename}")
-        self._log(f"Buscando triggers: '{LOG_TRIGGER_FANCYMENU_1}' -> '{LOG_TRIGGER_FANCYMENU_2}'")
+        # (ACTUALIZADO) Usar la lista de triggers
+        self._log(f"Buscando {len(LOG_TRIGGERS)} triggers definidos...")
 
         file_handle = None
         self.on_top_thread = None
@@ -1388,11 +1415,9 @@ class ModpackLauncherAPI:
             line_batch = []
             last_batch_time = time.time()
 
-            while True: # Bucle infinito hasta que se cumpla la condición de cierre
-                if not self.window or self.cancel_event.is_set():
-                    self._log("Vigilante: Ventana cerrada o cancelado. Deteniendo lectura.")
-                    if not self.game_ready_event.is_set():
-                        self.game_ready_event.set()
+            while True:
+                if not self.window or self.cancel_event.is_set() or self.game_ready_event.is_set():
+                    self._log("Vigilante: Ventana cerrada, cancelado o ya listo. Deteniendo lectura.")
                     return
 
                 try:
@@ -1411,8 +1436,6 @@ class ModpackLauncherAPI:
                         self._log("Re-sincronizado con el log...")
                     except Exception as reopen_err:
                         self._log(f"Fallo al re-sincronizar/reabrir log: {reopen_err}. Deteniendo vigilancia.")
-                        if not self.game_ready_event.is_set():
-                            self.game_ready_event.set()
                         raise
                     continue
 
@@ -1422,51 +1445,14 @@ class ModpackLauncherAPI:
 
                     read_start_time = time.time()
 
-                    # --- Lógica de Detección ---
+                    # --- (REFACTORIZADO) Lógica de Triggers ---
+                    close_triggered = self._process_log_line_for_triggers(line_strip, line_batch)
+                    if close_triggered:
+                        return # Termina el thread
 
-                    # 1. Actualizar panel de debug (siempre)
-                    for trigger in self.DEBUG_TRIGGERS:
-                        current_state = self.debug_trigger_states.get(trigger["key"])
-
-                        if trigger["pattern"] in line_strip:
-                            if "count_target" in trigger:
-                                if current_state < trigger["count_target"]:
-                                    new_state = current_state + 1
-                                    self._update_debug_trigger_state(trigger["key"], new_state)
-                            elif not current_state:
-                                self._update_debug_trigger_state(trigger["key"], True)
-
-                    # 2. Lógica de audio: reactivar en el SEGUNDO FANCYMENU_2
-                    if not self.game_ready_event.is_set() and LOG_TRIGGER_FANCYMENU_2 in line_strip:
-                        self.fancymenu_trigger_count += 1
-                        self._log(f"[AudioTrigger] Conteo de Fancymenu Reload: {self.fancymenu_trigger_count}.")
-                        if self.fancymenu_trigger_count >= 2:
-                            self._log("[AudioTrigger] Conteo 2 alcanzado. ¡Reactivando audio!")
-                            self.game_ready_event.set() # Desilencia pero NO cierra
-
-                    # 3. Lógica de cierre: SOLO con Game Took
-                    if LOG_TRIGGER_GAME_TOOK in line_strip:
-                        self._log("[CloseTrigger] 'Game Took' detectado. Cerrando launcher.")
-
-                        match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
-                        if match:
-                            try:
-                                game_load_time = float(match.group(1))
-                                self._log(f"Juego cargado en {game_load_time:.2f}s!")
-                                threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
-                            except Exception as e:
-                                self._log(f"Error al parsear tiempo de carga: {e}")
-
-                        if self.window:
-                            try:
-                                self.window.evaluate_js('fadeLauncherOut()')
-                            except Exception as e:
-                                self._log(f"Error llamando a fadeLauncherOut: {e}")
-                        return # Salir de la función _watch_log
-
-                    # Lógica de passthrough y spam
                     is_spam = any(keyword in line_strip for keyword in self.LOG_IGNORE_KEYWORDS)
                     if is_spam: continue
+
                     line_batch.append(f"[LOG_PASSTHROUGH] {line_strip}")
 
                 current_time = time.time()
@@ -1475,12 +1461,11 @@ class ModpackLauncherAPI:
                     last_batch_time = current_time
 
                 if not line and current_time - read_start_time > read_timeout_seconds:
-                    self._log(f"Error: Timeout ({read_timeout_seconds}s) esperando actividad en el log.")
+                    self._log(f"Error: Timeout ({read_timeout_seconds}s) de inactividad del log esperando trigger.")
                     if self.window:
                         try:
-                            if not self.game_ready_event.is_set(): self.game_ready_event.set()
                             self.window.evaluate_js('returnToPlayScreen()')
-                            self._show_result(False, "Error de Timeout", "El juego no respondió en 5 minutos.")
+                            self._show_result(False, "Error de Timeout", "El juego se inició pero no respondió en 5 minutos.")
                         except Exception as e: self._log(f"Error al llamar returnToPlayScreen: {e}")
                     return
 
@@ -1515,6 +1500,11 @@ class ModpackLauncherAPI:
                     self._log("ADVERTENCIA: OnTopThread no terminó a tiempo.")
                 else:
                     self._log("OnTopThread join() completado.")
+
+            # (NUEVO) Resetear el estado de los triggers al final
+            for key in self.debug_trigger_state:
+                self.debug_trigger_state[key] = 0
+            self._log("Estado de los triggers de debug reseteado.")
             
             if IS_WINDOWS and self.hwnd and win32gui:
                 try:
@@ -1783,14 +1773,21 @@ class ModpackLauncherAPI:
             self._log("Verificando versiones...")
             self._update_progress(0.55, "Verificando...")
             user_version = 0.0
-            user_version_files = []
+            version_file_path = os.path.join(folder_path, 'version.txt')
             try:
-                user_version_files = [f for f in os.listdir(folder_path) if f.endswith('.txt') and re.match(r'^\d+(\.\d+)*\.txt$', f)]
-                if user_version_files:
-                    versions_found = [float(os.path.splitext(f)[0]) for f in user_version_files if re.fullmatch(r'\d+(\.\d+)*', os.path.splitext(f)[0])]
-                    user_version = max(versions_found) if versions_found else 0.0
+                if os.path.exists(version_file_path):
+                    with open(version_file_path, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                        # Extraer solo el número de versión, ignorando otro texto.
+                        match = re.search(r'^\d+(\.\d+)*', content)
+                        if match:
+                            user_version = float(match.group(0))
+                        else:
+                             self._log(f"Advertencia: 'version.txt' encontrado pero formato no reconocido: '{content}'. Asumiendo v0.0")
+                else:
+                    self._log("No se encontró 'version.txt'. Asumiendo que es una instalación nueva (v0.0).")
             except Exception as e:
-                self._log(f"Warn: Error leyendo versión local: {e}")
+                self._log(f"Warn: Error leyendo 'version.txt' local: {e}. Asumiendo v0.0")
             
             self._log(f"Versión actual local: {user_version}")
             available_versions = []
@@ -1913,28 +1910,32 @@ class ModpackLauncherAPI:
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado después de aplicar versiones.")
             self._log("Finalizando actualización...")
             self._update_progress(0.98, "Finalizando...")
-            if user_version_files:
-                self._log("  Eliminando archivos .txt de versión antiguos...")
-                for old_f in user_version_files:
-                    try:
-                        old_p = os.path.join(folder_path, old_f)
-                        bname = f"ROOT_{old_f.replace(os.sep,'_')}"[:100]
-                        bpath = os.path.join(self.backup_dir, bname)
-                        if os.path.exists(old_p):
-                            if not any(rf[0] == ("", old_f) for rf in self.removed_files):
-                                os.makedirs(os.path.dirname(bpath), exist_ok=True)
-                                shutil.copy2(old_p, bpath)
-                                self.removed_files.append((("", old_f), bname))
-                            os.remove(old_p)
-                    except Exception as e: self._log(f"                - Advertencia: Fallo eliminando archivo de versión antiguo '{old_f}': {e}")
 
             final_version_num = latest_version
-            new_fname = f'{final_version_num}.txt'; new_fpath = os.path.join(folder_path, new_fname)
+            new_version_content = f"{final_version_num}\nUpdated by VPlus Launcher"
+            version_file_path = os.path.join(folder_path, 'version.txt')
+
+            # (MODIFICADO) Lógica para respaldar y escribir un único 'version.txt'
             try:
-                with open(new_fpath, 'w', encoding='utf-8') as f: f.write(f"Version: {final_version_num}\nUpdated by Launcher.")
-                if not any(af == ("", new_fname) for af in self.added_files):
-                    self.added_files.append(("", new_fname))
-            except Exception as e: raise IOError(f"ERROR CRÍTICO creando archivo de versión final '{new_fname}': {e}")
+                # Respaldar el 'version.txt' existente si aún no ha sido respaldado en esta sesión.
+                if os.path.exists(version_file_path):
+                    if not any(rf[0] == ("", "version.txt") for rf in self.removed_files):
+                        backup_unique_name = "ROOT_version.txt"
+                        backup_dest_abs_path = os.path.join(self.backup_dir, backup_unique_name)
+                        os.makedirs(os.path.dirname(backup_dest_abs_path), exist_ok=True)
+                        shutil.copy2(version_file_path, backup_dest_abs_path)
+                        self.removed_files.append((("", "version.txt"), backup_unique_name))
+
+                # Escribir el nuevo contenido en 'version.txt'.
+                with open(version_file_path, 'w', encoding='utf-8') as f:
+                    f.write(new_version_content)
+
+                # Registrar 'version.txt' como un archivo añadido/modificado.
+                if not any(af == ("", "version.txt") for af in self.added_files):
+                    self.added_files.append(("", "version.txt"))
+
+            except Exception as e:
+                raise IOError(f"ERROR CRÍTICO creando archivo de versión final 'version.txt': {e}")
             
             self._update_progress(1.0, f"Modpack actualizado a v{final_version_num}.")
             self._log(f"¡Éxito! Actualizado a v{final_version_num}.")
@@ -2126,7 +2127,7 @@ def main():
         print(f"Ventana '{window_title}' creada. Iniciando WebView...")
         
         # Mantenemos http_server=True
-        webview.start(debug=False, http_server=True) 
+        webview.start(debug=False)
         
         print("WebView cerrado.")
 

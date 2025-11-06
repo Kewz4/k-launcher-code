@@ -27,9 +27,9 @@ HTML_CONTENT = f"""
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vanilla+ Launcher</title>
     <!-- Importar Fuentes -->
-    <link rel="stylesheet" href="{FONT_IMPORT_URL}">
+    <link rel="stylesheet" href="{{FONT_IMPORT_URL}}">
     <!-- Importar Font Awesome -->
-    <link rel="stylesheet" href="{FONT_AWESOME_URL}">
+    <link rel="stylesheet" href="{{FONT_AWESOME_URL}}">
     <style>
         /* --- Reset y Fuentes --- */
         :root {{
@@ -411,14 +411,14 @@ HTML_CONTENT = f"""
     <div class="screen" id="screen-play">
         <!-- Iframe de Vimeo -->
         <iframe id="vimeo-bg"
-                src="{VIMEO_EMBED_SRC}"
+                src="{{VIMEO_EMBED_SRC}}"
                 frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen>
         </iframe>
         <!-- Video Overlay (Para Fade In) -->
         <div id="video-overlay"></div>
 
         <!-- Logo Minecraft -->
-        <img src="{LOGO_URL}" alt="Minecraft Logo" id="minecraft-logo">
+        <img src="{{LOGO_URL}}" alt="Minecraft Logo" id="minecraft-logo">
 
         <!-- Gradiente Inferior -->
         <div id="bottom-gradient"></div>
@@ -436,7 +436,7 @@ HTML_CONTENT = f"""
         <!-- Reproductor de Música -->
         <div id="music-player">
             <div class="player-top-row">
-                <img id="album-cover" src="{URL_ALBUM_COVER}" alt="Album Cover">
+                <img id="album-cover" src="{{URL_ALBUM_COVER}}" alt="Album Cover">
                 <div class="track-info">
                     <span id="track-title">Cargando...</span>
                     <span id="track-artist">...</span>
@@ -685,7 +685,7 @@ HTML_CONTENT = f"""
         let isProgressMinimized = false;
         
         // (ACTUALIZADO) setupState ahora se usa para ambos flujos
-        let setupState = {{ prismPath: null, instancePath: null }};
+        let setupState = {{ "prismPath": null, "instancePath": null }};
         
         const domPlayer = {{
             player: document.getElementById('music-player'),
@@ -741,7 +741,12 @@ HTML_CONTENT = f"""
             menuBtn: document.getElementById('menu-btn'),
             sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'),
             panelSettingsBtn: document.getElementById('panel-settings-btn'), // (RENOMBRADO)
+            panelDebugBtn: document.getElementById('panel-debug-btn'),
             panelQuitBtn: document.getElementById('panel-quit-btn'),
+            debug: {{
+                panel: document.getElementById('debug-panel'),
+                triggerList: document.getElementById('debug-trigger-list'),
+            }},
             cancelBtn: document.getElementById('cancel-btn'),
             progressTitle: document.getElementById('progress-title'),
             progressBar: document.getElementById('progress-fill'),
@@ -1305,7 +1310,7 @@ HTML_CONTENT = f"""
                 // Es un trigger de contador
                 const statusTextElement = triggerElement.querySelector('.status-text');
                 if (statusTextElement) {{
-                    statusTextElement.textContent = `${{stateValue}}/${{countTarget}}`;
+                    statusTextElement.textContent = `(${{stateValue}}/${{countTarget}})`;
                 }}
 
                 // Marcar como detectado solo si se alcanza el objetivo
@@ -1327,7 +1332,7 @@ HTML_CONTENT = f"""
         function toggleDebugPanel() {{
             const isVisible = dom.debug.panel.style.display === 'block';
             dom.debug.panel.style.display = isVisible ? 'none' : 'block';
-            console.log(`Debug panel ${{isVisible ? 'hidden' : 'shown'}}`);
+            console.log(`Debug panel ${{isVisible ? "hidden" : "shown"}}`);
         }}
 
 
