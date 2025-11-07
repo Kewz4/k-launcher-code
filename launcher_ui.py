@@ -18,7 +18,6 @@ URL_ALBUM_COVER = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/148f8426c0b238c8
 VIMEO_EMBED_SRC = "https://player.vimeo.com/video/1131522974?badge=0&autopause=0&player_id=0&app_id=58479&background=1&autoplay=1&loop=1&muted=1"
 
 
-# Escapar todas las llaves literales con {{ }}
 HTML_CONTENT = f"""
 <!DOCTYPE html>
 <html lang="es">
@@ -27,9 +26,9 @@ HTML_CONTENT = f"""
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vanilla+ Launcher</title>
     <!-- Importar Fuentes -->
-    <link rel="stylesheet" href="{{FONT_IMPORT_URL}}">
+    <link rel="stylesheet" href="{FONT_IMPORT_URL}">
     <!-- Importar Font Awesome -->
-    <link rel="stylesheet" href="{{FONT_AWESOME_URL}}">
+    <link rel="stylesheet" href="{FONT_AWESOME_URL}">
     <style>
         /* --- Reset y Fuentes --- */
         :root {{
@@ -411,14 +410,14 @@ HTML_CONTENT = f"""
     <div class="screen" id="screen-play">
         <!-- Iframe de Vimeo -->
         <iframe id="vimeo-bg"
-                src="{{VIMEO_EMBED_SRC}}"
+                src="{VIMEO_EMBED_SRC}"
                 frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen>
         </iframe>
         <!-- Video Overlay (Para Fade In) -->
         <div id="video-overlay"></div>
 
         <!-- Logo Minecraft -->
-        <img src="{{LOGO_URL}}" alt="Minecraft Logo" id="minecraft-logo">
+        <img src="{LOGO_URL}" alt="Minecraft Logo" id="minecraft-logo">
 
         <!-- Gradiente Inferior -->
         <div id="bottom-gradient"></div>
@@ -436,7 +435,7 @@ HTML_CONTENT = f"""
         <!-- Reproductor de Música -->
         <div id="music-player">
             <div class="player-top-row">
-                <img id="album-cover" src="{{URL_ALBUM_COVER}}" alt="Album Cover">
+                <img id="album-cover" src="{URL_ALBUM_COVER}" alt="Album Cover">
                 <div class="track-info">
                     <span id="track-title">Cargando...</span>
                     <span id="track-artist">...</span>

@@ -35,25 +35,26 @@ except AttributeError:
     sys.exit(1)
 
 
-# (NUEVO) Importar pywin32 si está disponible (solo para Windows)
+# (MODIFICADO) Importar librerías de Windows
 IS_WINDOWS = platform.system() == "Windows"
-try:
-    if IS_WINDOWS:
+win32gui, win32con, ctypes, AudioUtilities, ISimpleAudioVolume = None, None, None, None, None
+
+if IS_WINDOWS:
+    try:
         import win32gui
         import win32con
-        import ctypes # (NUEVO) Necesario para la comprobación de administrador
+        import ctypes
         print("pywin32 y ctypes importados exitosamente.")
-    else:
-        win32gui = None
-        win32con = None
-        ctypes = None
-        print("Plataforma no es Windows, pywin32 y ctypes no serán usados.")
-except ImportError:
-    print("ADVERTENCIA: pywin32 o ctypes no encontrado (pip install pywin32). Se usará el método on_top estándar (menos robusto).")
-    win32gui = None
-    win32con = None
-    ctypes = None
-    IS_WINDOWS = False # Desactivar lógica de Windows si no se pudo importar
+    except ImportError:
+        print("ADVERTENCIA: pywin32 o ctypes no encontrado (pip install pywin32). Algunas funciones de ventana no estarán disponibles.")
+
+    try:
+        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+        print("pycaw importado exitosamente.")
+    except ImportError:
+        print("ADVERTENCIA: pycaw no encontrado (pip install pycaw). La función de desmutear no estará disponible.")
+else:
+    print("Plataforma no es Windows. Funciones específicas de Windows deshabilitadas.")
 
 
 # --- Lógica de la Aplicación (Backend de Python) ---
@@ -74,7 +75,7 @@ MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/n09t1j88vvohgxcvn6t6u/Kewz-s-Vanilla-True-Modpack.zip?rlkey=tg8v655uq2h30oc6k9qunsktl&st=eg2zn3h6&dl=1"
 
 # (NUEVO) URL para la versión portable de Prism Launcher
-PRISM_PORTABLE_ZIP_URL_WINDOWS = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
+PRISM_PORTABLE_ZIP_URL_WINDOWS = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
 
 
 # (NUEVO) Definiciones para el panel de Debug
@@ -654,122 +655,6 @@ class ModpackLauncherAPI:
         self._log(f"Iniciando hilo para tarea: {task_name}")
         self.current_task_thread.start()
 
-    def _task_install_prism(self, install_location_base):
-        """
-        (NUEVO) Tarea en hilo: Instala Prism usando Winget.
-        Llama a JS: onPrismInstallComplete(success, path, error)
-        """
-        
-        # (CORREGIDO) Crear una subcarpeta dedicada para la instalación
-        dedicated_install_path = os.path.join(install_location_base, "PrismLauncher")
-        self._update_install_status(f"Creando directorio de instalación dedicado en: {dedicated_install_path}")
-        
-        try:
-            os.makedirs(dedicated_install_path, exist_ok=True)
-        except Exception as e:
-            msg = f"Fallo al crear directorio dedicado '{dedicated_install_path}': {e}"
-            self._log(msg)
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-            return
-            
-        if self.cancel_event.is_set():
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, "Instalación cancelada.")')
-            return
-
-        # (NUEVO) Paso 1: Intentar desinstalar cualquier versión "fantasma"
-        self._update_install_status("Intentando limpiar instalaciones anteriores de Prism (por si acaso)...")
-        uninstall_command = [
-            "winget", "uninstall", "PrismLauncher.PrismLauncher",
-            "--silent",
-            "--accept-source-agreements"
-        ]
-        try:
-            # Ejecutar esto y esperar a que termine, pero no fallar si no encuentra nada
-            uninstall_process = subprocess.Popen(uninstall_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
-            while True:
-                output = uninstall_process.stdout.readline()
-                if output == '' and uninstall_process.poll() is not None:
-                    break
-                if output:
-                    self._update_install_status(f"[Limpieza] {output.strip()}")
-
-            uninstall_return_code = uninstall_process.poll()
-            if uninstall_return_code == 0:
-                self._update_install_status("Limpieza completada.")
-            else:
-                # Esto es normal si no se encontró nada
-                self._update_install_status("No se encontró instalación fantasma (o la limpieza falló, no es crítico).")
-
-        except Exception as e:
-            self._update_install_status(f"Error durante la limpieza (no es crítico): {e}")
-
-        if self.cancel_event.is_set():
-             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, "Instalación cancelada.")')
-             return
-
-        # (NUEVO) Paso 2: Instalar en la RUTA DEDICADA
-        self._update_install_status(f"Iniciando Winget para instalar Prism en: {dedicated_install_path}")
-        self._update_install_status("(Esto puede tardar varios minutos)...")
-
-        install_command = [
-            "winget", "install", "PrismLauncher.PrismLauncher",
-            "--silent",
-            "--accept-package-agreements",
-            "--accept-source-agreements",
-            "--location", dedicated_install_path  # <-- (CORREGIDO) Usar la nueva ruta
-        ]
-
-        # (CORREGIDO) Winget a veces usa P mayúscula
-        final_exe_path = os.path.join(dedicated_install_path, "PrismLauncher.exe")
-        final_exe_path_lower = os.path.join(dedicated_install_path, "prismlauncher.exe")
-
-        try:
-            # Usar Popen para leer la salida en tiempo real
-            process = subprocess.Popen(install_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
-
-            while True:
-                if self.cancel_event.is_set():
-                    self._log("Cancelación detectada. Intentando terminar Winget...")
-                    process.terminate()
-                    process.wait(timeout=5)
-                    raise InterruptedError("Instalación cancelada por el usuario.")
-
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    self._update_install_status(output.strip())
-
-            return_code = process.poll()
-
-            if return_code == 0:
-                self._update_install_status("Winget completado. Verificando ejecutable...")
-                # (CORREGIDO) Comprobar ambas capitalizaciones
-                if self._validate_prism_path(final_exe_path):
-                    self._update_install_status("¡Prism Launcher instalado con éxito!")
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path)}, null)')
-                elif self._validate_prism_path(final_exe_path_lower):
-                    self._update_install_status("¡Prism Launcher instalado con éxito!")
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(true, {json.dumps(final_exe_path_lower)}, null)')
-                else:
-                    msg = f"Winget reportó éxito, pero no se encontró 'PrismLauncher.exe' en '{dedicated_install_path}'."
-                    self._log(msg)
-                    if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-            else:
-                msg = f"Winget falló con código de error: {return_code}"
-                self._log(msg)
-                if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-
-        except InterruptedError as e:
-            msg = str(e)
-            self._log(msg)
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
-        except Exception as e:
-            msg = f"Error fatal al ejecutar Winget: {e}"
-            self._log(msg)
-            import traceback
-            self._log(traceback.format_exc())
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
 
     def _task_install_prism_portable(self, install_location_base):
         """
@@ -1358,14 +1243,57 @@ class ModpackLauncherAPI:
         return False # Indicate no close trigger
 
     def _unmute_game_processes(self):
-        """Finds and unmutes the game's audio processes."""
-        self._log("Attempting to unmute game processes...")
+        """Busca y desmutea los procesos de audio del juego usando pycaw."""
+        self._log("Intentando desmutear los procesos del juego...")
+        if not IS_WINDOWS or not AudioUtilities or not ISimpleAudioVolume:
+            self._log("Desmuteo omitido: La función solo está disponible en Windows con pycaw.")
+            return
+
         try:
-            # This logic needs to be adapted based on how the audio is muted
-            # For now, we'll log that the action is being taken
-            self._log("Unmute logic executed.")
+            target_pids = set()
+            # (MODIFICADO) Buscar PIDs de Java/JDK/Prism como en _terminate_game_processes
+            target_names = ['java.exe', 'javaw.exe', 'prismlauncher.exe']
+            target_cmdline_keywords = ['jdk', 'prismlauncher', 'minecraft']
+
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    proc_info = proc.info
+                    proc_name = (proc_info['name'] or '').lower()
+                    proc_cmdline = ' '.join(proc_info['cmdline'] or []).lower()
+
+                    if any(name in proc_name for name in target_names) or \
+                       any(keyword in proc_cmdline for keyword in target_cmdline_keywords):
+                        if 'vplus_launcher' not in proc_cmdline and 'launcher_main' not in proc_cmdline:
+                            target_pids.add(proc_info['pid'])
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+            if not target_pids:
+                self._log("No se encontraron PIDs de procesos de juego para desmutear.")
+                return
+
+            self._log(f"PIDs de juego detectados para desmutear: {target_pids}")
+            sessions = AudioUtilities.GetAllSessions()
+            unmuted_count = 0
+            for session in sessions:
+                if session.Process and session.Process.pid in target_pids:
+                    volume = session._ctl.QueryInterface(ISimpleAudioVolume)
+                    if volume.GetMute():
+                        self._log(f"Desmuteando PID: {session.Process.pid} (Proceso: {session.Process.name()})")
+                        volume.SetMute(0, None)
+                        unmuted_count += 1
+                    else:
+                        self._log(f"El PID {session.Process.pid} ya no estaba muteado.")
+
+            if unmuted_count > 0:
+                self._log(f"¡Éxito! {unmuted_count} procesos de juego fueron desmuteados.")
+            else:
+                self._log("No se encontraron sesiones de audio muteadas para los PIDs del juego.")
+
         except Exception as e:
-            self._log(f"Error during unmute: {e}")
+            self._log(f"Error durante el proceso de desmutear: {e}")
+            import traceback
+            self._log(traceback.format_exc())
 
     def _watch_log(self, log_path):
         """Vigila 'latest.log', inicia on_top, guarda tiempo de carga y llama a fadeOut."""
