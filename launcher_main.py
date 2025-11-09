@@ -133,6 +133,7 @@ class ModpackLauncherAPI:
         self.debug_mode = True # Habilitar para mostrar el panel
         self.unmute_trigger_status = "PENDIENTE"
         self.close_trigger_status = "PENDIENTE"
+        self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
 
     # --- (NUEVO) API para el Panel de Depuración ---
@@ -929,10 +930,10 @@ class ModpackLauncherAPI:
                 print(f"Error closing window via JS: {e}")
 
     # --- (NUEVO) Lógica de Control de Audio ---
-    def _audio_muter_thread(self):
+    def _audio_muter_thread(self, prism_process):
         """
-        Hilo que busca y silencia prismlauncher.exe y javaw.exe,
-        y espera una señal para reactivar el sonido.
+        (MODIFICADO)
+        Hilo que busca y silencia el proceso de Prism dado y su hijo javaw.exe.
         """
         if not IS_WINDOWS:
             self._log("[Audio] El control de audio solo es compatible con Windows. Hilo finalizado.")
@@ -941,61 +942,71 @@ class ModpackLauncherAPI:
         self._log("[Audio] Hilo de silenciamiento iniciado. Buscando procesos del juego...")
 
         from comtypes import CoInitialize, CoUninitialize
-        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+        from pycaw.pycaw import AudioUtilities
 
-        target_processes = {"prismlauncher.exe", "javaw.exe"}
+        target_pids = set()
         muted_sessions = []
 
         try:
             CoInitialize()
 
-            # Bucle para encontrar los procesos y silenciarlos
-            start_time = time.time()
-            # (MODIFICADO) Aumentado el tiempo de búsqueda a 120s por si el juego tarda en aparecer
-            while time.time() - start_time < 120:
-                if self.cancel_event.is_set():
-                    self._log("[Audio] Cancelación detectada. Deteniendo hilo de audio.")
-                    return
+            # 1. Obtener PID del proceso principal de Prism
+            if not prism_process or not hasattr(prism_process, 'pid'):
+                self._log("[Audio] Error: Objeto de proceso de Prism no válido.")
+                return
 
-                try:
-                    sessions = AudioUtilities.GetAllSessions()
-                    # (NUEVO) Registro detallado para depuración
-                    all_processes = {session.Process.name().lower() for session in sessions if session.Process}
-                    self._log(f"[Audio Debug] Sesiones encontradas: {all_processes}")
+            parent = psutil.Process(prism_process.pid)
+            target_pids.add(parent.pid)
+            self._log(f"[Audio] Proceso padre de Prism identificado (PID: {parent.pid})")
 
-                    for session in sessions:
-                        if session.Process and session.Process.name().lower() in target_processes:
-                            # Evitar duplicados
-                            if session.Process.ProcessId not in [s['pid'] for s in muted_sessions]:
-                                try:
-                                    volume = session.SimpleAudioVolume
-                                    # (MODIFICADO) Silenciar inmediatamente y registrar
-                                    if not volume.GetMute():
-                                        volume.SetMute(1, None)
-                                        self._log(f"[Audio] Proceso SILENCIADO: {session.Process.name()} (PID: {session.Process.ProcessId})")
-                                    else:
-                                        self._log(f"[Audio] Proceso ya estaba silenciado: {session.Process.name()} (PID: {session.Process.ProcessId})")
-
-                                    muted_sessions.append({
-                                        'session': session,
-                                        'name': session.Process.name(),
-                                        'pid': session.Process.ProcessId
-                                    })
-                                except Exception as e:
-                                    self._log(f"[Audio] Error al intentar silenciar {session.Process.name()}: {e}")
-                except Exception as e:
-                    self._log(f"[Audio Debug] Error al obtener sesiones: {e}")
-
-                # Si hemos encontrado todos los procesos, salir del bucle de búsqueda
-                if len(muted_sessions) >= len(target_processes):
-                    self._log("[Audio] Todos los procesos objetivo han sido encontrados y silenciados.")
+            # 2. Encontrar el proceso hijo de Java
+            javaw_child = None
+            # Esperar un poco a que el hijo aparezca
+            for _ in range(20):
+                children = parent.children(recursive=True)
+                for child in children:
+                    if child.name().lower() == 'javaw.exe':
+                        javaw_child = child
+                        break
+                if javaw_child:
                     break
+                time.sleep(0.5)
 
-                # (MODIFICADO) Reducido el tiempo de espera para reaccionar más rápido
+            if javaw_child:
+                target_pids.add(javaw_child.pid)
+                self._log(f"[Audio] Proceso hijo 'javaw.exe' encontrado (PID: {javaw_child.pid})")
+            else:
+                self._log("[Audio] ADVERTENCIA: No se encontró 'javaw.exe' como hijo de Prism. Se silenciará solo el launcher.")
+
+            # 3. Silenciar los PIDs objetivo
+            start_time = time.time()
+            while time.time() - start_time < 60: # Reducido timeout a 60s
+                if self.cancel_event.is_set(): return
+
+                sessions = AudioUtilities.GetAllSessions()
+                for session in sessions:
+                    try:
+                        if not session.Process: continue
+                        pid = session.Process.pid
+                        if pid in target_pids and pid not in [s['pid'] for s in muted_sessions]:
+                            volume = session.SimpleAudioVolume
+                            if not volume.GetMute():
+                                volume.SetMute(1, None)
+                                self._log(f"[Audio] Proceso SILENCIADO: {session.Process.name()} (PID: {pid})")
+                            else:
+                                self._log(f"[Audio] Proceso ya estaba silenciado: {session.Process.name()} (PID: {pid})")
+
+                            muted_sessions.append({'session': session, 'pid': pid, 'name': session.Process.name()})
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError): continue
+                    except Exception as e: self._log(f"[Audio Debug] Error en bucle: {e}")
+
+                if len(muted_sessions) == len(target_pids):
+                    self._log("[Audio] Todos los procesos objetivo encontrados y silenciados.")
+                    break
                 time.sleep(0.5)
 
             if not muted_sessions:
-                self._log("[Audio] ADVERTENCIA: No se encontraron procesos de audio para silenciar después de 120s.")
+                self._log("[Audio] ADVERTENCIA: No se encontraron sesiones de audio para los PIDs objetivo después de 60s.")
                 return
 
             # Esperar la señal para reactivar el sonido
@@ -1265,9 +1276,7 @@ class ModpackLauncherAPI:
 
             # (NUEVO) Iniciar el hilo de silenciamiento de audio
             self.unmute_event.clear()
-            audio_thread = threading.Thread(target=self._audio_muter_thread, name="AudioMuterThread")
-            audio_thread.daemon = True
-            audio_thread.start()
+            # (MODIFICADO) El hilo de audio ahora se inicia más tarde, después de obtener el proceso
 
             watch_thread = threading.Thread(target=self._watch_log, args=(log_path,), name="LogWatcherThread")
             watch_thread.daemon = True
@@ -1279,7 +1288,7 @@ class ModpackLauncherAPI:
             command = [self.prism_exe_path, "--launch", instance_name]
             self._log(f"Ejecutando comando: {' '.join(command)}")
 
-            process = None
+            self.prism_process = None # (NUEVO) Resetear antes de lanzar
             try:
                 startupinfo = None
                 creationflags = 0
@@ -1289,12 +1298,17 @@ class ModpackLauncherAPI:
                     startupinfo.wShowWindow = subprocess.SW_HIDE
                     creationflags = subprocess.CREATE_NO_WINDOW
 
-                process = subprocess.Popen(command, startupinfo=startupinfo,
+                self.prism_process = subprocess.Popen(command, startupinfo=startupinfo,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            creationflags=creationflags,
                                            encoding='utf-8', errors='ignore')
 
-                self._log(f"Comando de lanzamiento enviado a Prism Launcher (PID: {process.pid}).")
+                # (NUEVO) Iniciar el hilo de audio ahora que tenemos el proceso
+                audio_thread = threading.Thread(target=self._audio_muter_thread, args=(self.prism_process,), name="AudioMuterThread")
+                audio_thread.daemon = True
+                audio_thread.start()
+
+                self._log(f"Comando de lanzamiento enviado a Prism Launcher (PID: {self.prism_process.pid}).")
 
                 if IS_WINDOWS and self.window and win32gui:
                     try:
@@ -1936,8 +1950,18 @@ class ModpackLauncherAPI:
                                         except Exception as bk_err:
                                             self._log(f"        - ERROR CRÍTICO al respaldar el directorio completo '{target_dir}': {bk_err}. Saltando eliminación.")
                                             continue
-                                    shutil.rmtree(target_base_abs)
-                                    self._log(f"        - Directorio '{target_dir}' eliminado.")
+
+                                    # (CORREGIDO) Borrar contenido, no la carpeta principal
+                                    for item_name in os.listdir(target_base_abs):
+                                        item_path = os.path.join(target_base_abs, item_name)
+                                        try:
+                                            if os.path.isdir(item_path):
+                                                shutil.rmtree(item_path)
+                                            else:
+                                                os.remove(item_path)
+                                        except Exception as del_item_err:
+                                            self._log(f"        - ERROR eliminando item '{item_name}' dentro de '{target_dir}': {del_item_err}")
+                                    self._log(f"        - Contenido del directorio '{target_dir}' eliminado.")
                                 else:
                                     self._log(f"        - Directorio '{target_dir}' no existía. No hay nada que hacer.")
                                 continue

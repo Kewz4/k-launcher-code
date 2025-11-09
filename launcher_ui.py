@@ -427,6 +427,10 @@ HTML_CONTENT = f"""
             <i class="fas fa-cog"></i>
             <span>Configuración</span>
         </button>
+        <button class="panel-button" id="panel-debug-btn">
+            <i class="fas fa-bug"></i>
+            <span>Debug</span>
+        </button>
         <button class="panel-button" id="panel-quit-btn">
             <i class="fas fa-sign-out-alt"></i>
             <span>Salir del Launcher</span>
@@ -1252,6 +1256,7 @@ HTML_CONTENT = f"""
                 menuBtn: document.getElementById('menu-btn'),
                 sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'),
                 panelSettingsBtn: document.getElementById('panel-settings-btn'),
+                panelDebugBtn: document.getElementById('panel-debug-btn'),
                 panelQuitBtn: document.getElementById('panel-quit-btn'),
                 cancelBtn: document.getElementById('cancel-btn'),
                 progressTitle: document.getElementById('progress-title'),
@@ -1329,10 +1334,7 @@ HTML_CONTENT = f"""
                         // (NUEVO) Comprobar si se debe mostrar el panel de depuración
                         return pywebview.api.py_get_debug_status();
                     }}).then(isDebug => {{
-                        if (isDebug) {{
-                            console.log("Modo depuración activo, mostrando panel.");
-                            toggleDebugPanel(true);
-                        }}
+                        dom.panelDebugBtn.style.display = isDebug ? 'flex' : 'none';
                     }}).catch(e => {{
                         // Error en la cadena py_get_os_sep o py_load_saved_paths
                         console.error("Error en la cadena de carga inicial:", e);
@@ -1458,6 +1460,11 @@ HTML_CONTENT = f"""
                 switchScreen('settings');
                 validateSettings();
              }});
+            dom.panelDebugBtn.addEventListener('click', () => {{
+                const isVisible = dom.debugPanel.style.display === 'block';
+                toggleDebugPanel(!isVisible);
+                closeSidePanel();
+            }});
             dom.panelQuitBtn.addEventListener('click', () => {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} }});
 
             // --- Progress Screen Listeners ---
