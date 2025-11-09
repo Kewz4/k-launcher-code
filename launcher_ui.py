@@ -3,21 +3,15 @@ import sys
 
 # --- HTML Content Definition ---
 
-# Fuentes e Iconos
-FONT_FAMILIES = ["Inter:wght@400;500;700;900", "Montserrat:wght@900"]
-FONT_IMPORT_URL = f"https://fonts.googleapis.com/css2?family={'&family='.join(f.replace(' ', '+') for f in FONT_FAMILIES)}&display=swap"
+FONT_IMPORT_URL = f"https://fonts.googleapis.com/css2?family={'&family='.join(f.replace(' ', '+') for f in ['Inter:wght@400;500;700;900', 'Montserrat:wght@900'])}&display=swap"
 FONT_AWESOME_URL = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-
-# URL del logo desde GitLab
 LOGO_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main/minecraftlogo.png"
-
-# --- URLs de Música y Carátula desde GitLab (ACTUALIZADAS) ---
 URL_ALBUM_COVER = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/148f8426c0b238c82ff1d52cab94f0abbcb23685/albumcover.png"
-
-# Vimeo Embed Code con parámetros de fondo
 VIMEO_EMBED_SRC = "https://player.vimeo.com/video/1131522974?badge=0&autopause=0&player_id=0&app_id=58479&background=1&autoplay=1&loop=1&muted=1"
 
 
+# (CORREGIDO) HTML_CONTENT es ahora un f-string para inyectar variables directamente.
+# Todas las llaves literales de CSS/JS deben escaparse con {{ y }}.
 HTML_CONTENT = f"""
 <!DOCTYPE html>
 <html lang="es">
@@ -25,9 +19,7 @@ HTML_CONTENT = f"""
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vanilla+ Launcher</title>
-    <!-- Importar Fuentes -->
     <link rel="stylesheet" href="{FONT_IMPORT_URL}">
-    <!-- Importar Font Awesome -->
     <link rel="stylesheet" href="{FONT_AWESOME_URL}">
     <style>
         /* --- Reset y Fuentes --- */
@@ -198,80 +190,24 @@ HTML_CONTENT = f"""
         #menu-btn:hover {{ transform: scale(1.05); }}
         #menu-btn:active {{ transform: scale(0.95); }}
 
-        /* (NUEVO) Estilos para el panel de Debug */
-        #debug-panel {{
-            position: fixed;
-            bottom: calc(var(--player-height) + 25px); /* Justo encima del reproductor de música */
-            left: 15px;
-            width: var(--player-width); /* Mismo ancho que el reproductor */
-            background-color: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: var(--radius-md);
-            padding: 10px;
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 12px;
-            color: #ccc;
-            z-index: 1999; /* Debajo del reproductor pero encima de otros elementos */
-            display: none; /* Oculto por defecto */
-            backdrop-filter: blur(5px);
-        }}
-        #debug-panel h4 {{
-            margin-top: 0;
-            margin-bottom: 8px;
-            color: #fff;
-            font-weight: normal;
-            border-bottom: 1px solid rgba(255,255,255,0.2);
-            padding-bottom: 5px;
-            font-size: 13px;
-        }}
-        #debug-panel ul {{
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }}
-        #debug-panel li {{
-            margin-bottom: 4px;
-            transition: color 0.3s;
-            display: flex;
-            align-items: center;
-        }}
-        #debug-panel li .icon {{
-            margin-right: 8px;
-            width: 14px;
-            text-align: center;
-        }}
-        #debug-panel li .fa-times-circle {{
-            color: #e74c3c;
-        }}
-        #debug-panel li.detected {{
-            color: #2ecc71; /* Verde brillante */
-        }}
-        #debug-panel li.detected .fa-times-circle {{
-            display: none;
-        }}
-        #debug-panel li .fa-check-circle {{
-            display: none;
-        }}
-        #debug-panel li.detected .fa-check-circle {{
-            display: inline-block;
-        }}
-        #debug-panel .status-text {{
-            color: #fabd2f; /* Un amarillo para distinguirlo */
-            font-weight: bold;
-        }}
-
         /* --- Estilos Reproductor de Música --- */
         #music-player {{
             position: fixed; bottom: 15px; left: 15px;
             width: var(--player-width); height: var(--player-height);
-            background-color: transparent; backdrop-filter: none;
-            border-radius: var(--radius-md); border: none;
+            background-color: rgba(30, 30, 30, 0.5);
+            backdrop-filter: blur(5px);
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: var(--shadow);
-            z-index: 102;
+            z-index: 2000; /* (CORREGIDO) Aumentado para estar por encima de todo */
             display: none;
             flex-direction: column;
             padding: 8px 10px; overflow: visible;
             color: var(--color-text); text-shadow: var(--player-text-shadow);
+            transition: background-color 0.3s ease;
+        }}
+        #music-player:hover {{
+             background-color: rgba(40, 40, 40, 0.7);
         }}
         #music-player.visible {{
             display: flex;
@@ -378,6 +314,45 @@ HTML_CONTENT = f"""
         .minimized-progress-bar-container {{ width: 100%; height: 6px; background-color: var(--color-bg); border-radius: 3px; overflow: hidden; }}
         #minimized-progress-bar-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); border-radius: 3px; transition: width 0.3s ease; }}
 
+        /* --- (NUEVO) Panel de Depuración --- */
+        #debug-panel {{
+            display: none; /* Oculto por defecto */
+            position: fixed;
+            bottom: calc(var(--player-height) + 25px); /* Justo encima del reproductor */
+            left: 15px;
+            width: var(--player-width);
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-md);
+            padding: 10px;
+            font-family: 'Menlo', 'Courier New', monospace;
+            font-size: 12px;
+            color: #a7a7a7;
+            z-index: 2001; /* Encima del reproductor */
+            box-shadow: var(--shadow);
+            user-select: none;
+        }}
+        #debug-panel.visible {{
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }}
+        #debug-panel h4 {{
+            margin: 0 0 8px 0;
+            font-size: 13px;
+            color: var(--color-accent);
+            border-bottom: 1px solid var(--color-bg-lighter);
+            padding-bottom: 5px;
+        }}
+        #debug-panel div {{
+            display: flex;
+            justify-content: space-between;
+        }}
+        #debug-panel div span:last-child {{
+            font-weight: bold;
+            color: #fff;
+        }}
+
         /* --- Botones Generales --- */
         .btn {{ font-family: var(--font-family-sans); font-size: 14px; font-weight: 500; padding: 12px 16px; border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; }}
         .btn:focus-visible {{ box-shadow: 0 0 0 3px rgba(182, 80, 9, 0.4); }}
@@ -432,36 +407,6 @@ HTML_CONTENT = f"""
             <span class="menu-line"></span>
         </button>
 
-        <!-- Reproductor de Música -->
-        <div id="music-player">
-            <div class="player-top-row">
-                <img id="album-cover" src="{URL_ALBUM_COVER}" alt="Album Cover">
-                <div class="track-info">
-                    <span id="track-title">Cargando...</span>
-                    <span id="track-artist">...</span>
-                </div>
-                <div class="controls">
-                    <button id="play-pause-btn" class="control-btn" title="Play/Pause">
-                        <i class="fas fa-play"></i>
-                        <i class="fas fa-pause"></i>
-                    </button>
-                    <button id="next-btn" class="control-btn" title="Siguiente">
-                        <i class="fas fa-forward-step"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="player-bottom-row">
-                 <div id="progress-container">
-                      <div id="progress-bar"></div>
-                 </div>
-                 <div id="volume-container">
-                      <i id="volume-icon" class="fas fa-volume-high"></i>
-                      <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
-                 </div>
-            </div>
-        </div>
-        <!-- Elemento Audio (oculto) -->
-        <audio id="audio-element" preload="metadata"></audio>
     </div>
 
     <!-- Panel Lateral Deslizable -->
@@ -470,24 +415,12 @@ HTML_CONTENT = f"""
             <i class="fas fa-cog"></i>
             <span>Configuración</span>
         </button>
-        <button class="panel-button" id="panel-debug-btn">
-            <i class="fas fa-bug"></i>
-            <span>Debug Triggers</span>
-        </button>
         <button class="panel-button" id="panel-quit-btn">
             <i class="fas fa-sign-out-alt"></i>
             <span>Salir del Launcher</span>
         </button>
     </div>
     <div id="panel-overlay"></div>
-
-    <!-- (NUEVO) Panel de Debug -->
-    <div id="debug-panel">
-        <h4>Log Triggers Status</h4>
-        <ul id="debug-trigger-list">
-            <!-- Los triggers se llenarán aquí con JS -->
-        </ul>
-    </div>
 
     <!-- Pantalla de Progreso (Overlay) -->
     <div class="screen" id="screen-progress">
@@ -582,7 +515,7 @@ HTML_CONTENT = f"""
                     <p>Selecciona una carpeta donde deseas instalar Prism Launcher.</p>
                 </div>
                 <div class="wizard-step-content">
-                     <p style="font-size: 13px; color: var(--color-text-muted);">Esto usará Winget (gestor de paquetes de Windows) para una instalación automática y segura.</p>
+                     <p style="font-size: 13px; color: var(--color-text-muted);">Esto descargará la versión portable más reciente de Prism Launcher y la instalará en la carpeta que elijas.</p>
                     <button class="btn btn-primary" id="wizard-btn-install-location">
                         <i class="fas fa-folder-open"></i>
                         <span>Elegir Carpeta de Instalación</span>
@@ -684,82 +617,11 @@ HTML_CONTENT = f"""
         let isProgressMinimized = false;
         
         // (ACTUALIZADO) setupState ahora se usa para ambos flujos
-        let setupState = {{ "prismPath": null, "instancePath": null }};
+        let setupState = {{ prismPath: null, instancePath: null }};
         
-        const domPlayer = {{
-            player: document.getElementById('music-player'),
-            cover: document.getElementById('album-cover'),
-            title: document.getElementById('track-title'),
-            artist: document.getElementById('track-artist'),
-            audio: document.getElementById('audio-element'),
-            playPauseBtn: document.getElementById('play-pause-btn'),
-            nextBtn: document.getElementById('next-btn'),
-            progressContainer: document.getElementById('progress-container'),
-            progressBar: document.getElementById('progress-bar'),
-            volumeContainer: document.getElementById('volume-container'),
-            volumeIcon: document.getElementById('volume-icon'),
-            volumeSlider: document.getElementById('volume-slider')
-        }};
-
-        const dom = {{
-            loadingOverlay: document.getElementById('loading-overlay'), loadingSpinner: document.getElementById('loading-spinner'), loadingTitle: document.getElementById('loading-title'), loadingDetails: document.getElementById('loading-details'),
-            mainContainer: document.getElementById('main-container'),
-            screens: {{
-                initialSetup: document.getElementById('screen-initial-setup'), // (NUEVO)
-                settings: document.getElementById('screen-settings'), // (RENOMBRADO)
-                play: document.getElementById('screen-play'),
-                progress: document.getElementById('screen-progress'),
-            }},
-            // (NUEVO) Asistente de Configuración Inicial
-            wizard: {{
-                steps: document.querySelectorAll('#screen-initial-setup .wizard-step'),
-                btnAskYes: document.getElementById('wizard-btn-ask-yes'),
-                btnAskNo: document.getElementById('wizard-btn-ask-no'),
-                btnFindManual: document.getElementById('wizard-btn-find-manual'),
-                btnInstallLocation: document.getElementById('wizard-btn-install-location'),
-                btnCancelInstall: document.getElementById('wizard-btn-cancel-install'),
-                btnLoginOpen: document.getElementById('wizard-btn-login-open'),
-                btnLoginFinish: document.getElementById('wizard-btn-login-finish'),
-                installTitle: document.getElementById('wizard-install-title'),
-                installSubtitle: document.getElementById('wizard-install-subtitle'),
-                progressBar: document.getElementById('wizard-progress-bar-fill'),
-                progressLabel: document.getElementById('wizard-progress-label'),
-                console: document.getElementById('wizard-console'),
-            }},
-            // (RENOMBRADO) Pantalla de Ajustes
-            settings: {{
-                prismDisplay: document.getElementById('settings-prism-exe-display'),
-                prismText: document.getElementById('settings-prism-exe-text'),
-                browsePrismBtn: document.getElementById('settings-browse-prism-btn'),
-                instanceDisplay: document.getElementById('settings-instance-folder-display'),
-                instanceText: document.getElementById('settings-instance-folder-text'),
-                browseInstanceBtn: document.getElementById('settings-browse-instance-btn'),
-                saveBtn: document.getElementById('save-settings-btn')
-            }},
-            playBtn: document.getElementById('play-btn'),
-            menuBtn: document.getElementById('menu-btn'),
-            sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'),
-            panelSettingsBtn: document.getElementById('panel-settings-btn'), // (RENOMBRADO)
-            panelDebugBtn: document.getElementById('panel-debug-btn'),
-            panelQuitBtn: document.getElementById('panel-quit-btn'),
-            debug: {{
-                panel: document.getElementById('debug-panel'),
-                triggerList: document.getElementById('debug-trigger-list'),
-            }},
-            cancelBtn: document.getElementById('cancel-btn'),
-            progressTitle: document.getElementById('progress-title'),
-            progressBar: document.getElementById('progress-fill'),
-            progressLabel: document.getElementById('progress-label'),
-            console: document.getElementById('console'),
-            scrollBottomBtn: document.getElementById('scroll-bottom-btn'),
-            changelogContent: document.getElementById('changelog-content'),
-            modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
-            minimizeProgressBtn: document.getElementById('minimize-progress-btn'),
-            minimizedWidget: document.getElementById('minimized-progress-widget'),
-            minimizedProgressLabel: document.getElementById('minimized-progress-label'),
-            minimizedProgressPercent: document.getElementById('minimized-progress-percent'),
-            minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill')
-        }};
+        // (CORREGIDO) Declarar variables aquí, pero asignarlas dentro de DOMContentLoaded
+        let domPlayer;
+        let dom;
 
         // --- Lógica del Reproductor de Música ---
         let playlist = [];
@@ -784,7 +646,7 @@ HTML_CONTENT = f"""
             if (!isPlaying) {{
                 domPlayer.player.classList.remove('playing');
             }}
-            console.log(`Track loaded: ${{track.title}}`);
+            console.log('Track loaded: ' + track.title);
         }}
 
         function playTrack() {{
@@ -797,7 +659,7 @@ HTML_CONTENT = f"""
                 playPromise.then(_ => {{
                     isPlaying = true;
                     domPlayer.player.classList.add('playing');
-                    console.log(`Playing: ${{playlist[currentTrackIndex].title}}`);
+                    console.log('Playing: ' + playlist[currentTrackIndex].title);
                 }})
                 .catch(error => {{
                     console.error("Error starting playback:", error);
@@ -808,7 +670,7 @@ HTML_CONTENT = f"""
                  if (!domPlayer.audio.paused) {{
                       isPlaying = true;
                       domPlayer.player.classList.add('playing');
-                      console.log(`Playing (legacy): ${{playlist[currentTrackIndex].title}}`);
+                      console.log('Playing (legacy): ' + playlist[currentTrackIndex].title);
                  }} else {{
                       console.error("Playback failed (legacy).");
                       isPlaying = false;
@@ -821,7 +683,7 @@ HTML_CONTENT = f"""
             domPlayer.audio.pause();
             isPlaying = false;
             domPlayer.player.classList.remove('playing');
-            console.log(`Paused: ${{playlist[currentTrackIndex].title}}`);
+            console.log('Paused: ' + playlist[currentTrackIndex].title);
         }}
 
         function nextTrack() {{
@@ -840,7 +702,7 @@ HTML_CONTENT = f"""
         function updateProgressUI() {{
             if (domPlayer.audio.duration && isFinite(domPlayer.audio.duration)) {{
                 const percentage = (domPlayer.audio.currentTime / domPlayer.audio.duration) * 100;
-                domPlayer.progressBar.style.width = `${{percentage}}%`;
+                domPlayer.progressBar.style.width = percentage + '%';
             }} else {{
                 domPlayer.progressBar.style.width = '0%';
             }}
@@ -889,8 +751,7 @@ HTML_CONTENT = f"""
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); loadingAnimationId = null; }}
 
             // Mostrar reproductor si NO estamos en una pantalla de setup/settings
-            const musicPlayerShouldBeVisible = (screenName !== 'initial-setup' && screenName !== 'settings');
-            domPlayer.player.classList.toggle('visible', musicPlayerShouldBeVisible);
+            domPlayer.player.classList.add('visible');
 
             // Mostrar pantalla de juego (fondo)
             dom.screens.play.style.display = 'flex';
@@ -1010,10 +871,13 @@ HTML_CONTENT = f"""
         }}
         
         function startLoadingAnimation(durationSeconds) {{
-            if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); }}
+            if (loadingAnimationId) {{
+                cancelAnimationFrame(loadingAnimationId);
+            }}
             const startTime = performance.now();
-            const durationMs = (durationSeconds || 60) * 1000;
+            const durationMs = (durationSeconds || 400) * 1000;
 
+            // Resetear estilos y eliminar transiciones CSS para un control total.
             dom.progressBar.style.transition = 'none';
             dom.progressBar.style.width = '0%';
             dom.minimizedProgressBarFill.style.transition = 'none';
@@ -1023,16 +887,21 @@ HTML_CONTENT = f"""
 
             function animateProgress(currentTime) {{
                 const elapsedTime = currentTime - startTime;
-                let progress = Math.min(0.99, elapsedTime / durationMs);
-                let percent = (progress * 100);
-                let percentText = Math.round(percent) + '%';
+                // Calcular el progreso, asegurando que no exceda el 99% para esperar la señal final.
+                const progress = Math.min(0.99, elapsedTime / durationMs);
+                const percent = progress * 100;
+                const percentText = Math.round(percent) + '%';
+
+                // Actualizar ambas barras de progreso simultáneamente.
                 dom.progressBar.style.width = percent + '%';
                 dom.minimizedProgressBarFill.style.width = percent + '%';
                 dom.minimizedProgressPercent.textContent = percentText;
 
-                if (loadingAnimationId && elapsedTime < durationMs) {{
+                // Continuar la animación si el tiempo no ha transcurrido.
+                if (elapsedTime < durationMs) {{
                     loadingAnimationId = requestAnimationFrame(animateProgress);
-                }} else if (loadingAnimationId) {{
+                }} else {{
+                    // La animación ha terminado, asegurar que se detenga en 99%.
                     dom.progressBar.style.width = '99%';
                     dom.minimizedProgressBarFill.style.width = '99%';
                     dom.minimizedProgressPercent.textContent = '99%';
@@ -1040,16 +909,8 @@ HTML_CONTENT = f"""
                 }}
             }}
             
-            requestAnimationFrame(() => {{
-                dom.progressBar.style.transition = 'none';
-                dom.minimizedProgressBarFill.style.transition = 'none';
-                requestAnimationFrame(() => {{
-                    const transitionStyle = 'width ' + (durationMs / 1000) + 's linear';
-                    dom.progressBar.style.transition = transitionStyle;
-                    dom.minimizedProgressBarFill.style.transition = transitionStyle;
-                    loadingAnimationId = requestAnimationFrame(animateProgress);
-                }});
-            }});
+            // Iniciar el bucle de animación.
+            loadingAnimationId = requestAnimationFrame(animateProgress);
         }}
 
         function showResult(success, title, details) {{ try {{ lastUpdateWasSuccess = !!success; dom.modal.icon.textContent = success ? '✅' : '❌'; dom.modal.title.textContent = title || (success ? 'Éxito' : 'Error'); dom.modal.details.innerHTML = details || (success ? "Proceso completado." : "Ocurrió un error."); dom.modal.element.style.display = 'flex'; }} catch (e) {{ console.error("Error en showResult:", e); }} }}
@@ -1262,88 +1123,109 @@ HTML_CONTENT = f"""
         }}
         
         function onTaskError(taskName, error) {{
-            console.error(`Error en tarea '${{taskName}}':`, error);
-            showResult(false, `Error en ${{taskName}}`, error);
+            console.error("Error en tarea '" + taskName + "':", error);
+            showResult(false, 'Error en ' + taskName, error);
             showWizardStep('ask-installed'); // Volver al inicio
-        }}
-
-        // --- (NUEVO) Lógica del Panel de Debug ---
-
-        function populateDebugTriggers() {{
-            try {{
-                pywebview.api.py_get_debug_triggers().then(triggers => {{
-                    if (!triggers) return;
-                    dom.debug.triggerList.innerHTML = '';
-                    triggers.forEach(trigger => {{
-                        const li = document.createElement('li');
-                        li.id = `debug-trigger-${{trigger.key}}`;
-
-                        let statusText = '';
-                        if (trigger.count_target) {{
-                            li.dataset.countTarget = trigger.count_target;
-                            statusText = `(<span class="status-text">0/${{trigger.count_target}}</span>)`;
-                        }}
-
-                        li.innerHTML = `
-                            <span class="icon">
-                                <i class="fas fa-times-circle"></i>
-                                <i class="fas fa-check-circle"></i>
-                            </span>
-                            <span>${{trigger.label}} ${{statusText}}</span>
-                        `;
-                        dom.debug.triggerList.appendChild(li);
-                    }});
-                }});
-            }} catch(e) {{
-                console.error("Error populando triggers de debug:", e);
-            }}
-        }}
-
-        function updateDebugTriggerState(key, stateValue) {{
-            const triggerElement = document.getElementById(`debug-trigger-${{key}}`);
-            if (!triggerElement) return;
-
-            const countTarget = triggerElement.dataset.countTarget;
-
-            if (countTarget) {{
-                // Es un trigger de contador
-                const statusTextElement = triggerElement.querySelector('.status-text');
-                if (statusTextElement) {{
-                    statusTextElement.textContent = `(${{stateValue}}/${{countTarget}})`;
-                }}
-
-                // Marcar como detectado solo si se alcanza el objetivo
-                if (stateValue >= parseInt(countTarget, 10)) {{
-                    triggerElement.classList.add('detected');
-                }} else {{
-                    triggerElement.classList.remove('detected');
-                }}
-            }} else {{
-                // Es un trigger booleano simple
-                if (stateValue) {{
-                    triggerElement.classList.add('detected');
-                }} else {{
-                    triggerElement.classList.remove('detected');
-                }}
-            }}
-        }}
-
-        function toggleDebugPanel() {{
-            const isVisible = dom.debug.panel.style.display === 'block';
-            dom.debug.panel.style.display = isVisible ? 'none' : 'block';
-            console.log(`Debug panel ${{isVisible ? "hidden" : "shown"}}`);
         }}
 
 
         // --- Event Listeners ---
+        // (CORREGIDO) Separar la lógica de pywebviewready y DOMContentLoaded
+
+        // 1. Esperar a que la API de Python esté lista
         window.addEventListener('pywebviewready', () => {{
-            window.quitting = false;
-            
-            // (NUEVO) Envolver la lógica de INICIO en un setTimeout
-            // para dar tiempo a que la API de Python se vincule completamente.
-            setTimeout(() => {{
+            console.log("pywebviewready: La API de Python está lista.");
+            window.pywebview.apiReady = true; // Establecer una bandera global
+
+            // Adjuntar listeners que dependen únicamente de la API y no del DOM
+            // (Ninguno en este caso, pero es buena práctica tenerlo aquí)
+        }});
+
+        // 2. Esperar a que el DOM esté completamente cargado
+        document.addEventListener('DOMContentLoaded', () => {{
+            console.log("DOMContentLoaded: El DOM está completamente cargado.");
+
+            // (CORREGIDO) Asignar las constantes del DOM aquí, ahora que el HTML está cargado.
+            domPlayer = {{
+                player: document.getElementById('music-player'),
+                cover: document.getElementById('album-cover'),
+                title: document.getElementById('track-title'),
+                artist: document.getElementById('track-artist'),
+                audio: document.getElementById('audio-element'),
+                playPauseBtn: document.getElementById('play-pause-btn'),
+                nextBtn: document.getElementById('next-btn'),
+                progressContainer: document.getElementById('progress-container'),
+                progressBar: document.getElementById('progress-bar'),
+                volumeContainer: document.getElementById('volume-container'),
+                volumeIcon: document.getElementById('volume-icon'),
+                volumeSlider: document.getElementById('volume-slider')
+            }};
+
+            dom = {{
+                loadingOverlay: document.getElementById('loading-overlay'), loadingSpinner: document.getElementById('loading-spinner'), loadingTitle: document.getElementById('loading-title'), loadingDetails: document.getElementById('loading-details'),
+                mainContainer: document.getElementById('main-container'),
+                screens: {{
+                    initialSetup: document.getElementById('screen-initial-setup'),
+                    settings: document.getElementById('screen-settings'),
+                    play: document.getElementById('screen-play'),
+                    progress: document.getElementById('screen-progress'),
+                }},
+                wizard: {{
+                    steps: document.querySelectorAll('#screen-initial-setup .wizard-step'),
+                    btnAskYes: document.getElementById('wizard-btn-ask-yes'),
+                    btnAskNo: document.getElementById('wizard-btn-ask-no'),
+                    btnFindManual: document.getElementById('wizard-btn-find-manual'),
+                    btnInstallLocation: document.getElementById('wizard-btn-install-location'),
+                    btnCancelInstall: document.getElementById('wizard-btn-cancel-install'),
+                    btnLoginOpen: document.getElementById('wizard-btn-login-open'),
+                    btnLoginFinish: document.getElementById('wizard-btn-login-finish'),
+                    installTitle: document.getElementById('wizard-install-title'),
+                    installSubtitle: document.getElementById('wizard-install-subtitle'),
+                    progressBar: document.getElementById('wizard-progress-bar-fill'),
+                    progressLabel: document.getElementById('wizard-progress-label'),
+                    console: document.getElementById('wizard-console'),
+                }},
+                settings: {{
+                    prismDisplay: document.getElementById('settings-prism-exe-display'),
+                    prismText: document.getElementById('settings-prism-exe-text'),
+                    browsePrismBtn: document.getElementById('settings-browse-prism-btn'),
+                    instanceDisplay: document.getElementById('settings-instance-folder-display'),
+                    instanceText: document.getElementById('settings-instance-folder-text'),
+                    browseInstanceBtn: document.getElementById('settings-browse-instance-btn'),
+                    saveBtn: document.getElementById('save-settings-btn')
+                }},
+                playBtn: document.getElementById('play-btn'),
+                menuBtn: document.getElementById('menu-btn'),
+                sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'),
+                panelSettingsBtn: document.getElementById('panel-settings-btn'),
+                panelQuitBtn: document.getElementById('panel-quit-btn'),
+                cancelBtn: document.getElementById('cancel-btn'),
+                progressTitle: document.getElementById('progress-title'),
+                progressBar: document.getElementById('progress-fill'),
+                progressLabel: document.getElementById('progress-label'),
+                console: document.getElementById('console'),
+                scrollBottomBtn: document.getElementById('scroll-bottom-btn'),
+                changelogContent: document.getElementById('changelog-content'),
+                modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
+                minimizeProgressBtn: document.getElementById('minimize-progress-btn'),
+                minimizedWidget: document.getElementById('minimized-progress-widget'),
+                minimizedProgressLabel: document.getElementById('minimized-progress-label'),
+                minimizedProgressPercent: document.getElementById('minimized-progress-percent'),
+                minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill')
+            }};
+
+            // Función para iniciar la aplicación una vez que AMBOS eventos han ocurrido
+            function initializeApp() {{
+                if (!window.pywebview || !window.pywebview.apiReady) {{
+                    console.log("La API de pywebview no está lista todavía, esperando...");
+                    setTimeout(initializeApp, 50); // Volver a comprobar en 50ms
+                    return;
+                }}
+
+                console.log("¡DOM y API listos! Inicializando la aplicación...");
+                window.quitting = false;
+
                 try {{
-                    console.log("pywebviewready -> setTimeout -> API check...");
                     // 1. Iniciar la cadena de llamadas a la API
                     pywebview.api.py_get_os_sep().then(sep => {{
                         osSep = sep || '/';
@@ -1352,7 +1234,7 @@ HTML_CONTENT = f"""
                         // 2. Cargar la música (paralelamente)
                         pywebview.api.py_get_playlist().then(newPlaylist => {{
                             if (newPlaylist && newPlaylist.length > 0) {{
-                                console.log(`Playlist cargada desde Python con ${{newPlaylist.length}} canciones.`);
+                                console.log('Playlist cargada desde Python con ' + newPlaylist.length + ' canciones.');
                                 playlist = newPlaylist;
                                 loadTrack(0);
                                 domPlayer.audio.play().then(() => {{
@@ -1372,7 +1254,7 @@ HTML_CONTENT = f"""
                              domPlayer.artist.textContent = "Fallo al conectar con Python.";
                         }});
                         
-                        // 3. Setear volumen inicial
+                        // 3. Setear volumen inicial (AHORA SEGURO)
                         setVolume();
 
                         // 4. Decidir qué pantalla mostrar
@@ -1386,10 +1268,6 @@ HTML_CONTENT = f"""
                              pywebview.api.py_toggle_fullscreen();
                              startInitialSetupWizard();
                         }}
-
-                        // (NUEVO) Popular el panel de debug independientemente del resultado
-                        populateDebugTriggers();
-
                     }}).catch(e => {{
                         // Error en la cadena py_get_os_sep o py_load_saved_paths
                         console.error("Error en la cadena de carga inicial:", e);
@@ -1401,11 +1279,14 @@ HTML_CONTENT = f"""
                 }} catch (e) {{
                     showLoadingError("Error Fatal", "API Python no disponible (catch principal): " + e); 
                 }}
-            }}, 400); // 100ms de retraso para asegurar que la API esté vinculada
+            }}
+
+            // Iniciar el proceso de inicialización
+            initializeApp();
 
 
-            // --- Adjuntar todos los demás listeners de UI aquí ---
-            // (Estos no se ejecutan hasta que el usuario hace clic, para entonces la API estará lista)
+            // --- Adjuntar todos los listeners de UI aquí ---
+            // (Ahora es seguro porque el DOM está cargado)
 
             // --- Asistente Listeners ---
             dom.wizard.btnAskYes.addEventListener('click', () => showWizardStep('find-manual'));
@@ -1512,10 +1393,6 @@ HTML_CONTENT = f"""
                 switchScreen('settings');
                 validateSettings();
              }});
-            dom.panelDebugBtn.addEventListener('click', () => {{
-                toggleDebugPanel();
-                closeSidePanel(); // Cerrar el menú lateral después de hacer clic
-            }});
             dom.panelQuitBtn.addEventListener('click', () => {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} }});
 
             // --- Progress Screen Listeners ---
@@ -1527,6 +1404,13 @@ HTML_CONTENT = f"""
 
             dom.minimizeProgressBtn.addEventListener('click', () => {{
                 isProgressMinimized = true;
+
+                // (CORREGIDO) Sincronizar la barra minimizada con la principal ANTES de mostrarla
+                const currentMainWidth = dom.progressBar.style.width;
+                dom.minimizedProgressBarFill.style.transition = 'none';
+                dom.minimizedProgressBarFill.style.width = currentMainWidth;
+                setTimeout(() => {{ dom.minimizedProgressBarFill.style.transition = 'width 0.3s ease'; }}, 50);
+
                 dom.screens.progress.style.display = 'none';
                 dom.screens.progress.classList.remove('active');
                 dom.minimizedWidget.style.display = 'flex';
@@ -1562,6 +1446,43 @@ HTML_CONTENT = f"""
             console.log("Initial event listeners attached.");
         }});
     </script>
+        <!-- Reproductor de Música -->
+        <div id="music-player">
+            <div class="player-top-row">
+                <img id="album-cover" src="{URL_ALBUM_COVER}" alt="Album Cover">
+                <div class="track-info">
+                    <span id="track-title">Cargando...</span>
+                    <span id="track-artist">...</span>
+                </div>
+                <div class="controls">
+                    <button id="play-pause-btn" class="control-btn" title="Play/Pause">
+                        <i class="fas fa-play"></i>
+                        <i class="fas fa-pause"></i>
+                    </button>
+                    <button id="next-btn" class="control-btn" title="Siguiente">
+                        <i class="fas fa-forward-step"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="player-bottom-row">
+                 <div id="progress-container">
+                      <div id="progress-bar"></div>
+                 </div>
+                 <div id="volume-container">
+                      <i id="volume-icon" class="fas fa-volume-high"></i>
+                      <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+                 </div>
+            </div>
+        </div>
+        <!-- (NUEVO) Panel de Depuración -->
+        <div id="debug-panel">
+            <h4>Debug Info</h4>
+            <div><span>Unmute Trigger Count:</span><span id="debug-unmute-count">0</span></div>
+            <div><span>Game Ready Event:</span><span id="debug-gameready-event">false</span></div>
+            <div><span>Unmute Event:</span><span id="debug-unmute-event">false</span></div>
+        </div>
+        <!-- Elemento Audio (oculto) -->
+        <audio id="audio-element" preload="metadata"></audio>
 </body>
 </html>
 """
