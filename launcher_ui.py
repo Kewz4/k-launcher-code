@@ -314,43 +314,55 @@ HTML_CONTENT = f"""
         .minimized-progress-bar-container {{ width: 100%; height: 6px; background-color: var(--color-bg); border-radius: 3px; overflow: hidden; }}
         #minimized-progress-bar-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); border-radius: 3px; transition: width 0.3s ease; }}
 
-        /* --- (NUEVO) Panel de Depuración --- */
+        /* --- Panel de Depuración --- */
         #debug-panel {{
-            display: none; /* Oculto por defecto */
             position: fixed;
-            bottom: calc(var(--player-height) + 25px); /* Justo encima del reproductor */
-            left: 15px;
-            width: var(--player-width);
-            background-color: rgba(0, 0, 0, 0.7);
+            top: 20px;
+            right: 20px;
+            width: 280px;
+            background-color: rgba(26, 26, 26, 0.8);
             backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: var(--radius-md);
-            padding: 10px;
-            font-family: 'Menlo', 'Courier New', monospace;
-            font-size: 12px;
-            color: #a7a7a7;
-            z-index: 2001; /* Encima del reproductor */
+            border: 1px solid var(--color-bg-lighter);
             box-shadow: var(--shadow);
-            user-select: none;
+            z-index: 5000;
+            color: var(--color-text);
+            padding: 12px;
+            display: none; /* Oculto por defecto */
+            font-size: 12px;
         }}
-        #debug-panel.visible {{
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }}
-        #debug-panel h4 {{
-            margin: 0 0 8px 0;
-            font-size: 13px;
+        #debug-panel h3 {{
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-align: center;
             color: var(--color-accent);
-            border-bottom: 1px solid var(--color-bg-lighter);
-            padding-bottom: 5px;
         }}
-        #debug-panel div {{
+        .debug-trigger {{
             display: flex;
             justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--color-bg-lighter);
         }}
-        #debug-panel div span:last-child {{
-            font-weight: bold;
-            color: #fff;
+        .debug-trigger:last-child {{
+            border-bottom: none;
+        }}
+        .debug-trigger-name {{
+            font-weight: 500;
+        }}
+        .debug-trigger-status {{
+            font-weight: 700;
+            padding: 3px 6px;
+            border-radius: 4px;
+        }}
+        .debug-trigger-status.pending {{
+            color: #fdd835; /* Amarillo */
+            background-color: rgba(253, 216, 53, 0.1);
+        }}
+        .debug-trigger-status.triggered {{
+            color: var(--color-success);
+            background-color: rgba(67, 160, 71, 0.1);
         }}
 
         /* --- Botones Generales --- */
@@ -608,6 +620,19 @@ HTML_CONTENT = f"""
         </div>
     </div>
 
+    <!-- Panel de Depuración -->
+    <div id="debug-panel">
+        <h3>Debug Triggers</h3>
+        <div class="debug-trigger">
+            <span class="debug-trigger-name">Quitar Mute (2/2)</span>
+            <span id="debug-unmute-status" class="debug-trigger-status pending">PENDIENTE</span>
+        </div>
+        <div class="debug-trigger">
+            <span class="debug-trigger-name">Cerrar Launcher</span>
+            <span id="debug-close-status" class="debug-trigger-status pending">PENDIENTE</span>
+        </div>
+    </div>
+
     <script>
         // --- Puente JS <-> Python ---
         let osSep = '/';
@@ -622,6 +647,35 @@ HTML_CONTENT = f"""
         // (CORREGIDO) Declarar variables aquí, pero asignarlas dentro de DOMContentLoaded
         let domPlayer;
         let dom;
+
+        // --- Lógica del Panel de Depuración ---
+        function toggleDebugPanel(visible) {{
+            if (dom && dom.debugPanel) {{
+                dom.debugPanel.style.display = visible ? 'block' : 'none';
+            }}
+        }}
+
+        function updateDebugPanel(unmute_status, close_status) {{
+            if (dom && dom.debugUnmuteStatus && dom.debugCloseStatus) {{
+                // Actualizar estado de Quitar Mute
+                dom.debugUnmuteStatus.textContent = unmute_status;
+                dom.debugUnmuteStatus.className = 'debug-trigger-status'; // Reset class
+                if (unmute_status === 'TRIGGERED') {{
+                    dom.debugUnmuteStatus.classList.add('triggered');
+                }} else {{
+                    dom.debugUnmuteStatus.classList.add('pending');
+                }}
+
+                // Actualizar estado de Cerrar Launcher
+                dom.debugCloseStatus.textContent = close_status;
+                dom.debugCloseStatus.className = 'debug-trigger-status'; // Reset class
+                if (close_status === 'TRIGGERED') {{
+                    dom.debugCloseStatus.classList.add('triggered');
+                }} else {{
+                    dom.debugCloseStatus.classList.add('pending');
+                }}
+            }}
+        }}
 
         // --- Lógica del Reproductor de Música ---
         let playlist = [];
@@ -1211,7 +1265,10 @@ HTML_CONTENT = f"""
                 minimizedWidget: document.getElementById('minimized-progress-widget'),
                 minimizedProgressLabel: document.getElementById('minimized-progress-label'),
                 minimizedProgressPercent: document.getElementById('minimized-progress-percent'),
-                minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill')
+                minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill'),
+                debugPanel: document.getElementById('debug-panel'),
+                debugUnmuteStatus: document.getElementById('debug-unmute-status'),
+                debugCloseStatus: document.getElementById('debug-close-status')
             }};
 
             // Función para iniciar la aplicación una vez que AMBOS eventos han ocurrido
@@ -1267,6 +1324,14 @@ HTML_CONTENT = f"""
                              console.log("Rutas no válidas. Iniciando asistente.");
                              pywebview.api.py_toggle_fullscreen();
                              startInitialSetupWizard();
+                        }}
+
+                        // (NUEVO) Comprobar si se debe mostrar el panel de depuración
+                        return pywebview.api.py_get_debug_status();
+                    }}).then(isDebug => {{
+                        if (isDebug) {{
+                            console.log("Modo depuración activo, mostrando panel.");
+                            toggleDebugPanel(true);
                         }}
                     }}).catch(e => {{
                         // Error en la cadena py_get_os_sep o py_load_saved_paths
@@ -1473,13 +1538,6 @@ HTML_CONTENT = f"""
                       <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
                  </div>
             </div>
-        </div>
-        <!-- (NUEVO) Panel de Depuración -->
-        <div id="debug-panel">
-            <h4>Debug Info</h4>
-            <div><span>Unmute Trigger Count:</span><span id="debug-unmute-count">0</span></div>
-            <div><span>Game Ready Event:</span><span id="debug-gameready-event">false</span></div>
-            <div><span>Unmute Event:</span><span id="debug-unmute-event">false</span></div>
         </div>
         <!-- Elemento Audio (oculto) -->
         <audio id="audio-element" preload="metadata"></audio>
