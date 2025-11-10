@@ -972,10 +972,18 @@ class ModpackLauncherAPI:
             # Silenciar el PID objetivo
             start_time = time.time()
             session_found = False
-            while time.time() - start_time < 60:
+            # (NUEVO) Aumentado a 90 segundos para dar tiempo a que se inicialice el audio.
+            while time.time() - start_time < 90:
                 if self.cancel_event.is_set(): return
 
                 sessions = AudioUtilities.GetAllSessions()
+                if not sessions:
+                    self._log("[Audio Debug] No se encontraron sesiones de audio en esta iteración.")
+                else:
+                    # (NUEVO) Registro de depuración para cada sesión encontrada
+                    session_info = [f"'{s.Process.name()}' (PID: {s.Process.pid})" for s in sessions if s.Process]
+                    self._log(f"[Audio Debug] Sesiones encontradas: [{', '.join(session_info)}]")
+
                 for session in sessions:
                     try:
                         if session.Process and session.Process.pid == target_pid:
@@ -994,10 +1002,10 @@ class ModpackLauncherAPI:
 
                 if session_found:
                     break
-                time.sleep(0.5)
+                time.sleep(1) # Aumentado a 1 segundo para reducir spam de logs
 
             if not muted_sessions:
-                self._log(f"[Audio] ADVERTENCIA: Se encontró el proceso 'javaw.exe' (PID: {target_pid}), pero no se encontró su sesión de audio para silenciar.")
+                self._log(f"[Audio] ADVERTENCIA: Se encontró el proceso 'javaw.exe' (PID: {target_pid}), pero no se encontró su sesión de audio tras 90s para silenciar.")
                 return
 
             # Esperar la señal para reactivar el sonido
@@ -1913,73 +1921,63 @@ class ModpackLauncherAPI:
                 # Fase Borrado
                 self._log(f"  [{ver}] Procesando eliminaciones...")
 
-                # (NUEVA LÓGICA DE ELIMINACIÓN) - Se ejecuta ANTES para asegurar que directorios completos se borren primero.
-                files_to_process = {
-                    'removedshaderpacks.txt': 'shaderpacks',
-                    'removedconfigs.txt': 'config'
-                }
+                # (LÓGICA DE ELIMINACIÓN CORREGIDA)
+                # Busca 'removed...' en las subcarpetas del paquete de actualización, no en la raíz.
+                folders_to_check_for_removal = ['config', 'shaderpacks', 'mods']
 
-                for filename, target_dir in files_to_process.items():
-                    list_path = os.path.join(update_version_path, filename)
+                for folder_name in folders_to_check_for_removal:
+                    removal_filename = f"removed{folder_name}.txt"
+                    # Ruta al archivo de texto DENTRO de la carpeta de origen (p.ej. .../1.3/shaderpacks/removedshaderpacks.txt)
+                    list_path = os.path.join(update_version_path, folder_name, removal_filename)
+
                     if os.path.exists(list_path):
-                        self._log(f"    Procesando '{filename}'...")
-                        target_base_abs = os.path.join(folder_path, target_dir)
+                        self._log(f"    Procesando archivo de eliminación encontrado: '{folder_name}/{removal_filename}'...")
+                        # Ruta a la carpeta de destino en la instancia del usuario (p.ej. .../minecraft/shaderpacks)
+                        target_base_abs = os.path.join(folder_path, folder_name)
 
                         try:
                             with open(list_path, 'r', encoding='utf-8') as f_rem:
                                 lines = [line.strip() for line in f_rem if line.strip()]
 
                             if "all" in [line.lower() for line in lines]:
-                                self._log(f"      - [LOG] Palabra clave 'all' encontrada para '{filename}'. Reemplazando directorio '{target_dir}'.")
+                                self._log(f"      - [LOG] Palabra clave 'all' encontrada. Vaciando directorio '{folder_name}'.")
 
                                 if os.path.exists(target_base_abs) and os.path.isdir(target_base_abs):
-                                    self._log(f"      - [LOG] El directorio existe. Procediendo a respaldar y vaciar.")
-                                    bname = f"DIR_FULL_{target_dir}".replace(os.sep, '_')[:150]
-
-                                    # Respaldar la carpeta completa para la restauración
-                                    if not any(rf[0] == ("", target_dir) for rf in self.removed_files):
+                                    bname = f"DIR_FULL_{folder_name}".replace(os.sep, '_')[:150]
+                                    if not any(rf[0] == ("", folder_name) for rf in self.removed_files):
                                         try:
                                             bpath = os.path.join(self.backup_dir, bname)
                                             shutil.copytree(target_base_abs, bpath, dirs_exist_ok=True)
-                                            self.removed_files.append((("", target_dir), bname)) # Registra que la carpeta original fue "eliminada"
-                                            self._log(f"        - [LOG] Respaldo completo de '{target_dir}' creado en '{bname}'.")
+                                            self.removed_files.append((("", folder_name), bname))
+                                            self._log(f"        - [LOG] Respaldo completo de '{folder_name}' creado.")
                                         except Exception as bk_err:
-                                            self._log(f"        - ERROR CRÍTICO al respaldar '{target_dir}': {bk_err}. Saltando.")
+                                            self._log(f"        - ERROR CRÍTICO al respaldar '{folder_name}': {bk_err}. Saltando.")
                                             continue
 
-                                    # Vaciar el directorio eliminando y recreando
                                     try:
                                         shutil.rmtree(target_base_abs)
                                         os.makedirs(target_base_abs)
-                                        self._log(f"        - [LOG] Directorio '{target_dir}' vaciado con éxito.")
+                                        self._log(f"        - [LOG] Directorio '{folder_name}' vaciado con éxito.")
                                     except Exception as empty_err:
-                                        self._log(f"      - ERROR CRÍTICO al vaciar el directorio '{target_dir}': {empty_err}.")
-                                        raise IOError(f"No se pudo vaciar el directorio {target_dir}") from empty_err
+                                        raise IOError(f"No se pudo vaciar el directorio {folder_name}") from empty_err
                                 else:
-                                    self._log(f"      - [LOG] Directorio '{target_base_abs}' no existe. Creándolo.")
-                                    try:
-                                        os.makedirs(target_base_abs, exist_ok=True)
-                                        # Si creamos la carpeta, la reversión debería eliminarla.
-                                        if not any(af == ("", target_dir) for af in self.added_files):
-                                            self.added_files.append(("", target_dir))
-                                    except Exception as create_err:
-                                        raise IOError(f"No se pudo crear el directorio {target_dir}") from create_err
-                                continue # Pasar al siguiente archivo de la lista
+                                    self._log(f"      - [LOG] Directorio de destino '{folder_name}' no existe. No se necesita vaciar.")
+                                continue
 
                             for item_rel in lines:
-                                if self.cancel_event.is_set(): raise InterruptedError("Cancelado durante eliminación de shaders/configs.")
+                                if self.cancel_event.is_set(): raise InterruptedError("Cancelado durante eliminación.")
                                 item_abs_to_remove = os.path.join(target_base_abs, item_rel.replace('/', os.sep))
-                                log_remove_path = os.path.join(target_dir, item_rel)
+                                log_remove_path = os.path.join(folder_name, item_rel)
 
                                 if os.path.exists(item_abs_to_remove):
                                     try:
                                         bname = log_remove_path.replace(os.sep, '_')[:150]
-                                        bpath = os.path.join(self.backup_dir, bname)
-                                        if not any(rf[0] == (target_dir, item_rel) for rf in self.removed_files):
+                                        if not any(rf[0] == (folder_name, item_rel) for rf in self.removed_files):
+                                             bpath = os.path.join(self.backup_dir, bname)
                                              os.makedirs(os.path.dirname(bpath), exist_ok=True)
                                              if os.path.isdir(item_abs_to_remove): shutil.copytree(item_abs_to_remove, bpath, dirs_exist_ok=True)
                                              else: shutil.copy2(item_abs_to_remove, bpath)
-                                             self.removed_files.append(((target_dir, item_rel), bname))
+                                             self.removed_files.append(((folder_name, item_rel), bname))
 
                                         if os.path.isdir(item_abs_to_remove): shutil.rmtree(item_abs_to_remove)
                                         else: os.remove(item_abs_to_remove)
@@ -1987,7 +1985,7 @@ class ModpackLauncherAPI:
                                     except Exception as del_err:
                                         self._log(f"        - ERROR eliminando '{log_remove_path}': {del_err}")
                         except Exception as read_list_err:
-                            self._log(f"    - ERROR leyendo lista '{filename}': {read_list_err}")
+                            self._log(f"    - ERROR leyendo lista '{removal_filename}': {read_list_err}")
 
                 # (LÓGICA ANTERIOR) - Procesar eliminaciones genéricas
                 for root, _, files in os.walk(update_version_path):
@@ -2154,9 +2152,12 @@ class ModpackLauncherAPI:
             dest_item_path = os.path.join(dest_folder, item_name)
             current_rel_path = os.path.join(base_rel_folder, item_name)
 
-            if item_name.lower() == 'modsinfo.txt' and base_rel_folder.lower() == 'mods':
+            # (CORREGIDO) Excluir todos los archivos 'removed...txt' de ser copiados.
+            if item_name.lower().startswith('removed') and item_name.lower().endswith('.txt'):
+                self._log(f"                  - Ignorando archivo de control: {os.path.join(base_rel_folder, item_name)}")
                 continue
-            if item_name.lower() == 'removed_mods.txt' and base_rel_folder.lower() == 'mods':
+
+            if item_name.lower() == 'modsinfo.txt' and base_rel_folder.lower() == 'mods':
                 continue
 
             try:
