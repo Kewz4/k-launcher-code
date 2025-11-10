@@ -933,94 +933,79 @@ class ModpackLauncherAPI:
     def _audio_muter_thread(self, prism_process):
         """
         (MODIFICADO)
-        Hilo que busca y silencia el proceso de Prism dado y su hijo javaw.exe.
+        Hilo que busca y silencia cualquier proceso 'javaw.exe' en todo el sistema.
         """
         if not IS_WINDOWS:
             self._log("[Audio] El control de audio solo es compatible con Windows. Hilo finalizado.")
             return
 
-        self._log("[Audio] Hilo de silenciamiento iniciado. Buscando procesos del juego...")
+        self._log("[Audio] Hilo de silenciamiento iniciado. Buscando procesos 'javaw.exe' en todo el sistema...")
 
         from comtypes import CoInitialize, CoUninitialize
         from pycaw.pycaw import AudioUtilities
 
-        target_pids = set()
         muted_sessions = []
+        target_pid = None
 
         try:
             CoInitialize()
 
-            # 1. Obtener PID del proceso principal de Prism
-            if not prism_process or not hasattr(prism_process, 'pid'):
-                self._log("[Audio] Error: Objeto de proceso de Prism no válido.")
-                return
-
-            parent = psutil.Process(prism_process.pid)
-            target_pids.add(parent.pid)
-            self._log(f"[Audio] Proceso padre de Prism identificado (PID: {parent.pid})")
-
-            # 2. Buscar continuamente el proceso hijo de Java
-            javaw_pid = None
+            # Buscar continuamente el proceso de Java
             search_start_time = time.time()
             while time.time() - search_start_time < 120: # Buscar hasta 2 minutos
                 if self.cancel_event.is_set(): return
-                try:
-                    children = parent.children(recursive=True)
-                    for child in children:
-                        if child.name().lower() == 'javaw.exe':
-                            javaw_pid = child.pid
-                            break
-                except psutil.NoSuchProcess:
-                    self._log("[Audio] El proceso de Prism se cerró mientras se buscaba al hijo.")
-                    return # El proceso principal ya no existe
 
-                if javaw_pid:
+                for proc in psutil.process_iter(['pid', 'name']):
+                    if proc.info['name'].lower() == 'javaw.exe':
+                        target_pid = proc.info['pid']
+                        self._log(f"[Audio] Proceso 'javaw.exe' encontrado (PID: {target_pid}). Procediendo a silenciar.")
+                        break
+
+                if target_pid:
                     break
                 time.sleep(1)
 
-            if javaw_pid:
-                target_pids.add(javaw_pid)
-                self._log(f"[Audio] Proceso hijo 'javaw.exe' encontrado (PID: {javaw_pid})")
-            else:
-                self._log("[Audio] ADVERTENCIA: No se encontró 'javaw.exe' como hijo de Prism después de 2 minutos. Se silenciará solo el launcher.")
+            if not target_pid:
+                self._log("[Audio] ADVERTENCIA: No se encontró ningún proceso 'javaw.exe' en 2 minutos. El audio no se silenciará.")
+                return
 
-            # 3. Silenciar los PIDs objetivo
+            # Silenciar el PID objetivo
             start_time = time.time()
-            while time.time() - start_time < 60: # Reducido timeout a 60s
+            session_found = False
+            while time.time() - start_time < 60:
                 if self.cancel_event.is_set(): return
 
                 sessions = AudioUtilities.GetAllSessions()
                 for session in sessions:
                     try:
-                        if not session.Process: continue
-                        pid = session.Process.pid
-                        if pid in target_pids and pid not in [s['pid'] for s in muted_sessions]:
+                        if session.Process and session.Process.pid == target_pid:
                             volume = session.SimpleAudioVolume
                             if not volume.GetMute():
                                 volume.SetMute(1, None)
-                                self._log(f"[Audio] Proceso SILENCIADO: {session.Process.name()} (PID: {pid})")
+                                self._log(f"[Audio] Proceso SILENCIADO: {session.Process.name()} (PID: {target_pid})")
                             else:
-                                self._log(f"[Audio] Proceso ya estaba silenciado: {session.Process.name()} (PID: {pid})")
+                                self._log(f"[Audio] Proceso ya estaba silenciado: {session.Process.name()} (PID: {target_pid})")
 
-                            muted_sessions.append({'session': session, 'pid': pid, 'name': session.Process.name()})
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError): continue
-                    except Exception as e: self._log(f"[Audio Debug] Error en bucle: {e}")
+                            muted_sessions.append({'session': session, 'pid': target_pid, 'name': session.Process.name()})
+                            session_found = True
+                            break
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                        continue
 
-                if len(muted_sessions) == len(target_pids):
-                    self._log("[Audio] Todos los procesos objetivo encontrados y silenciados.")
+                if session_found:
                     break
                 time.sleep(0.5)
 
             if not muted_sessions:
-                self._log("[Audio] ADVERTENCIA: No se encontraron sesiones de audio para los PIDs objetivo después de 60s.")
+                self._log(f"[Audio] ADVERTENCIA: Se encontró el proceso 'javaw.exe' (PID: {target_pid}), pero no se encontró su sesión de audio para silenciar.")
                 return
 
             # Esperar la señal para reactivar el sonido
             self._log("[Audio] Esperando señal para reactivar el sonido...")
-            unmuted = self.unmute_event.wait(timeout=300) # Esperar hasta 5 minutos
+            unmuted = self.unmute_event.wait(timeout=300)
 
             if unmuted:
-                self._log("[Audio] Señal recibida. Reactivando el sonido de los procesos...")
+                self._log("[Audio] Señal recibida. Reactivando el sonido...")
             else:
                 self._log("[Audio] ADVERTENCIA: Timeout esperando la señal de reactivación. Reactivando sonido igualmente.")
 
@@ -1945,43 +1930,41 @@ class ModpackLauncherAPI:
                                 lines = [line.strip() for line in f_rem if line.strip()]
 
                             if "all" in [line.lower() for line in lines]:
-                                self._log(f"      - [LOG] Palabra clave 'all' encontrada para '{filename}'.")
-                                self._log(f"      - [LOG] Ruta absoluta objetivo: '{target_base_abs}'")
+                                self._log(f"      - [LOG] Palabra clave 'all' encontrada para '{filename}'. Reemplazando directorio '{target_dir}'.")
 
                                 if os.path.exists(target_base_abs) and os.path.isdir(target_base_abs):
-                                    self._log(f"      - [LOG] El directorio existe. Procediendo a respaldar y eliminar contenido.")
-                                    bname = f"DIR_CONTENT_{target_dir}".replace(os.sep, '_')[:150]
-                                    bpath = os.path.join(self.backup_dir, bname)
+                                    self._log(f"      - [LOG] El directorio existe. Procediendo a respaldar y vaciar.")
+                                    bname = f"DIR_FULL_{target_dir}".replace(os.sep, '_')[:150]
 
-                                    # El respaldo sigue siendo del directorio completo para poder restaurarlo
+                                    # Respaldar la carpeta completa para la restauración
                                     if not any(rf[0] == ("", target_dir) for rf in self.removed_files):
                                         try:
+                                            bpath = os.path.join(self.backup_dir, bname)
                                             shutil.copytree(target_base_abs, bpath, dirs_exist_ok=True)
-                                            self.removed_files.append((("", target_dir), bname)) # Se registra para poder restaurar la carpeta entera
+                                            self.removed_files.append((("", target_dir), bname)) # Registra que la carpeta original fue "eliminada"
                                             self._log(f"        - [LOG] Respaldo completo de '{target_dir}' creado en '{bname}'.")
                                         except Exception as bk_err:
-                                            self._log(f"        - ERROR CRÍTICO al respaldar el directorio '{target_dir}': {bk_err}. Saltando eliminación.")
+                                            self._log(f"        - ERROR CRÍTICO al respaldar '{target_dir}': {bk_err}. Saltando.")
                                             continue
 
-                                    items_in_dir = os.listdir(target_base_abs)
-                                    self._log(f"        - [LOG] Se encontraron {len(items_in_dir)} elementos para eliminar dentro de '{target_dir}'.")
-
-                                    for item_name in items_in_dir:
-                                        item_path = os.path.join(target_base_abs, item_name)
-                                        self._log(f"          - [LOG] Intentando eliminar: '{item_path}'")
-                                        try:
-                                            if os.path.isdir(item_path):
-                                                shutil.rmtree(item_path)
-                                            else:
-                                                os.remove(item_path)
-                                            self._log(f"          - [LOG] Éxito al eliminar '{item_name}'.")
-                                        except Exception as del_item_err:
-                                            self._log(f"          - ERROR eliminando item '{item_name}': {del_item_err}")
-
-                                    self._log(f"      - [LOG] Proceso de eliminación de contenido para '{target_dir}' completado.")
+                                    # Vaciar el directorio eliminando y recreando
+                                    try:
+                                        shutil.rmtree(target_base_abs)
+                                        os.makedirs(target_base_abs)
+                                        self._log(f"        - [LOG] Directorio '{target_dir}' vaciado con éxito.")
+                                    except Exception as empty_err:
+                                        self._log(f"      - ERROR CRÍTICO al vaciar el directorio '{target_dir}': {empty_err}.")
+                                        raise IOError(f"No se pudo vaciar el directorio {target_dir}") from empty_err
                                 else:
-                                    self._log(f"      - [LOG] Directorio '{target_base_abs}' no existe o no es un directorio. No hay nada que hacer.")
-                                continue
+                                    self._log(f"      - [LOG] Directorio '{target_base_abs}' no existe. Creándolo.")
+                                    try:
+                                        os.makedirs(target_base_abs, exist_ok=True)
+                                        # Si creamos la carpeta, la reversión debería eliminarla.
+                                        if not any(af == ("", target_dir) for af in self.added_files):
+                                            self.added_files.append(("", target_dir))
+                                    except Exception as create_err:
+                                        raise IOError(f"No se pudo crear el directorio {target_dir}") from create_err
+                                continue # Pasar al siguiente archivo de la lista
 
                             for item_rel in lines:
                                 if self.cancel_event.is_set(): raise InterruptedError("Cancelado durante eliminación de shaders/configs.")

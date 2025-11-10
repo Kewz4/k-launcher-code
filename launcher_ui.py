@@ -628,7 +628,7 @@ HTML_CONTENT = f"""
     <div id="debug-panel">
         <h3>Debug Triggers</h3>
         <div class="debug-trigger">
-            <span class="debug-trigger-name">Quitar Mute (2/2)</span>
+            <span id="debug-unmute-name" class="debug-trigger-name">Quitar Mute (0/2)</span>
             <span id="debug-unmute-status" class="debug-trigger-status pending">PENDIENTE</span>
         </div>
         <div class="debug-trigger">
@@ -664,11 +664,22 @@ HTML_CONTENT = f"""
                 // Actualizar estado de Quitar Mute
                 dom.debugUnmuteStatus.textContent = unmute_status;
                 dom.debugUnmuteStatus.className = 'debug-trigger-status'; // Reset class
-                if (unmute_status === 'TRIGGERED') {{
+
+                // (NUEVO) Actualizar dinámicamente el contador de unmute
+                if (unmute_status.includes('/')) {{ // p.e. "1/2"
+                    dom.debugUnmuteName.textContent = `Quitar Mute (${{unmute_status}})`;
+                    dom.debugUnmuteStatus.textContent = 'EN PROGRESO';
+                    dom.debugUnmuteStatus.classList.add('pending');
+                }} else if (unmute_status === 'TRIGGERED') {{
+                    dom.debugUnmuteName.textContent = 'Quitar Mute (2/2)';
+                    dom.debugUnmuteStatus.textContent = 'TRIGGERED';
                     dom.debugUnmuteStatus.classList.add('triggered');
-                }} else {{
+                }} else {{ // PENDIENTE
+                    dom.debugUnmuteName.textContent = 'Quitar Mute (0/2)';
+                    dom.debugUnmuteStatus.textContent = 'PENDIENTE';
                     dom.debugUnmuteStatus.classList.add('pending');
                 }}
+
 
                 // Actualizar estado de Cerrar Launcher
                 dom.debugCloseStatus.textContent = close_status;
@@ -1274,6 +1285,7 @@ HTML_CONTENT = f"""
                 minimizedProgressPercent: document.getElementById('minimized-progress-percent'),
                 minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill'),
                 debugPanel: document.getElementById('debug-panel'),
+                debugUnmuteName: document.getElementById('debug-unmute-name'),
                 debugUnmuteStatus: document.getElementById('debug-unmute-status'),
                 debugCloseStatus: document.getElementById('debug-close-status')
             }};
