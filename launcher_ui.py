@@ -798,6 +798,22 @@ HTML_CONTENT = f"""
             }} else {{
                 domPlayer.volumeIcon.className = 'fas fa-volume-high';
             }}
+            // (NUEVO) Guardar el volumen con debounce
+            saveVolumeDebounced(volume);
+        }}
+
+        // --- (NUEVO) Debounce para guardar el volumen ---
+        let saveVolumeTimeout;
+        function saveVolumeDebounced(volume) {{
+            clearTimeout(saveVolumeTimeout);
+            saveVolumeTimeout = setTimeout(() => {{
+                try {{
+                    console.log(`Guardando volumen: ${{volume}}`);
+                    pywebview.api.py_save_music_volume(volume);
+                }} catch(e) {{
+                    console.error("Error guardando el volumen:", e);
+                }}
+            }}, 300); // Guardar 300ms después de que el usuario deje de mover el slider
         }}
         // --- Fin Lógica Reproductor ---
 
@@ -1330,8 +1346,16 @@ HTML_CONTENT = f"""
                              domPlayer.artist.textContent = "Fallo al conectar con Python.";
                         }});
                         
-                        // 3. Setear volumen inicial (AHORA SEGURO)
-                        setVolume();
+                        // (MODIFICADO) 3. Cargar y setear volumen inicial
+                        pywebview.api.py_load_music_volume().then(savedVolume => {
+                            console.log("Volumen guardado cargado:", savedVolume);
+                            domPlayer.volumeSlider.value = savedVolume;
+                            setVolume(); // Llama a setVolume para actualizar la UI y el audio
+                        }).catch(err => {
+                            console.error("Error al cargar el volumen guardado:", err);
+                            domPlayer.volumeSlider.value = 1.0;
+                            setVolume(); // Fallback al volumen máximo
+                        });
 
                         // 4. Decidir qué pantalla mostrar
                         if (pathsAreValid) {{

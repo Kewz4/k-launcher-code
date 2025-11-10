@@ -63,7 +63,39 @@ No te preocupes. El launcher está diseñado para ser seguro. Si algo sale mal, 
 Sí. Durante el asistente de configuración, puedes seleccionar la opción para buscar manualmente tu archivo `PrismLauncher.exe`.
 
 **¿El launcher es de código abierto?**
-Sí, puedes revisar todo el código fuente en el repositorio de GitLab para asegurarte de su funcionamiento y seguridad.
+Sí, puedes revisar todo el código fuente en el repositorio para asegurarte de su funcionamiento y seguridad.
+
+---
+
+## 🏗️ Configuración en GitHub y Compilación Automática (.exe)
+
+Para simplificar la distribución del launcher, he configurado un flujo de trabajo de **GitHub Actions** que compila automáticamente todo el proyecto en un único archivo `.exe` fácil de distribuir.
+
+### ¿Cómo Funciona?
+
+1.  **Activación Automática**: Cada vez que realices un cambio (`push`) en la rama `main` de tu repositorio de GitHub, una acción automática se iniciará.
+2.  **Entorno de Compilación Limpio**: GitHub creará una máquina virtual con Windows completamente nueva.
+3.  **Instalación de Dependencias**:
+    -   Se instalará Python 3.9.
+    -   Se instalarán todas las bibliotecas necesarias (`pywebview`, `psutil`, etc.) que están listadas en el archivo `requirements.txt`.
+4.  **Compilación con PyInstaller**:
+    -   Se utiliza la herramienta `PyInstaller` para empaquetar tus tres scripts de Python (`launcher_main.py`, `launcher_ui.py`, `music_player.py`) y todas sus dependencias en un solo archivo ejecutable (`.exe`).
+    -   El ejecutable se crea con la opción `--windowed`, lo que significa que no abrirá una ventana de consola (cmd) cuando un usuario lo ejecute.
+5.  **Publicación del Artefacto**:
+    -   Una vez que el `.exe` se ha creado correctamente, GitHub lo sube como un **"artefacto"** de la compilación.
+
+### ¿Dónde Encuentro el `.exe` Compilado?
+
+1.  Ve a la pestaña **"Actions"** en tu repositorio de GitHub.
+2.  Verás una lista de las ejecuciones del flujo de trabajo. Haz clic en la más reciente (la que corresponda al último `push` que hiciste).
+3.  Dentro de la página de resumen de esa ejecución, verás una sección llamada **"Artifacts"**.
+4.  Ahí encontrarás un archivo llamado `VanillaPlus-Launcher-EXE` que puedes descargar. Este es tu archivo `.exe` listo para ser compartido.
+
+### ¿Por qué los Usuarios No Necesitan Instalar Python?
+
+El proceso de compilación con `PyInstaller` es clave. No solo empaqueta tu código, sino que también incluye una versión incrustada del intérprete de Python y todas las bibliotecas de las que depende tu proyecto.
+
+Esto significa que el `.exe` es **completamente autocontenido**. Un usuario puede descargarlo y ejecutarlo en cualquier máquina con Windows sin necesidad de tener Python, `pip`, o cualquiera de las bibliotecas (`pywebview`, `psutil`, etc.) instaladas en su sistema. Todo lo que el launcher necesita para funcionar ya está dentro de ese único archivo.
 
 ---
 *Desarrollado con ❤️ para la comunidad de Vanilla+ True.*
