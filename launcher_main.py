@@ -1987,40 +1987,6 @@ class ModpackLauncherAPI:
                         except Exception as read_list_err:
                             self._log(f"    - ERROR leyendo lista '{removal_filename}': {read_list_err}")
 
-                # (LÓGICA ANTERIOR) - Procesar eliminaciones genéricas
-                for root, _, files in os.walk(update_version_path):
-                    for fname in files:
-                        # (MODIFICADO) Excluir los archivos ya procesados
-                        if fname.startswith('removed') and fname.endswith('.txt') and fname not in files_to_process:
-                            if self.cancel_event.is_set(): raise InterruptedError("Cancelado durante eliminación.")
-                            relative_path_from_version = os.path.relpath(root, update_version_path)
-                            target_rel_folder = relative_path_from_version if relative_path_from_version != '.' else ""
-                            list_path = os.path.join(root, fname)
-                            target_abs_base = os.path.join(folder_path, target_rel_folder)
-                            if not os.path.isdir(target_abs_base): continue
-                            try:
-                                items_to_remove = []
-                                with open(list_path, 'r', encoding='utf-8') as f_rem:
-                                    for line in f_rem:
-                                        parts = line.strip().split(maxsplit=1)
-                                        if len(parts) > 0: items_to_remove.append(parts[0].strip().replace('/', os.sep))
-                                for item_rel in items_to_remove:
-                                    if self.cancel_event.is_set(): raise InterruptedError("Cancelado durante eliminación.")
-                                    item_abs_to_remove = os.path.join(target_abs_base, item_rel)
-                                    log_remove_path = os.path.join(target_rel_folder, item_rel) if target_rel_folder else item_rel
-                                    if os.path.exists(item_abs_to_remove):
-                                        try:
-                                            bname = log_remove_path.replace(os.sep, '_')[:150]; bpath = os.path.join(self.backup_dir, bname)
-                                            if not any(rf[0] == (target_rel_folder, item_rel) for rf in self.removed_files):
-                                                os.makedirs(os.path.dirname(bpath), exist_ok=True)
-                                                if os.path.isdir(item_abs_to_remove): shutil.copytree(item_abs_to_remove, bpath, dirs_exist_ok=True)
-                                                else: shutil.copy2(item_abs_to_remove, bpath)
-                                                self.removed_files.append(((target_rel_folder, item_rel), bname))
-                                            if os.path.isdir(item_abs_to_remove): shutil.rmtree(item_abs_to_remove)
-                                            else: os.remove(item_abs_to_remove)
-                                        except Exception as del_err: self._log(f"        - ERROR eliminando '{log_remove_path}': {del_err}")
-                            except Exception as read_list_err: self._log(f"        - ERROR leyendo lista '{fname}': {read_list_err}")
-
                 # Fase Copiado/Fusión
                 if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado antes de copiar v{ver}.")
                 self._log(f"  [{ver}] Copiando/Fusionando archivos...")
