@@ -925,6 +925,8 @@ HTML_CONTENT = f"""
                 dom.progressTitle.textContent = title || "Procesando..."; 
                 dom.progressLabel.textContent = progressLabel || "..."; 
                 dom.minimizedProgressLabel.textContent = progressLabel || "...";
+                // (NUEVO) Restablecer el panel de depuración al iniciar una carga
+                updateDebugPanel("PENDIENTE", "PENDIENTE");
             }} catch(e) {{ console.error("Error en setLoadScreen:", e); }}
         }}
         

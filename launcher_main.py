@@ -959,24 +959,30 @@ class ModpackLauncherAPI:
             target_pids.add(parent.pid)
             self._log(f"[Audio] Proceso padre de Prism identificado (PID: {parent.pid})")
 
-            # 2. Encontrar el proceso hijo de Java
-            javaw_child = None
-            # Esperar un poco a que el hijo aparezca
-            for _ in range(20):
-                children = parent.children(recursive=True)
-                for child in children:
-                    if child.name().lower() == 'javaw.exe':
-                        javaw_child = child
-                        break
-                if javaw_child:
-                    break
-                time.sleep(0.5)
+            # 2. Buscar continuamente el proceso hijo de Java
+            javaw_pid = None
+            search_start_time = time.time()
+            while time.time() - search_start_time < 120: # Buscar hasta 2 minutos
+                if self.cancel_event.is_set(): return
+                try:
+                    children = parent.children(recursive=True)
+                    for child in children:
+                        if child.name().lower() == 'javaw.exe':
+                            javaw_pid = child.pid
+                            break
+                except psutil.NoSuchProcess:
+                    self._log("[Audio] El proceso de Prism se cerró mientras se buscaba al hijo.")
+                    return # El proceso principal ya no existe
 
-            if javaw_child:
-                target_pids.add(javaw_child.pid)
-                self._log(f"[Audio] Proceso hijo 'javaw.exe' encontrado (PID: {javaw_child.pid})")
+                if javaw_pid:
+                    break
+                time.sleep(1)
+
+            if javaw_pid:
+                target_pids.add(javaw_pid)
+                self._log(f"[Audio] Proceso hijo 'javaw.exe' encontrado (PID: {javaw_pid})")
             else:
-                self._log("[Audio] ADVERTENCIA: No se encontró 'javaw.exe' como hijo de Prism. Se silenciará solo el launcher.")
+                self._log("[Audio] ADVERTENCIA: No se encontró 'javaw.exe' como hijo de Prism después de 2 minutos. Se silenciará solo el launcher.")
 
             # 3. Silenciar los PIDs objetivo
             start_time = time.time()
@@ -1939,31 +1945,42 @@ class ModpackLauncherAPI:
                                 lines = [line.strip() for line in f_rem if line.strip()]
 
                             if "all" in [line.lower() for line in lines]:
-                                self._log(f"      - Palabra clave 'all' encontrada. Eliminando directorio completo: '{target_dir}'")
-                                if os.path.exists(target_base_abs):
-                                    bname = f"DIR_{target_dir}".replace(os.sep, '_')[:150]
+                                self._log(f"      - [LOG] Palabra clave 'all' encontrada para '{filename}'.")
+                                self._log(f"      - [LOG] Ruta absoluta objetivo: '{target_base_abs}'")
+
+                                if os.path.exists(target_base_abs) and os.path.isdir(target_base_abs):
+                                    self._log(f"      - [LOG] El directorio existe. Procediendo a respaldar y eliminar contenido.")
+                                    bname = f"DIR_CONTENT_{target_dir}".replace(os.sep, '_')[:150]
                                     bpath = os.path.join(self.backup_dir, bname)
+
+                                    # El respaldo sigue siendo del directorio completo para poder restaurarlo
                                     if not any(rf[0] == ("", target_dir) for rf in self.removed_files):
                                         try:
                                             shutil.copytree(target_base_abs, bpath, dirs_exist_ok=True)
-                                            self.removed_files.append((("", target_dir), bname))
+                                            self.removed_files.append((("", target_dir), bname)) # Se registra para poder restaurar la carpeta entera
+                                            self._log(f"        - [LOG] Respaldo completo de '{target_dir}' creado en '{bname}'.")
                                         except Exception as bk_err:
-                                            self._log(f"        - ERROR CRÍTICO al respaldar el directorio completo '{target_dir}': {bk_err}. Saltando eliminación.")
+                                            self._log(f"        - ERROR CRÍTICO al respaldar el directorio '{target_dir}': {bk_err}. Saltando eliminación.")
                                             continue
 
-                                    # (CORREGIDO) Borrar contenido, no la carpeta principal
-                                    for item_name in os.listdir(target_base_abs):
+                                    items_in_dir = os.listdir(target_base_abs)
+                                    self._log(f"        - [LOG] Se encontraron {len(items_in_dir)} elementos para eliminar dentro de '{target_dir}'.")
+
+                                    for item_name in items_in_dir:
                                         item_path = os.path.join(target_base_abs, item_name)
+                                        self._log(f"          - [LOG] Intentando eliminar: '{item_path}'")
                                         try:
                                             if os.path.isdir(item_path):
                                                 shutil.rmtree(item_path)
                                             else:
                                                 os.remove(item_path)
+                                            self._log(f"          - [LOG] Éxito al eliminar '{item_name}'.")
                                         except Exception as del_item_err:
-                                            self._log(f"        - ERROR eliminando item '{item_name}' dentro de '{target_dir}': {del_item_err}")
-                                    self._log(f"        - Contenido del directorio '{target_dir}' eliminado.")
+                                            self._log(f"          - ERROR eliminando item '{item_name}': {del_item_err}")
+
+                                    self._log(f"      - [LOG] Proceso de eliminación de contenido para '{target_dir}' completado.")
                                 else:
-                                    self._log(f"        - Directorio '{target_dir}' no existía. No hay nada que hacer.")
+                                    self._log(f"      - [LOG] Directorio '{target_base_abs}' no existe o no es un directorio. No hay nada que hacer.")
                                 continue
 
                             for item_rel in lines:
