@@ -953,16 +953,28 @@ class ModpackLauncherAPI:
             # Buscar continuamente el proceso de Java
             search_start_time = time.time()
             while time.time() - search_start_time < 120: # Buscar hasta 2 minutos
-                if self.cancel_event.is_set(): return
+                if self.cancel_event.is_set():
+                    self._log("[Audio] Búsqueda de proceso cancelada.")
+                    return
 
-                for proc in psutil.process_iter(['pid', 'name']):
-                    if proc.info['name'].lower() == 'javaw.exe':
-                        target_pid = proc.info['pid']
-                        self._log(f"[Audio] Proceso 'javaw.exe' encontrado (PID: {target_pid}). Procediendo a silenciar.")
-                        break
+                self._log("[Audio] Buscando 'javaw.exe'...")
+                try:
+                    for proc in psutil.process_iter(['pid', 'name']):
+                        # (NUEVO) Envolver la inspección del proceso en un try-except
+                        try:
+                            if proc.info['name'].lower() == 'javaw.exe':
+                                target_pid = proc.info['pid']
+                                self._log(f"[Audio] Proceso 'javaw.exe' encontrado (PID: {target_pid}). Procediendo a silenciar.")
+                                break # Salir del bucle for
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            # Este proceso ya no existe o no tenemos permisos, ignorar y continuar.
+                            continue
+                except Exception as iter_err:
+                     self._log(f"[Audio] Error inesperado al iterar procesos: {iter_err}. Reintentando...")
 
                 if target_pid:
-                    break
+                    break # Salir del bucle while
+
                 time.sleep(1)
 
             if not target_pid:
