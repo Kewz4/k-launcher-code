@@ -950,74 +950,90 @@ class ModpackLauncherAPI:
         try:
             CoInitialize()
 
-            # Buscar continuamente el proceso de Java
+            # (MODIFICADO) Bucle de búsqueda de proceso más robusto y persistente
             search_start_time = time.time()
-            while time.time() - search_start_time < 120: # Buscar hasta 2 minutos
+            search_timeout_seconds = 300 # 5 minutos
+
+            while time.time() - search_start_time < search_timeout_seconds:
                 if self.cancel_event.is_set():
                     self._log("[Audio] Búsqueda de proceso cancelada.")
                     return
 
-                self._log("[Audio] Buscando 'javaw.exe'...")
+                self._log("[Audio] Iteración de búsqueda de 'javaw.exe'...")
                 try:
-                    for proc in psutil.process_iter(['pid', 'name']):
-                        # (NUEVO) Envolver la inspección del proceso en un try-except
+                    # Usamos una lista para evitar errores si el iterador cambia
+                    procs = list(psutil.process_iter(['pid', 'name']))
+                    for proc in procs:
                         try:
                             if proc.info['name'].lower() == 'javaw.exe':
                                 target_pid = proc.info['pid']
-                                self._log(f"[Audio] Proceso 'javaw.exe' encontrado (PID: {target_pid}). Procediendo a silenciar.")
+                                self._log(f"[Audio] Proceso 'javaw.exe' ENCONTRADO (PID: {target_pid}).")
                                 break # Salir del bucle for
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            # Este proceso ya no existe o no tenemos permisos, ignorar y continuar.
-                            continue
+                            continue # El proceso desapareció, continuar
                 except Exception as iter_err:
-                     self._log(f"[Audio] Error inesperado al iterar procesos: {iter_err}. Reintentando...")
+                     self._log(f"[Audio] Error al iterar procesos: {iter_err}. Reintentando...")
 
                 if target_pid:
-                    break # Salir del bucle while
+                    break # Salir del bucle while de búsqueda
 
+                # Esperar 1 segundo antes de la siguiente búsqueda
                 time.sleep(1)
 
             if not target_pid:
-                self._log("[Audio] ADVERTENCIA: No se encontró ningún proceso 'javaw.exe' en 2 minutos. El audio no se silenciará.")
+                self._log(f"[Audio] ADVERTENCIA: No se encontró 'javaw.exe' en {search_timeout_seconds} segundos. El audio no se silenciará.")
                 return
 
-            # Silenciar el PID objetivo
-            start_time = time.time()
+            # (MODIFICADO) Bucle de búsqueda de sesión de audio, también más robusto
+            self._log(f"[Audio] Buscando la sesión de audio para PID: {target_pid}...")
             session_found = False
-            # (NUEVO) Aumentado a 90 segundos para dar tiempo a que se inicialice el audio.
-            while time.time() - start_time < 90:
-                if self.cancel_event.is_set(): return
+            session_search_start_time = time.time()
+            session_search_timeout_seconds = 120 # 2 minutos
 
-                sessions = AudioUtilities.GetAllSessions()
-                if not sessions:
-                    self._log("[Audio Debug] No se encontraron sesiones de audio en esta iteración.")
-                else:
-                    # (NUEVO) Registro de depuración para cada sesión encontrada
-                    session_info = [f"'{s.Process.name()}' (PID: {s.Process.pid})" for s in sessions if s.Process]
-                    self._log(f"[Audio Debug] Sesiones encontradas: [{', '.join(session_info)}]")
+            while time.time() - session_search_start_time < session_search_timeout_seconds:
+                if self.cancel_event.is_set():
+                    self._log("[Audio] Búsqueda de sesión cancelada.")
+                    return
 
-                for session in sessions:
-                    try:
-                        if session.Process and session.Process.pid == target_pid:
-                            volume = session.SimpleAudioVolume
-                            if not volume.GetMute():
-                                volume.SetMute(1, None)
-                                self._log(f"[Audio] Proceso SILENCIADO: {session.Process.name()} (PID: {target_pid})")
-                            else:
-                                self._log(f"[Audio] Proceso ya estaba silenciado: {session.Process.name()} (PID: {target_pid})")
+                try:
+                    sessions = AudioUtilities.GetAllSessions()
+                    if not sessions:
+                        self._log("[Audio] Aún no hay sesiones de audio activas...")
+                    else:
+                        session_pids = [s.Process.pid for s in sessions if s.Process]
+                        self._log(f"[Audio] Sesiones de audio activas encontradas para PIDs: {session_pids}")
 
-                            muted_sessions.append({'session': session, 'pid': target_pid, 'name': session.Process.name()})
-                            session_found = True
-                            break
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
-                        continue
+                        for session in sessions:
+                            try:
+                                # Comprobar si el proceso de la sesión todavía existe antes de acceder a sus propiedades
+                                if not session.Process or not psutil.pid_exists(session.Process.pid):
+                                    continue
+
+                                if session.Process.pid == target_pid:
+                                    self._log(f"[Audio] Sesión de audio para '{session.Process.name()}' (PID: {target_pid}) ENCONTRADA.")
+                                    volume = session.SimpleAudioVolume
+                                    if not volume.GetMute():
+                                        volume.SetMute(1, None)
+                                        self._log(f"[Audio] Proceso SILENCIADO.")
+                                    else:
+                                        self._log(f"[Audio] Proceso ya estaba silenciado.")
+
+                                    muted_sessions.append({'session': session, 'pid': target_pid, 'name': session.Process.name()})
+                                    session_found = True
+                                    break # Salir del bucle for
+                            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                                # La sesión pertenece a un proceso que acaba de terminar o al que no tenemos acceso.
+                                continue
+                except Exception as session_err:
+                    self._log(f"[Audio] Error obteniendo sesiones de audio: {session_err}")
 
                 if session_found:
-                    break
-                time.sleep(1) # Aumentado a 1 segundo para reducir spam de logs
+                    break # Salir del bucle while de búsqueda de sesión
+
+                time.sleep(1)
 
             if not muted_sessions:
-                self._log(f"[Audio] ADVERTENCIA: Se encontró el proceso 'javaw.exe' (PID: {target_pid}), pero no se encontró su sesión de audio tras 90s para silenciar.")
+                self._log(f"[Audio] ADVERTENCIA: Se encontró el PID {target_pid}, pero su sesión de audio no apareció en {session_search_timeout_seconds}s.")
                 return
 
             # Esperar la señal para reactivar el sonido
