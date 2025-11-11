@@ -1360,16 +1360,13 @@ class ModpackLauncherAPI:
                 self._log(f"Estableciendo CWD para Prism en: {prism_working_dir}")
 
                 startupinfo = None
-                creationflags = 0
                 if IS_WINDOWS:
                     startupinfo = subprocess.STARTUPINFO()
                     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
+                    startupinfo.wShowWindow = subprocess.SW_MINIMIZE # <-- CAMBIADO
 
                 self.prism_process = subprocess.Popen(command, startupinfo=startupinfo,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                           creationflags=creationflags,
                                            encoding='utf-8', errors='ignore',
                                            cwd=prism_working_dir) # <-- AÑADIDO
 
