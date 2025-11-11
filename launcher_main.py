@@ -999,56 +999,79 @@ class ModpackLauncherAPI:
         from pycaw.pycaw import AudioUtilities
 
         muted_sessions = []
+        target_pid = None
 
         try:
             CoInitialize()
 
-            # (REESCRITO) Bucle unificado para buscar y silenciar 'javaw.exe' directamente
-            self._log("[Audio] Iniciando búsqueda persistente de la sesión de audio 'javaw.exe'...")
+            # --- (NUEVO) Enfoque Robusto: Encontrar el PID del hijo ---
+            self._log("[Audio] Buscando el proceso 'javaw.exe' hijo de Prism...")
             search_start_time = time.time()
-            search_timeout_seconds = 300 # 5 minutos de búsqueda máxima
+            search_timeout_seconds = 180 # 3 minutos
+
+            parent_process = psutil.Process(prism_process.pid)
 
             while time.time() - search_start_time < search_timeout_seconds:
+                if self.cancel_event.is_set():
+                    self._log("[Audio] Búsqueda de proceso hijo cancelada.")
+                    return
+
+                try:
+                    children = parent_process.children(recursive=True)
+                    for child in children:
+                        if 'java' in child.name().lower():
+                            target_pid = child.pid
+                            self._log(f"[Audio] Proceso hijo 'javaw.exe' ENCONTRADO (PID: {target_pid}).")
+                            break
+                except psutil.NoSuchProcess:
+                    self._log("[Audio] El proceso de Prism terminó inesperadamente.")
+                    return
+
+                if target_pid:
+                    break
+
+                time.sleep(1)
+
+            if not target_pid:
+                self._log(f"[Audio] ADVERTENCIA: No se encontró un proceso 'javaw.exe' hijo en {search_timeout_seconds}s.")
+                return
+
+            # --- Ahora, buscar y silenciar la sesión de audio para ESE PID ---
+            self._log(f"[Audio] Buscando sesión de audio para PID: {target_pid}...")
+            session_found_and_muted = False
+            session_search_start_time = time.time()
+            session_search_timeout_seconds = 120 # 2 minutos
+
+            while time.time() - session_search_start_time < session_search_timeout_seconds:
                 if self.cancel_event.is_set():
                     self._log("[Audio] Búsqueda de sesión de audio cancelada.")
                     return
 
-                session_found_and_muted = False
                 try:
                     sessions = AudioUtilities.GetAllSessions()
                     for session in sessions:
-                        try:
-                            if session.Process and session.Process.name().lower() == 'javaw.exe':
-                                self._log(f"[Audio] ¡Sesión de 'javaw.exe' encontrada! (PID: {session.Process.pid})")
-                                volume = session.SimpleAudioVolume
-                                if not volume.GetMute():
-                                    volume.SetMute(1, None)
-                                    self._log(f"[Audio] Proceso SILENCIADO.")
-                                else:
-                                    self._log(f"[Audio] Proceso ya estaba silenciado.")
+                        if session.Process and session.Process.pid == target_pid:
+                            self._log(f"[Audio] Sesión de audio para '{session.Process.name()}' ENCONTRADA.")
+                            volume = session.SimpleAudioVolume
+                            if not volume.GetMute():
+                                volume.SetMute(1, None)
+                                self._log(f"[Audio] Proceso SILENCIADO.")
+                            else:
+                                self._log(f"[Audio] Proceso ya estaba silenciado.")
 
-                                muted_sessions.append({
-                                    'session': session,
-                                    'pid': session.Process.pid,
-                                    'name': session.Process.name()
-                                })
-                                session_found_and_muted = True
-                                break # Salir del bucle for, ya lo encontramos
-
-                        except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError) as e:
-                            # Ignorar sesiones que desaparecen o a las que no podemos acceder
-                            continue
-
+                            muted_sessions.append({'session': session, 'pid': target_pid, 'name': session.Process.name()})
+                            session_found_and_muted = True
+                            break # Salir del bucle for
                 except Exception as e:
-                    self._log(f"[Audio] Error al iterar sesiones de audio: {e}. Reintentando...")
+                    self._log(f"[Audio] Error al iterar sesiones de audio: {e}")
 
                 if session_found_and_muted:
-                    break # Salir del bucle while principal
+                    break # Salir del bucle while
 
-                time.sleep(1.5) # Esperar antes de la siguiente búsqueda completa
+                time.sleep(1)
 
             if not muted_sessions:
-                self._log(f"[Audio] ADVERTENCIA: No se encontró la sesión de audio de 'javaw.exe' en {search_timeout_seconds} segundos. El audio no se controlará.")
+                self._log(f"[Audio] ADVERTENCIA: Se encontró el PID {target_pid}, pero su sesión de audio no apareció en {session_search_timeout_seconds}s.")
                 return
 
             # Esperar la señal para reactivar el sonido
@@ -1332,6 +1355,10 @@ class ModpackLauncherAPI:
 
             self.prism_process = None # (NUEVO) Resetear antes de lanzar
             try:
+                # (NUEVO) Directorio de trabajo para Prism Launcher
+                prism_working_dir = os.path.dirname(self.prism_exe_path)
+                self._log(f"Estableciendo CWD para Prism en: {prism_working_dir}")
+
                 startupinfo = None
                 creationflags = 0
                 if IS_WINDOWS:
@@ -1343,7 +1370,8 @@ class ModpackLauncherAPI:
                 self.prism_process = subprocess.Popen(command, startupinfo=startupinfo,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            creationflags=creationflags,
-                                           encoding='utf-8', errors='ignore')
+                                           encoding='utf-8', errors='ignore',
+                                           cwd=prism_working_dir) # <-- AÑADIDO
 
                 # (NUEVO) Iniciar el hilo de audio ahora que tenemos el proceso
                 audio_thread = threading.Thread(target=self._audio_muter_thread, args=(self.prism_process,), name="AudioMuterThread")
