@@ -912,6 +912,7 @@ class ModpackLauncherAPI:
                 return
 
         self.cancel_event.clear()
+        self.game_ready_event.clear() # <-- CORRECCIÓN
         self.changelog_processed_items = set()
 
         self._log("Iniciando hilo de actualización/lanzamiento...")
@@ -1485,6 +1486,10 @@ class ModpackLauncherAPI:
             start_wait = time.time()
             timeout_seconds = 120
             log_found = False
+
+            # (NUEVO) Log de diagnóstico
+            self._log(f"Vigilante: Comprobando estado antes del bucle de espera: window_exists={not not self.window}, cancel_event={self.cancel_event.is_set()}, game_ready_event={self.game_ready_event.is_set()}")
+
             while time.time() - start_wait < timeout_seconds:
                 if not self.window or self.cancel_event.is_set() or self.game_ready_event.is_set():
                     self._log("Vigilante: Ventana cerrada o cancelado/listo, deteniendo espera.")
