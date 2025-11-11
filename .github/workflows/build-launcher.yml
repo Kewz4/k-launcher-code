@@ -24,9 +24,13 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    - name: Download Icon
+      run: curl -L "https://github.com/Kewz4/k-launcher-code/raw/main/Kewz%20Launcher.ico" -o "Kewz Launcher.ico"
+      shell: bash
+
     - name: Build the application
       run: |
-        pyinstaller --onefile --windowed --name VPlus_Launcher `
+        pyinstaller --onefile --windowed --name "Kewz Launcher" --icon "Kewz Launcher.ico" `
           --hidden-import="launcher_ui" `
           --hidden-import="music_player" `
           --hidden-import="webview.platforms.winforms" `
@@ -41,5 +45,5 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: VanillaPlus-Launcher-EXE
-        path: dist/VPlus_Launcher.exe
+        name: Kewz-Launcher-EXE
+        path: dist/Kewz Launcher.exe
