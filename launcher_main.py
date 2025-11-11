@@ -142,18 +142,23 @@ class ModpackLauncherAPI:
         """(NUEVO) Comprueba si hay actualizaciones del launcher en GitHub y las aplica."""
         self._log("[AutoUpdate] Buscando actualizaciones del launcher...")
         try:
-            # 1. Obtener la última release
-            api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+            # 1. Obtener la release del tag 'Update'
+            api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/Update"
             response = requests.get(api_url, timeout=15)
             response.raise_for_status()
-            latest_release = response.json()
+            release_data = response.json()
 
-            latest_version_tag = latest_release.get("tag_name", "").lstrip('v')
+            # La versión está en el cuerpo del release, no en el tag
+            # Asumimos que el cuerpo contiene solo la versión, ej: "1.1"
+            latest_version_tag = release_data.get("body", "").strip()
             current_version = LAUNCHER_VERSION
 
-            self._log(f"[AutoUpdate] Versión actual: {current_version}, Última versión en GitHub: {latest_version_tag}")
+            self._log(f"[AutoUpdate] Versión actual: {current_version}, Versión de release 'Update': {latest_version_tag}")
 
-            # Comparar versiones (asumiendo formato X.Y)
+            if not latest_version_tag:
+                self._log("[AutoUpdate] No se pudo determinar la versión desde el cuerpo de la release.")
+                return
+
             if float(latest_version_tag) <= float(current_version):
                 self._log("[AutoUpdate] El launcher ya está actualizado.")
                 return
@@ -161,9 +166,9 @@ class ModpackLauncherAPI:
             self._log(f"[AutoUpdate] ¡Nueva versión {latest_version_tag} encontrada!")
 
             # 2. Encontrar el activo correcto (.exe)
-            asset_name_pattern = f"Kewz Launcher v{latest_version_tag}.exe"
+            asset_name_pattern = f"Kewz.Launcher.v{latest_version_tag}.exe"
             asset_url = None
-            for asset in latest_release.get("assets", []):
+            for asset in release_data.get("assets", []):
                 if asset.get("name") == asset_name_pattern:
                     asset_url = asset.get("browser_download_url")
                     break
