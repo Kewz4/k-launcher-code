@@ -2347,6 +2347,16 @@ def main():
        sys.exit(1)
 
 if __name__ == "__main__":
+    # (NUEVO) Redirigir stdout/stderr a un archivo si se ejecuta como .exe compilado
+    if getattr(sys, 'frozen', False):
+        try:
+            log_file_path = os.path.join(os.path.dirname(sys.executable), 'launcher_output.log')
+            sys.stdout = open(log_file_path, 'w', encoding='utf-8')
+            sys.stderr = sys.stdout
+        except Exception as e:
+            # Si no podemos crear el log, no hay mucho que podamos hacer, pero lo intentamos.
+            pass
+
     # (NUEVO) Lógica para solicitar permisos de Administrador en Windows
     if IS_WINDOWS and ctypes:
         try:
