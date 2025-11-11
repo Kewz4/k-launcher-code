@@ -1347,15 +1347,15 @@ HTML_CONTENT = f"""
                         }});
                         
                         // (MODIFICADO) 3. Cargar y setear volumen inicial
-                        pywebview.api.py_load_music_volume().then(savedVolume => {
+                        pywebview.api.py_load_music_volume().then(savedVolume => {{
                             console.log("Volumen guardado cargado:", savedVolume);
                             domPlayer.volumeSlider.value = savedVolume;
                             setVolume(); // Llama a setVolume para actualizar la UI y el audio
-                        }).catch(err => {
+                        }}).catch(err => {{
                             console.error("Error al cargar el volumen guardado:", err);
                             domPlayer.volumeSlider.value = 1.0;
                             setVolume(); // Fallback al volumen máximo
-                        });
+                        }});
 
                         // 4. Decidir qué pantalla mostrar
                         if (pathsAreValid) {{
