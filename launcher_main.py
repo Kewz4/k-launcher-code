@@ -1371,6 +1371,12 @@ class ModpackLauncherAPI:
                                            encoding='utf-8', errors='ignore',
                                            cwd=prism_working_dir) # <-- AÑADIDO
 
+                # (NUEVO) Hilos para leer la salida de Prism y evitar bloqueos
+                stdout_thread = threading.Thread(target=self._stream_reader, args=(self.prism_process.stdout, "Prism Stdout"), daemon=True)
+                stderr_thread = threading.Thread(target=self._stream_reader, args=(self.prism_process.stderr, "Prism Stderr"), daemon=True)
+                stdout_thread.start()
+                stderr_thread.start()
+
                 # (NUEVO) Iniciar el hilo de audio ahora que tenemos el proceso
                 audio_thread = threading.Thread(target=self._audio_muter_thread, args=(self.prism_process,), name="AudioMuterThread")
                 audio_thread.daemon = True
@@ -1417,6 +1423,16 @@ class ModpackLauncherAPI:
                 try: self.window.on_top = False
                 except: pass
             self._show_result(False, "Error Inesperado al Lanzar", f"No se pudo iniciar el juego: {e}")
+
+    def _stream_reader(self, stream, log_prefix):
+        """(NUEVO) Lee y registra la salida de un stream en un hilo."""
+        try:
+            for line in iter(stream.readline, ''):
+                if line:
+                    self._log(f"[{log_prefix}] {line.strip()}")
+            stream.close()
+        except Exception as e:
+            self._log(f"Error leyendo stream '{log_prefix}': {e}")
 
     def _keep_on_top(self, hwnd):
         """Hilo agresivo que mantiene la ventana del launcher "siempre encima"."""
