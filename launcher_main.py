@@ -79,6 +79,9 @@ MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/tnii05n495nn7um3g08yc/Kewz-s-Vanilla-True.zip?rlkey=szgtdkxw1g8kf5xkqlv19qqa5&st=xkiv07rn&dl=1"
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
+# (NUEVO) Versión del Launcher
+LAUNCHER_VERSION = "1.0"
+GITHUB_REPO = "Kewz4/k-launcher-code" # (NUEVO) Repositorio para la auto-actualización
 
 # La línea que indica que el juego está listo
 LOG_TRIGGER_LINE = "[ModernFix/]: Game took"
@@ -135,6 +138,143 @@ class ModpackLauncherAPI:
         self.close_trigger_status = "PENDIENTE"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
+    def _check_for_launcher_updates(self):
+        """(NUEVO) Comprueba si hay actualizaciones del launcher en GitHub y las aplica."""
+        self._log("[AutoUpdate] Buscando actualizaciones del launcher...")
+        try:
+            # 1. Obtener la última release
+            api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+            response = requests.get(api_url, timeout=15)
+            response.raise_for_status()
+            latest_release = response.json()
+
+            latest_version_tag = latest_release.get("tag_name", "").lstrip('v')
+            current_version = LAUNCHER_VERSION
+
+            self._log(f"[AutoUpdate] Versión actual: {current_version}, Última versión en GitHub: {latest_version_tag}")
+
+            # Comparar versiones (asumiendo formato X.Y)
+            if float(latest_version_tag) <= float(current_version):
+                self._log("[AutoUpdate] El launcher ya está actualizado.")
+                return
+
+            self._log(f"[AutoUpdate] ¡Nueva versión {latest_version_tag} encontrada!")
+
+            # 2. Encontrar el activo correcto (.exe)
+            asset_name_pattern = f"Kewz Launcher v{latest_version_tag}.exe"
+            asset_url = None
+            for asset in latest_release.get("assets", []):
+                if asset.get("name") == asset_name_pattern:
+                    asset_url = asset.get("browser_download_url")
+                    break
+
+            if not asset_url:
+                self._log(f"[AutoUpdate] Error: No se encontró el activo '{asset_name_pattern}' en la release.")
+                return
+
+            # 3. Descargar la nueva versión
+            current_exe_path = os.path.realpath(sys.executable)
+            base_dir = os.path.dirname(current_exe_path)
+            new_exe_path = os.path.join(base_dir, "Kewz Launcher.new.exe")
+
+            self._log(f"[AutoUpdate] Descargando desde: {asset_url}")
+            self._download_file(asset_url, new_exe_path, "launcher_update")
+
+            # 4. Crear y ejecutar el script de reemplazo
+            updater_script_path = os.path.join(base_dir, "updater.bat")
+            final_exe_name = os.path.basename(current_exe_path)
+
+            script_content = f"""
+@echo off
+echo Reemplazando el launcher...
+timeout /t 2 /nobreak > nul
+taskkill /F /IM "{final_exe_name}" > nul
+move /Y "{new_exe_path}" "{current_exe_path}"
+echo Actualización completa. Reiniciando...
+start "" "{current_exe_path}"
+del "{updater_script_path}"
+"""
+            with open(updater_script_path, "w") as f:
+                f.write(script_content)
+
+            # 5. Ejecutar el script y cerrar
+            self._log("[AutoUpdate] Ejecutando script de actualización y cerrando...")
+            subprocess.Popen(f'"{updater_script_path}"', shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            self.py_quit_launcher()
+
+        except requests.RequestException as e:
+            self._log(f"[AutoUpdate] Error de red al buscar actualizaciones: {e}")
+        except Exception as e:
+            self._log(f"[AutoUpdate] Error inesperado en el proceso de actualización: {e}")
+            import traceback
+            self._log(traceback.format_exc())
+
+    def _migrate_and_load_config(self):
+        """(NUEVO) Carga la configuración, añade claves por defecto si faltan y guarda."""
+        config_path = self._get_config_path()
+
+        default_config = {
+            "prism_exe_path": None,
+            "instance_mc_path": None,
+            "launch_times_sec": [],
+            "music_player_volume": 1.0
+        }
+
+        with self.config_lock:
+            config_data = {}
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        config_data = json.load(f)
+                except json.JSONDecodeError:
+                    self._log("Advertencia: launcher_config.json está corrupto. Se creará uno nuevo.")
+                    config_data = {}
+
+            # Migración: Añadir claves que falten
+            needs_saving = False
+            for key, default_value in default_config.items():
+                if key not in config_data:
+                    config_data[key] = default_value
+                    needs_saving = True
+
+            # Guardar si se ha modificado
+            if needs_saving:
+                try:
+                    with open(config_path, 'w', encoding='utf-8') as f:
+                        json.dump(config_data, f, indent=4)
+                    self._log("Configuración actualizada con nuevos valores por defecto.")
+                except Exception as e:
+                    self._log(f"Error guardando configuración migrada: {e}")
+
+            # Ahora, cargar y validar los datos como en la función original
+            prism_path = config_data.get("prism_exe_path")
+            instance_path = config_data.get("instance_mc_path")
+            is_prism_valid = self._validate_prism_path(prism_path)
+            is_instance_valid = self._validate_instance_path(instance_path)
+
+            if is_prism_valid and is_instance_valid:
+                self.prism_exe_path = prism_path
+                self.instance_mc_path = instance_path
+                # Cargar el resto de las configuraciones
+                self.avg_launch_time_sec = self._calculate_avg_launch_time(config_data.get("launch_times_sec", []))
+                # El volumen de la música se carga desde JS
+                return True
+            else:
+                return False
+
+    def _calculate_avg_launch_time(self, launch_times):
+        """Calcula el tiempo de lanzamiento promedio desde una lista de tiempos."""
+        if launch_times and isinstance(launch_times, list):
+            try:
+                valid_times = [float(t) for t in launch_times if isinstance(t, (int, float)) and t > 0]
+                if valid_times:
+                    avg = sum(valid_times) / len(valid_times)
+                    self._log(f"Tiempo de carga promedio cargado: {avg:.2f}s ({len(valid_times)} muestras)")
+                    return avg
+            except Exception as e:
+                self._log(f"Error calculando promedio de carga, usando default: {e}")
+        self._log("No se encontró historial de tiempos de carga, usando default (400s).")
+        return 400.0
 
     # --- (NUEVO) API para el Panel de Depuración ---
     def py_get_debug_status(self):
@@ -189,64 +329,9 @@ class ModpackLauncherAPI:
     def _get_config_path(self):
         return os.path.join(os.getcwd(), "launcher_config.json")
 
-    def py_load_saved_paths(self):
-        """
-        (ACTUALIZADO) Carga rutas Y tiempo de carga promedio desde config.json.
-        Retorna True si las rutas son válidas, Falso si no.
-        """
-        config_path = self._get_config_path()
-        print(f"Attempting to load config from: {config_path}")
-        with self.config_lock:
-            if not os.path.exists(config_path):
-                print(f"Config file not found: {config_path}")
-                return False
-            try:
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    config_data = json.load(f)
-                print(f"Config data loaded: {config_data}")
-
-                prism_path = config_data.get("prism_exe_path")
-                instance_path = config_data.get("instance_mc_path")
-
-                is_prism_valid = self._validate_prism_path(prism_path)
-                is_instance_valid = self._validate_instance_path(instance_path)
-                print(f"Validation results - Prism: {is_prism_valid}, Instance: {is_instance_valid}")
-
-                if is_prism_valid and is_instance_valid:
-                    print("Config loaded successfully.")
-                    self.prism_exe_path = prism_path
-                    self.instance_mc_path = instance_path
-
-                    launch_times = config_data.get("launch_times_sec", [])
-                    if launch_times and isinstance(launch_times, list):
-                        try:
-                            valid_times = [float(t) for t in launch_times if isinstance(t, (int, float)) and t > 0]
-                            if valid_times:
-                                self.avg_launch_time_sec = sum(valid_times) / len(valid_times)
-                                print(f"Tiempo de carga promedio cargado: {self.avg_launch_time_sec:.2f}s ({len(valid_times)} muestras)")
-                            else:
-                                self.avg_launch_time_sec = 400.0
-                                print("No hay tiempos de carga válidos guardados, usando default (400s).")
-                        except Exception as e:
-                            print(f"Error calculando promedio de carga, usando default: {e}")
-                            self.avg_launch_time_sec = 400.0
-                    else:
-                        self.avg_launch_time_sec = 400.0
-                        print("No se encontró historial de tiempos de carga, usando default (400s).")
-
-                    return True
-                else:
-                    log_msg = "Error loading config: "
-                    if not is_prism_valid: log_msg += f"Invalid Prism path ('{prism_path}'). "
-                    if not is_instance_valid: log_msg += f"Invalid Instance path ('{instance_path}')."
-                    print(log_msg)
-                    return False
-            except json.JSONDecodeError as e:
-                print(f"Error reading config file (invalid JSON): {e}")
-                return False
-            except Exception as e:
-                print(f"Unexpected error reading config file: {e}")
-                return False
+    def py_load_and_migrate_config(self):
+        """(NUEVO) Expone la función de migración y carga a la API de JS."""
+        return self._migrate_and_load_config()
 
     def py_save_paths(self, prism_path, instance_path):
         """(ACTUALIZADO) Guarda AMBAS rutas en config.json, preservando otros datos."""
@@ -431,6 +516,10 @@ class ModpackLauncherAPI:
 
     def py_get_os_sep(self):
         return os.path.sep
+
+    def py_get_launcher_version(self):
+        """(NUEVO) Devuelve la versión actual del launcher."""
+        return LAUNCHER_VERSION
 
     # --- (MODIFICADO) API de Configuración Antigua (Ahora usada por Ajustes) ---
 
@@ -2341,6 +2430,11 @@ def main():
         )
         api.window = window
         print(f"Ventana '{window_title}' creada. Iniciando WebView...")
+
+        # (NUEVO) Iniciar la comprobación de actualizaciones en segundo plano
+        if getattr(sys, 'frozen', False): # Solo comprobar si es un .exe
+            update_thread = threading.Thread(target=api._check_for_launcher_updates, daemon=True)
+            update_thread.start()
 
         # Mantenemos http_server=True
         webview.start(debug=False, http_server=True)
