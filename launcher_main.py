@@ -1363,7 +1363,7 @@ class ModpackLauncherAPI:
                 if IS_WINDOWS:
                     startupinfo = subprocess.STARTUPINFO()
                     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_MINIMIZE # <-- CAMBIADO
+                    startupinfo.wShowWindow = win32con.SW_MINIMIZE # <-- CORREGIDO
 
                 self.prism_process = subprocess.Popen(command, startupinfo=startupinfo,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
