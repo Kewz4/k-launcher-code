@@ -241,6 +241,19 @@ HTML_CONTENT = f"""
         #volume-slider::-webkit-slider-thumb {{ appearance: none; -webkit-appearance: none; width: 10px; height: 10px; background: var(--color-accent); border-radius: 50%; cursor: pointer; }}
         #volume-slider::-moz-range-thumb {{ width: 10px; height: 10px; background: var(--color-accent); border-radius: 50%; cursor: pointer; border: none; }}
 
+        /* --- (NUEVO) Display de Versión --- */
+        #launcher-version {{
+            position: fixed;
+            bottom: 5px;
+            right: 10px;
+            font-size: 11px;
+            color: var(--color-text-muted);
+            opacity: 0.5;
+            z-index: 500;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }}
+
         /* --- Panel Lateral --- */
         #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid var(--color-bg-lighter); box-shadow: 5px 0 15px rgba(0,0,0,0.3); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding-top: 80px; display: flex; flex-direction: column; gap: 10px; padding-left: 15px; padding-right: 15px; }}
         #side-panel.panel-open {{ transform: translateX(0); }}
@@ -1303,7 +1316,8 @@ HTML_CONTENT = f"""
                 debugPanel: document.getElementById('debug-panel'),
                 debugUnmuteName: document.getElementById('debug-unmute-name'),
                 debugUnmuteStatus: document.getElementById('debug-unmute-status'),
-                debugCloseStatus: document.getElementById('debug-close-status')
+                debugCloseStatus: document.getElementById('debug-close-status'),
+                launcherVersion: document.getElementById('launcher-version')
             }};
 
             // Función para iniciar la aplicación una vez que AMBOS eventos han ocurrido
@@ -1321,7 +1335,7 @@ HTML_CONTENT = f"""
                     // 1. Iniciar la cadena de llamadas a la API
                     pywebview.api.py_get_os_sep().then(sep => {{
                         osSep = sep || '/';
-                        return pywebview.api.py_load_saved_paths();
+                        return pywebview.api.py_load_and_migrate_config();
                     }}).then(pathsAreValid => {{
                         // 2. Cargar la música (paralelamente)
                         pywebview.api.py_get_playlist().then(newPlaylist => {{
@@ -1373,6 +1387,12 @@ HTML_CONTENT = f"""
                         return pywebview.api.py_get_debug_status();
                     }}).then(isDebug => {{
                         dom.panelDebugBtn.style.display = isDebug ? 'flex' : 'none';
+                        // (NUEVO) Cargar la versión del launcher
+                        return pywebview.api.py_get_launcher_version();
+                    }).then(version => {
+                        if (version) {
+                            dom.launcherVersion.textContent = `v${version}`;
+                        }
                     }}).catch(e => {{
                         // Error en la cadena py_get_os_sep o py_load_saved_paths
                         console.error("Error en la cadena de carga inicial:", e);
@@ -1586,6 +1606,9 @@ HTML_CONTENT = f"""
         </div>
         <!-- Elemento Audio (oculto) -->
         <audio id="audio-element" preload="metadata"></audio>
+
+        <!-- (NUEVO) Display de Versión -->
+        <div id="launcher-version"></div>
 </body>
 </html>
 """
