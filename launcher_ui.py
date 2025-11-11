@@ -1389,10 +1389,10 @@ HTML_CONTENT = f"""
                         dom.panelDebugBtn.style.display = isDebug ? 'flex' : 'none';
                         // (NUEVO) Cargar la versión del launcher
                         return pywebview.api.py_get_launcher_version();
-                    }).then(version => {
-                        if (version) {
-                            dom.launcherVersion.textContent = `v${version}`;
-                        }
+                    }}).then(version => {{
+                        if (version) {{
+                            dom.launcherVersion.textContent = `v${{version}}`;
+                        }}
                     }}).catch(e => {{
                         // Error en la cadena py_get_os_sep o py_load_saved_paths
                         console.error("Error en la cadena de carga inicial:", e);
