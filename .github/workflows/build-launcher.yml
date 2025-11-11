@@ -31,8 +31,8 @@ jobs:
     - name: Build the application
       run: |
         pyinstaller --onefile --name "Kewz Launcher" --icon "Kewz Launcher.ico" `
-          --hidden-import="launcher_ui" `
-          --hidden-import="music_player" `
+          --add-data "launcher_ui.py;." `
+          --add-data "music_player.py;." `
           --hidden-import="webview.platforms.winforms" `
           --hidden-import="webview.platforms.edgechromium" `
           --hidden-import="win32gui" `
