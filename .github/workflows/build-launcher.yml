@@ -40,6 +40,7 @@ jobs:
           --hidden-import="psutil" `
           --hidden-import="pycaw" `
           --hidden-import="comtypes" `
+          --hidden-import="requests" `
           launcher_main.py
 
     - name: Upload Artifact
