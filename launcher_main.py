@@ -134,6 +134,7 @@ class ModpackLauncherAPI:
         self.config_lock = threading.Lock()
         self.avg_launch_time_sec = 400.0
         self.music_library = None
+        self.latest_release_data = None # (NUEVO) Para guardar info de la actualización
 
         # (NUEVO) Estado para el hilo de tareas
         self.current_task_thread = None
@@ -144,54 +145,105 @@ class ModpackLauncherAPI:
         self.close_trigger_status = "PENDIENTE"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
+    def _update_updater_ui(self, message, progress=None):
+        """(NUEVO) Envía actualizaciones a la UI del actualizador."""
+        if self.window:
+            # (CORREGIDO) Usar json.dumps para escapar correctamente el mensaje para JS
+            safe_message_js = json.dumps(message)
+            js_code = f"logToUpdaterConsole({safe_message_js});"
+            if progress is not None:
+                js_code += f" updateUpdaterProgress({progress});"
+            self.window.evaluate_js(js_code)
+
+    def py_start_update_check(self):
+        """(NUEVO) Inicia la comprobación de actualizaciones en un hilo."""
+        if getattr(sys, 'frozen', False):
+            update_thread = threading.Thread(target=self._check_for_launcher_updates, daemon=True)
+            update_thread.start()
+        else:
+            self._log("Omitiendo búsqueda de actualizaciones en entorno de desarrollo.")
+            if self.window:
+                # (MODIFICADO) Llama a la función JS que inicia la app principal
+                self.window.evaluate_js("startMainApp();")
+
     def _check_for_launcher_updates(self):
-        """(NUEVO) Comprueba si hay actualizaciones del launcher en GitHub y las aplica."""
-        self._log("[AutoUpdate] Buscando actualizaciones del launcher...")
+        """(REFACTORIZADO) Comprueba si hay actualizaciones e informa a la UI, NO descarga."""
+        self.latest_release_data = None
+        self._update_updater_ui("Buscando actualizaciones del launcher...", 5)
         try:
-            # 1. Obtener la release del tag 'Update'
             api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/Update"
             response = requests.get(api_url, timeout=15)
             response.raise_for_status()
             release_data = response.json()
 
-            # La versión está en el cuerpo del release, no en el tag
-            # Asumimos que el cuerpo contiene solo la versión, ej: "1.1"
-            latest_version_tag = release_data.get("body", "").strip()
+            # La versión y las notas están en el cuerpo del release
+            body = release_data.get("body", "").strip()
+            lines = body.splitlines()
+            latest_version_tag = lines[0].strip() if lines else ""
+            notes = "\n".join(lines[1:]).strip() if len(lines) > 1 else "No hay notas para esta versión."
             current_version = LAUNCHER_VERSION
 
-            self._log(f"[AutoUpdate] Versión actual: {current_version}, Versión de release 'Update': {latest_version_tag}")
+            self._update_updater_ui(f"Versión actual: {current_version}, Versión más reciente: {latest_version_tag}", 10)
 
-            if not latest_version_tag:
-                self._log("[AutoUpdate] No se pudo determinar la versión desde el cuerpo de la release.")
+            if not latest_version_tag or float(latest_version_tag) <= float(current_version):
+                self._update_updater_ui("El launcher ya está actualizado.", 100)
+                if self.window:
+                    self.window.evaluate_js("onUpdateCheckComplete(false, null);")
                 return
 
-            if float(latest_version_tag) <= float(current_version):
-                self._log("[AutoUpdate] El launcher ya está actualizado.")
-                return
+            # Guardar datos para la descarga posterior
+            self.latest_release_data = release_data
+            details = {"version": latest_version_tag, "notes": notes}
+            details_json = json.dumps(details)
 
-            self._log(f"[AutoUpdate] ¡Nueva versión {latest_version_tag} encontrada!")
+            if self.window:
+                # Pasamos el JSON como un string a JS
+                self.window.evaluate_js(f'onUpdateCheckComplete(true, {json.dumps(details_json)})')
 
-            # 2. Encontrar el activo correcto (.exe)
+        except Exception as e:
+            error_message = f"Error comprobando actualizaciones: {e}"
+            self._update_updater_ui(error_message)
+            import traceback
+            self._log(traceback.format_exc())
+            if self.window:
+                self.window.evaluate_js(f'onUpdateError({json.dumps(error_message)})')
+
+    def py_download_and_apply_update(self):
+        """(NUEVO) Inicia la descarga y aplicación de la actualización en un hilo."""
+        if not self.latest_release_data:
+            self._update_updater_ui("Error: No hay información de la actualización para descargar.")
+            return
+
+        update_thread = threading.Thread(target=self._download_and_apply_update_task, daemon=True)
+        update_thread.start()
+
+    def _download_and_apply_update_task(self):
+        """(NUEVO) Tarea en hilo que realiza la descarga y aplicación."""
+        try:
+            release_data = self.latest_release_data
+
+            body = release_data.get("body", "").strip()
+            lines = body.splitlines()
+            latest_version_tag = lines[0].strip() if lines else ""
+
+            self._update_updater_ui(f"Descargando v{latest_version_tag}...", 20)
+
             asset_name_pattern = f"Kewz.Launcher.v{latest_version_tag}.exe"
-            asset_url = None
-            for asset in release_data.get("assets", []):
-                if asset.get("name") == asset_name_pattern:
-                    asset_url = asset.get("browser_download_url")
-                    break
+            asset_url = next((asset.get("browser_download_url") for asset in release_data.get("assets", []) if asset.get("name") == asset_name_pattern), None)
 
             if not asset_url:
-                self._log(f"[AutoUpdate] Error: No se encontró el activo '{asset_name_pattern}' en la release.")
+                error_msg = f"Error: No se encontró el activo '{asset_name_pattern}' en el release de GitHub."
+                self._update_updater_ui(error_msg)
+                self.window.evaluate_js(f'onUpdateError({json.dumps(error_msg)})')
                 return
 
-            # 3. Descargar la nueva versión
             current_exe_path = os.path.realpath(sys.executable)
             base_dir = os.path.dirname(current_exe_path)
             new_exe_path = os.path.join(base_dir, "Kewz Launcher.new.exe")
 
-            self._log(f"[AutoUpdate] Descargando desde: {asset_url}")
             self._download_file(asset_url, new_exe_path, "launcher_update")
 
-            # 4. Crear y ejecutar el script de reemplazo
+            self._update_updater_ui("Creando script de actualización...", 95)
             updater_script_path = os.path.join(base_dir, "updater.bat")
             final_exe_name = os.path.basename(current_exe_path)
 
@@ -205,20 +257,21 @@ echo Actualización completa. Reiniciando...
 start "" "{current_exe_path}"
 del "{updater_script_path}"
 """
-            with open(updater_script_path, "w") as f:
+            with open(updater_script_path, "w", encoding='utf-8') as f:
                 f.write(script_content)
 
-            # 5. Ejecutar el script y cerrar
-            self._log("[AutoUpdate] Ejecutando script de actualización y cerrando...")
+            self._update_updater_ui("Reiniciando para actualizar...", 100)
             subprocess.Popen(f'"{updater_script_path}"', shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
             self.py_quit_launcher()
 
-        except requests.RequestException as e:
-            self._log(f"[AutoUpdate] Error de red al buscar actualizaciones: {e}")
         except Exception as e:
-            self._log(f"[AutoUpdate] Error inesperado en el proceso de actualización: {e}")
+            error_message = f"Error durante la descarga: {e}"
+            self._update_updater_ui(error_message)
             import traceback
             self._log(traceback.format_exc())
+            if self.window:
+                self.window.evaluate_js(f'onUpdateError({json.dumps(error_message)})')
+
 
     def _migrate_and_load_config(self):
         """(NUEVO) Carga la configuración, añade claves por defecto si faltan y guarda."""
@@ -1902,11 +1955,13 @@ del "{updater_script_path}"
                             label = f"Descargando... {speed_mbps:.1f} Mbps (ETA: {eta_str})" if total_bytes > 0 else f"Descargando... {downloaded / (1024*1024):.1f} MB"
 
                             if progress_context == "wizard_install":
-                                # Usar el sistema de progreso del asistente
                                 self._update_install_status(f"{label} ({int(pct*100)}%)")
                                 if self.window: self.window.evaluate_js(f'updateProgress({pct}, "{label}")')
-                            else:
-                                # Usar el sistema de progreso de actualización (escala a 0-40%)
+                            elif progress_context == "launcher_update":
+                                # (NUEVO) Usar la UI del actualizador
+                                progress = 0.2 + (pct * 0.7) # Escala de 20% a 90%
+                                self._update_updater_ui(label, progress)
+                            else: # "update"
                                 self._update_progress(pct * 0.4, label)
 
                             last_update_time = now
@@ -2441,11 +2496,6 @@ def main():
         )
         api.window = window
         print(f"Ventana '{window_title}' creada. Iniciando WebView...")
-
-        # (NUEVO) Iniciar la comprobación de actualizaciones en segundo plano
-        if getattr(sys, 'frozen', False): # Solo comprobar si es un .exe
-            update_thread = threading.Thread(target=api._check_for_launcher_updates, daemon=True)
-            update_thread.start()
 
         # Mantenemos http_server=True
         webview.start(debug=False, http_server=True)

@@ -77,11 +77,48 @@ HTML_CONTENT = f"""
             100% {{ opacity: 0; }}
         }}
 
-        /* --- Overlay de Carga Inicial --- */
-        .loading-overlay {{ display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--color-bg); align-items: center; justify-content: center; flex-direction: column; z-index: 10000; color: white; padding: 20px; text-align: center; }}
-        .loading-overlay h1 {{ font-size: 24px; font-weight: 700; color: var(--color-accent); margin-bottom: 15px; }}
-        .loading-overlay p {{ font-size: 14px; color: var(--color-text-muted); max-width: 80%; word-wrap: break-word; }}
-        .spinner {{ width: 50px; height: 50px; border: 5px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }}
+        /* --- (NUEVO) Pantalla de Auto-Actualización --- */
+        #screen-updater {{
+            display: flex; /* Se muestra por defecto */
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--color-bg);
+            align-items: center; justify-content: center;
+            flex-direction: column; z-index: 10000;
+            padding: 20px; text-align: center;
+            transition: opacity 0.5s ease;
+        }}
+        #screen-updater.hidden {{
+            opacity: 0;
+            pointer-events: none;
+        }}
+        #updater-container {{
+            width: 100%; max-width: 450px;
+        }}
+        #updater-container h1 {{
+            font-size: 24px; font-weight: 700;
+            color: var(--color-accent); margin-bottom: 20px;
+        }}
+        #updater-progress-bar-container {{
+            width: 100%; height: 8px; background-color: var(--color-bg-lighter);
+            border-radius: 4px; overflow: hidden; margin-bottom: 10px;
+        }}
+        #updater-progress-bar {{
+            width: 0%; height: 100%; background-color: var(--color-accent);
+            border-radius: 4px; transition: width 0.3s ease;
+        }}
+        #updater-console {{
+            height: 120px; background-color: var(--color-bg-lighter);
+            border-radius: var(--radius-md); border: 1px solid #333;
+            padding: 10px; overflow-y: auto; text-align: left;
+            font-family: 'Menlo', 'Courier New', monospace; font-size: 11px;
+            color: var(--color-text-muted);
+            margin-bottom: 20px;
+        }}
+        #updater-console p {{ margin: 0; margin-bottom: 4px; }}
+        #updater-buttons {{
+            display: flex; gap: 16px; justify-content: center;
+        }}
+
 
         /* --- Contenedor Principal (Setup / Settings) --- */
         .container {{ width: 100%; max-width: 650px; background-color: var(--color-bg-light); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 24px 32px; border: 1px solid var(--color-bg-lighter); transition: opacity 0.3s ease; position: relative; z-index: 101; display: none; }}
@@ -399,15 +436,24 @@ HTML_CONTENT = f"""
     </style>
 </head>
 <body>
-    <!-- Overlay de Carga Inicial -->
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="spinner" id="loading-spinner"></div>
-        <h1 id="loading-title" style="display: none;"></h1>
-        <p id="loading-details"></p>
+    <!-- (NUEVO) Pantalla de Auto-Actualización -->
+    <div id="screen-updater">
+        <div id="updater-container">
+            <h1 id="updater-title">Buscando Actualizaciones...</h1>
+            <div id="updater-progress-bar-container">
+                <div id="updater-progress-bar" style="width: 5%;"></div>
+            </div>
+            <div id="updater-console">
+                <p>Inicializando...</p>
+            </div>
+            <div id="updater-buttons">
+                 <!-- Los botones se añadirán aquí dinámicamente -->
+            </div>
+        </div>
     </div>
 
     <!-- Pantalla Principal (Jugar) -->
-    <div class="screen" id="screen-play">
+    <div class="screen" id="screen-play" style="display: none;">
         <!-- Iframe de Vimeo -->
         <iframe id="vimeo-bg"
                 src="{VIMEO_EMBED_SRC}"
@@ -821,8 +867,10 @@ HTML_CONTENT = f"""
             clearTimeout(saveVolumeTimeout);
             saveVolumeTimeout = setTimeout(() => {{
                 try {{
-                    console.log(`Guardando volumen: ${{volume}}`);
-                    pywebview.api.py_save_music_volume(volume);
+                    if (window.pywebview && window.pywebview.api) {{
+                        console.log(`Guardando volumen: ${{volume}}`);
+                        pywebview.api.py_save_music_volume(volume);
+                    }}
                 }} catch(e) {{
                     console.error("Error guardando el volumen:", e);
                 }}
@@ -830,8 +878,88 @@ HTML_CONTENT = f"""
         }}
         // --- Fin Lógica Reproductor ---
 
+        // --- (NUEVO) Flujo de Inicio y Actualización ---
+
+        function logToUpdaterConsole(message) {{
+            if (dom && dom.updater.console) {{
+                const p = document.createElement('p');
+                p.textContent = message;
+                dom.updater.console.appendChild(p);
+                dom.updater.console.scrollTop = dom.updater.console.scrollHeight;
+            }}
+        }}
+
+        function updateUpdaterProgress(percentage) {{ // percentage es 0-100
+            if (dom && dom.updater.progressBar) {{
+                dom.updater.progressBar.style.width = `${{Math.max(0, Math.min(100, percentage))}}%`;
+            }}
+        }}
+
+        function onUpdateCheckComplete(update_available, details_json) {{
+            console.log(`onUpdateCheckComplete: disponible=${{update_available}}`);
+            const details = JSON.parse(details_json);
+
+            if (update_available) {{
+                logToUpdaterConsole(`¡Nueva versión disponible: ${{details.version}}!`);
+                dom.updater.title.textContent = `Actualización Disponible`;
+
+                const notes = document.createElement('p');
+                notes.innerHTML = `<strong>Notas de la versión:</strong><br>${{details.notes || 'No disponibles.'}}`;
+                dom.updater.console.appendChild(notes);
+
+                dom.updater.buttons.innerHTML = ''; // Limpiar botones
+
+                const updateButton = document.createElement('button');
+                updateButton.innerHTML = '<i class="fas fa-download"></i> Actualizar Ahora';
+                updateButton.className = 'btn btn-primary';
+                updateButton.onclick = () => {{
+                    dom.updater.title.textContent = 'Descargando Actualización...';
+                    logToUpdaterConsole('Iniciando descarga...');
+                    updateButton.disabled = true;
+                    skipButton.disabled = true;
+                    pywebview.api.py_download_and_apply_update();
+                }};
+
+                const skipButton = document.createElement('button');
+                skipButton.innerHTML = '<i class="fas fa-arrow-right"></i> Ahora No';
+                skipButton.className = 'btn btn-secondary';
+                skipButton.onclick = () => {{
+                    dom.updater.screen.classList.add('hidden');
+                    startMainApp();
+                }};
+
+                dom.updater.buttons.appendChild(skipButton);
+                dom.updater.buttons.appendChild(updateButton);
+
+            }} else {{
+                logToUpdaterConsole("Estás al día. Iniciando launcher...");
+                updateUpdaterProgress(100);
+                setTimeout(() => {{
+                    dom.updater.screen.classList.add('hidden');
+                    startMainApp();
+                }}, 1200);
+            }}
+        }}
+
+        function onUpdateError(error_message) {{
+            console.error("onUpdateError:", error_message);
+            logToUpdaterConsole(`Error: ${{error_message}}`);
+            dom.updater.title.textContent = 'Error de Actualización';
+            dom.updater.console.innerHTML += `<p>No se pudo comprobar si hay actualizaciones. Puedes continuar, pero es posible que algo no funcione correctamente.</p>`;
+
+            dom.updater.buttons.innerHTML = ''; // Limpiar botones
+
+            const skipButton = document.createElement('button');
+            skipButton.textContent = 'Continuar de todas formas';
+            skipButton.className = 'btn btn-secondary';
+            skipButton.onclick = () => {{
+                dom.updater.screen.classList.add('hidden');
+                startMainApp();
+            }};
+            dom.updater.buttons.appendChild(skipButton);
+        }}
+
         // --- Funciones UI ---
-        function showLoadingError(title, details) {{ console.error("Loading Error:", title, details); if (dom.loadingSpinner) dom.loadingSpinner.style.display = 'none'; if (dom.loadingTitle) {{ dom.loadingTitle.textContent = title; dom.loadingTitle.style.display = 'block'; }} if (dom.loadingDetails) dom.loadingDetails.textContent = details; if (dom.loadingOverlay) dom.loadingOverlay.style.display = 'flex'; }}
         
         // (ACTUALIZADO) switchScreen para manejar todas las pantallas
         function switchScreen(screenName) {{
@@ -848,33 +976,27 @@ HTML_CONTENT = f"""
             closeSidePanel();
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); loadingAnimationId = null; }}
 
-            // Mostrar reproductor si NO estamos en una pantalla de setup/settings
-            domPlayer.player.classList.add('visible');
+            // Mostrar reproductor si NO estamos en una pantalla de setup/settings/updater
+            const isSetupScreen = (screenName === 'initial-setup' || screenName === 'settings');
+            domPlayer.player.style.display = isSetupScreen ? 'none' : 'flex';
+            domPlayer.player.classList.toggle('visible', !isSetupScreen);
 
-            // Mostrar pantalla de juego (fondo)
-            dom.screens.play.style.display = 'flex';
-            dom.screens.play.classList.add('active');
+            // Mostrar la pantalla de juego (fondo) en la mayoría de los casos
+            const showPlayBackground = (screenName !== 'initial-setup' && screenName !== 'settings');
+            dom.screens.play.style.display = showPlayBackground ? 'flex' : 'none';
+            dom.screens.play.classList.toggle('active', showPlayBackground);
 
             if (screenName === 'play') {{
-                if (dom.loadingOverlay.style.display !== 'none' && !dom.loadingTitle.textContent) {{
-                    dom.loadingOverlay.style.display = 'none';
-                }}
                 dom.playBtn.textContent = "JUGAR";
                 dom.playBtn.classList.remove('cancel-mode');
             }} else if (screenName === 'initial-setup') {{
                 dom.mainContainer.classList.add('visible');
                 dom.screens.initialSetup.style.display = 'block';
                 dom.screens.initialSetup.classList.add('active');
-                if (dom.loadingOverlay.style.display !== 'none' && !dom.loadingTitle.textContent) {{
-                    dom.loadingOverlay.style.display = 'none';
-                }}
             }} else if (screenName === 'settings') {{
                 dom.mainContainer.classList.add('visible');
                 dom.screens.settings.style.display = 'block';
                 dom.screens.settings.classList.add('active');
-                if (dom.loadingOverlay.style.display !== 'none' && !dom.loadingTitle.textContent) {{
-                    dom.loadingOverlay.style.display = 'none';
-                }}
             }} else if (screenName === 'progress') {{
                 if (isProgressMinimized) {{
                     dom.minimizedWidget.style.display = 'flex';
@@ -882,10 +1004,8 @@ HTML_CONTENT = f"""
                     dom.screens.progress.style.display = 'flex';
                     dom.screens.progress.classList.add('active');
                 }}
-            }} else {{
+            }} else if (screenName !== 'updater') {{
                 console.warn("Intento de cambiar a pantalla desconocida:", screenName);
-                dom.playBtn.textContent = "JUGAR";
-                dom.playBtn.classList.remove('cancel-mode');
             }}
         }}
 
@@ -914,7 +1034,7 @@ HTML_CONTENT = f"""
                     }}
                     dom.settings.saveBtn.disabled = !(isPrismValid && isInstanceValid); 
                 }}).catch(err => {{ console.error("Error validación JS:", err); dom.settings.saveBtn.disabled = true; }});
-            }} catch (e) {{ console.error("Error crítico API en validateSettings:", e); showLoadingError("Error Validación", "Fallo comunicación Python: " + e); dom.settings.saveBtn.disabled = true; }}
+            }} catch (e) {{ console.error("Error crítico API en validateSettings:", e); showResult(false, "Error Validación", "Fallo comunicación Python: " + e); dom.settings.saveBtn.disabled = true; }}
         }}
         
         function logToConsole(message) {{
@@ -1013,7 +1133,7 @@ HTML_CONTENT = f"""
             loadingAnimationId = requestAnimationFrame(animateProgress);
         }}
 
-        function showResult(success, title, details) {{ try {{ lastUpdateWasSuccess = !!success; dom.modal.icon.textContent = success ? '✅' : '❌'; dom.modal.title.textContent = title || (success ? 'Éxito' : 'Error'); dom.modal.details.innerHTML = details || (success ? "Proceso completado." : "Ocurrió un error."); dom.modal.element.style.display = 'flex'; }} catch (e) {{ console.error("Error en showResult:", e); }} }}
+        function showResult(success, title, details) {{ try {{ lastUpdateWasSuccess = !!success; dom.modal.icon.innerHTML = success ? '<i class="fas fa-check-circle" style="color: var(--color-success);"></i>' : '<i class="fas fa-times-circle" style="color: var(--color-danger);"></i>'; dom.modal.title.textContent = title || (success ? 'Éxito' : 'Error'); dom.modal.details.innerHTML = details || (success ? "Proceso completado." : "Ocurrió un error."); dom.modal.element.style.display = 'flex'; }} catch (e) {{ console.error("Error en showResult:", e); }} }}
         
         function fadeLauncherOut() {{
             try {{
@@ -1037,8 +1157,6 @@ HTML_CONTENT = f"""
         function forceShowSetupScreen() {{
             validateSettings(); // Cargar datos actuales en la pantalla de ajustes
             switchScreen('settings'); 
-            dom.loadingOverlay.style.display = 'none'; 
-            dom.mainContainer.classList.add('visible'); 
         }}
         
         function returnToPlayScreen() {{
@@ -1129,8 +1247,6 @@ HTML_CONTENT = f"""
             switchScreen('initial-setup');
             showWizardStep('start');
             try {{
-                // (MODIFICADO) La llamada a la API ahora está dentro del setTimeout
-                // de pywebviewready, por lo que no necesitamos otro aquí.
                 pywebview.api.py_setup_check_prism_default_path().then(result => {{
                     if (result.status === 'prism_detected') {{
                         handlePrismPathFound(result.path); // Prism encontrado, comprobar modpack
@@ -1143,9 +1259,7 @@ HTML_CONTENT = f"""
                     showWizardStep('ask-installed'); // Fallback a preguntar
                 }});
             }} catch (e) {{
-                // Este catch probablemente no se disparará por el error de "not a function"
-                // porque la llamada está dentro de un .then()
-                showLoadingError("Error Fatal", "API Python no disponible (catch pre-llamada): " + e);
+                showResult(false, "Error Fatal", "API Python no disponible: " + e);
             }}
         }}
 
@@ -1167,7 +1281,7 @@ HTML_CONTENT = f"""
                         showWizardStep('install-progress');
                         dom.wizard.installTitle.textContent = "Instalando Modpack";
                         dom.wizard.installSubtitle.textContent = "Descargando y extrayendo archivos...";
-                        pywebview.api.py_start_threaded_task('install_modpack', result.prism_path, result.instance_base_path);
+                        pywebview.api.py_start_threaded_task('install_modpack', {{prism_path: result.prism_path, instance_base_path: result.instance_base_path}});
                     }} else {{
                         throw new Error(result.error || "Respuesta desconocida al comprobar modpack.");
                     }}
@@ -1177,7 +1291,7 @@ HTML_CONTENT = f"""
                     showWizardStep('ask-installed'); // Volver al inicio del flujo
                 }});
             }} catch (e) {{
-                 showLoadingError("Error Fatal", "API Python no disponible (catch pre-llamada): " + e);
+                 showResult(false, "Error Fatal", "API Python no disponible: " + e);
             }}
         }}
 
@@ -1230,201 +1344,91 @@ HTML_CONTENT = f"""
 
 
         // --- Event Listeners ---
-        // (CORREGIDO) Separar la lógica de pywebviewready y DOMContentLoaded
-
-        // 1. Esperar a que la API de Python esté lista
         window.addEventListener('pywebviewready', () => {{
             console.log("pywebviewready: La API de Python está lista.");
-            window.pywebview.apiReady = true; // Establecer una bandera global
-
-            // Adjuntar listeners que dependen únicamente de la API y no del DOM
-            // (Ninguno en este caso, pero es buena práctica tenerlo aquí)
+            window.pywebview.apiReady = true;
         }});
 
-        // 2. Esperar a que el DOM esté completamente cargado
         document.addEventListener('DOMContentLoaded', () => {{
             console.log("DOMContentLoaded: El DOM está completamente cargado.");
 
-            // (CORREGIDO) Asignar las constantes del DOM aquí, ahora que el HTML está cargado.
+            // Asignar todas las constantes del DOM
             domPlayer = {{
-                player: document.getElementById('music-player'),
-                cover: document.getElementById('album-cover'),
-                title: document.getElementById('track-title'),
-                artist: document.getElementById('track-artist'),
-                audio: document.getElementById('audio-element'),
-                playPauseBtn: document.getElementById('play-pause-btn'),
-                nextBtn: document.getElementById('next-btn'),
-                progressContainer: document.getElementById('progress-container'),
-                progressBar: document.getElementById('progress-bar'),
-                volumeContainer: document.getElementById('volume-container'),
-                volumeIcon: document.getElementById('volume-icon'),
-                volumeSlider: document.getElementById('volume-slider')
+                player: document.getElementById('music-player'), cover: document.getElementById('album-cover'), title: document.getElementById('track-title'), artist: document.getElementById('track-artist'), audio: document.getElementById('audio-element'), playPauseBtn: document.getElementById('play-pause-btn'), nextBtn: document.getElementById('next-btn'), progressContainer: document.getElementById('progress-container'), progressBar: document.getElementById('progress-bar'), volumeContainer: document.getElementById('volume-container'), volumeIcon: document.getElementById('volume-icon'), volumeSlider: document.getElementById('volume-slider')
             }};
-
             dom = {{
-                loadingOverlay: document.getElementById('loading-overlay'), loadingSpinner: document.getElementById('loading-spinner'), loadingTitle: document.getElementById('loading-title'), loadingDetails: document.getElementById('loading-details'),
+                updater: {{ screen: document.getElementById('screen-updater'), title: document.getElementById('updater-title'), progressBar: document.getElementById('updater-progress-bar'), console: document.getElementById('updater-console'), buttons: document.getElementById('updater-buttons') }},
                 mainContainer: document.getElementById('main-container'),
-                screens: {{
-                    initialSetup: document.getElementById('screen-initial-setup'),
-                    settings: document.getElementById('screen-settings'),
-                    play: document.getElementById('screen-play'),
-                    progress: document.getElementById('screen-progress'),
-                }},
-                wizard: {{
-                    steps: document.querySelectorAll('#screen-initial-setup .wizard-step'),
-                    btnAskYes: document.getElementById('wizard-btn-ask-yes'),
-                    btnAskNo: document.getElementById('wizard-btn-ask-no'),
-                    btnFindManual: document.getElementById('wizard-btn-find-manual'),
-                    btnInstallLocation: document.getElementById('wizard-btn-install-location'),
-                    btnCancelInstall: document.getElementById('wizard-btn-cancel-install'),
-                    btnLoginOpen: document.getElementById('wizard-btn-login-open'),
-                    btnLoginFinish: document.getElementById('wizard-btn-login-finish'),
-                    installTitle: document.getElementById('wizard-install-title'),
-                    installSubtitle: document.getElementById('wizard-install-subtitle'),
-                    progressBar: document.getElementById('wizard-progress-bar-fill'),
-                    progressLabel: document.getElementById('wizard-progress-label'),
-                    console: document.getElementById('wizard-console'),
-                }},
-                settings: {{
-                    prismDisplay: document.getElementById('settings-prism-exe-display'),
-                    prismText: document.getElementById('settings-prism-exe-text'),
-                    browsePrismBtn: document.getElementById('settings-browse-prism-btn'),
-                    instanceDisplay: document.getElementById('settings-instance-folder-display'),
-                    instanceText: document.getElementById('settings-instance-folder-text'),
-                    browseInstanceBtn: document.getElementById('settings-browse-instance-btn'),
-                    saveBtn: document.getElementById('save-settings-btn')
-                }},
-                playBtn: document.getElementById('play-btn'),
-                menuBtn: document.getElementById('menu-btn'),
-                sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'),
-                panelSettingsBtn: document.getElementById('panel-settings-btn'),
-                panelDebugBtn: document.getElementById('panel-debug-btn'),
-                panelQuitBtn: document.getElementById('panel-quit-btn'),
-                cancelBtn: document.getElementById('cancel-btn'),
-                progressTitle: document.getElementById('progress-title'),
-                progressBar: document.getElementById('progress-fill'),
-                progressLabel: document.getElementById('progress-label'),
-                console: document.getElementById('console'),
-                scrollBottomBtn: document.getElementById('scroll-bottom-btn'),
-                changelogContent: document.getElementById('changelog-content'),
+                screens: {{ initialSetup: document.getElementById('screen-initial-setup'), settings: document.getElementById('screen-settings'), play: document.getElementById('screen-play'), progress: document.getElementById('screen-progress') }},
+                wizard: {{ steps: document.querySelectorAll('#screen-initial-setup .wizard-step'), btnAskYes: document.getElementById('wizard-btn-ask-yes'), btnAskNo: document.getElementById('wizard-btn-ask-no'), btnFindManual: document.getElementById('wizard-btn-find-manual'), btnInstallLocation: document.getElementById('wizard-btn-install-location'), btnCancelInstall: document.getElementById('wizard-btn-cancel-install'), btnLoginOpen: document.getElementById('wizard-btn-login-open'), btnLoginFinish: document.getElementById('wizard-btn-login-finish'), installTitle: document.getElementById('wizard-install-title'), installSubtitle: document.getElementById('wizard-install-subtitle'), progressBar: document.getElementById('wizard-progress-bar-fill'), progressLabel: document.getElementById('wizard-progress-label'), console: document.getElementById('wizard-console') }},
+                settings: {{ prismDisplay: document.getElementById('settings-prism-exe-display'), prismText: document.getElementById('settings-prism-exe-text'), browsePrismBtn: document.getElementById('settings-browse-prism-btn'), instanceDisplay: document.getElementById('settings-instance-folder-display'), instanceText: document.getElementById('settings-instance-folder-text'), browseInstanceBtn: document.getElementById('settings-browse-instance-btn'), saveBtn: document.getElementById('save-settings-btn') }},
+                playBtn: document.getElementById('play-btn'), menuBtn: document.getElementById('menu-btn'), sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'), panelSettingsBtn: document.getElementById('panel-settings-btn'), panelDebugBtn: document.getElementById('panel-debug-btn'), panelQuitBtn: document.getElementById('panel-quit-btn'), cancelBtn: document.getElementById('cancel-btn'), progressTitle: document.getElementById('progress-title'), progressBar: document.getElementById('progress-fill'), progressLabel: document.getElementById('progress-label'), console: document.getElementById('console'), scrollBottomBtn: document.getElementById('scroll-bottom-btn'), changelogContent: document.getElementById('changelog-content'),
                 modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
-                minimizeProgressBtn: document.getElementById('minimize-progress-btn'),
-                minimizedWidget: document.getElementById('minimized-progress-widget'),
-                minimizedProgressLabel: document.getElementById('minimized-progress-label'),
-                minimizedProgressPercent: document.getElementById('minimized-progress-percent'),
-                minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill'),
-                debugPanel: document.getElementById('debug-panel'),
-                debugUnmuteName: document.getElementById('debug-unmute-name'),
-                debugUnmuteStatus: document.getElementById('debug-unmute-status'),
-                debugCloseStatus: document.getElementById('debug-close-status'),
-                launcherVersion: document.getElementById('launcher-version')
+                minimizeProgressBtn: document.getElementById('minimize-progress-btn'), minimizedWidget: document.getElementById('minimized-progress-widget'), minimizedProgressLabel: document.getElementById('minimized-progress-label'), minimizedProgressPercent: document.getElementById('minimized-progress-percent'), minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill'),
+                debugPanel: document.getElementById('debug-panel'), debugUnmuteName: document.getElementById('debug-unmute-name'), debugUnmuteStatus: document.getElementById('debug-unmute-status'), debugCloseStatus: document.getElementById('debug-close-status'), launcherVersion: document.getElementById('launcher-version')
             }};
 
-            // Función para iniciar la aplicación una vez que AMBOS eventos han ocurrido
-            function initializeApp() {{
-                if (!window.pywebview || !window.pywebview.apiReady) {{
-                    console.log("La API de pywebview no está lista todavía, esperando...");
-                    setTimeout(initializeApp, 50); // Volver a comprobar en 50ms
-                    return;
-                }}
+            // (NUEVO) Función que inicia la app principal DESPUÉS del update check
+            function startMainApp() {{
+                console.log("Iniciando la aplicación principal...");
+                pywebview.api.py_get_os_sep().then(sep => {{
+                    osSep = sep || '/';
+                    return pywebview.api.py_load_and_migrate_config();
+                }}).then(pathsAreValid => {{
+                    // Cargar música
+                    pywebview.api.py_get_playlist().then(p => {{
+                        if (p && p.length > 0) {{ playlist = p; loadTrack(0); domPlayer.audio.play().catch(e => console.warn('Autoplay bloqueado:', e)); }}
+                        else {{ domPlayer.title.textContent = "Error al Cargar Playlist"; }}
+                    }}).catch(e => {{ domPlayer.title.textContent = "Error de API Playlist"; console.error(e); }});
 
-                console.log("¡DOM y API listos! Inicializando la aplicación...");
-                window.quitting = false;
+                    // Cargar volumen
+                    pywebview.api.py_load_music_volume().then(vol => {{
+                        domPlayer.volumeSlider.value = vol; setVolume();
+                    }}).catch(e => {{ domPlayer.volumeSlider.value = 1.0; setVolume(); console.error(e); }});
 
-                try {{
-                    // 1. Iniciar la cadena de llamadas a la API
-                    pywebview.api.py_get_os_sep().then(sep => {{
-                        osSep = sep || '/';
-                        return pywebview.api.py_load_and_migrate_config();
-                    }}).then(pathsAreValid => {{
-                        // 2. Cargar la música (paralelamente)
-                        pywebview.api.py_get_playlist().then(newPlaylist => {{
-                            if (newPlaylist && newPlaylist.length > 0) {{
-                                console.log('Playlist cargada desde Python con ' + newPlaylist.length + ' canciones.');
-                                playlist = newPlaylist;
-                                loadTrack(0);
-                                domPlayer.audio.play().then(() => {{
-                                    isPlaying = true;
-                                    domPlayer.player.classList.add('playing');
-                                }}).catch(error => {{
-                                    console.warn('Autoplay bloqueado o fallido:', error);
-                                }});
-                            }} else {{
-                                console.error("No se pudo cargar la playlist desde Python o está vacía.");
-                                domPlayer.title.textContent = "Error al Cargar";
-                                domPlayer.artist.textContent = "No se encontró playlist.";
-                            }}
-                        }}).catch(err => {{
-                             console.error("Error fatal al llamar a py_get_playlist:", err);
-                             domPlayer.title.textContent = "Error de API";
-                             domPlayer.artist.textContent = "Fallo al conectar con Python.";
-                        }});
-                        
-                        // (MODIFICADO) 3. Cargar y setear volumen inicial
-                        pywebview.api.py_load_music_volume().then(savedVolume => {{
-                            console.log("Volumen guardado cargado:", savedVolume);
-                            domPlayer.volumeSlider.value = savedVolume;
-                            setVolume(); // Llama a setVolume para actualizar la UI y el audio
-                        }}).catch(err => {{
-                            console.error("Error al cargar el volumen guardado:", err);
-                            domPlayer.volumeSlider.value = 1.0;
-                            setVolume(); // Fallback al volumen máximo
-                        }});
-
-                        // 4. Decidir qué pantalla mostrar
-                        if (pathsAreValid) {{
-                            console.log("Rutas válidas encontradas. Yendo a 'play'.");
-                            pywebview.api.py_toggle_fullscreen();
-                            dom.loadingOverlay.style.display = 'none';
-                            switchScreen('play');
-                        }} else {{
-                             console.log("Rutas no válidas. Iniciando asistente.");
-                             pywebview.api.py_toggle_fullscreen();
-                             startInitialSetupWizard();
-                        }}
-
-                        // (NUEVO) Comprobar si se debe mostrar el panel de depuración
-                        return pywebview.api.py_get_debug_status();
-                    }}).then(isDebug => {{
-                        dom.panelDebugBtn.style.display = isDebug ? 'flex' : 'none';
-                        // (NUEVO) Cargar la versión del launcher
-                        return pywebview.api.py_get_launcher_version();
-                    }}).then(version => {{
-                        if (version) {{
-                            dom.launcherVersion.textContent = `v${{version}}`;
-                        }}
-                    }}).catch(e => {{
-                        // Error en la cadena py_get_os_sep o py_load_saved_paths
-                        console.error("Error en la cadena de carga inicial:", e);
-                        showLoadingError("Error de Carga Inicial", "No se pudo cargar la configuración: " + e); 
-                        // Forzar el asistente como fallback
-                        pywebview.api.py_toggle_fullscreen();
+                    // Decidir pantalla
+                    if (pathsAreValid) {{
+                        switchScreen('play');
+                    }} else {{
                         startInitialSetupWizard();
-                    }});
-                }} catch (e) {{
-                    showLoadingError("Error Fatal", "API Python no disponible (catch principal): " + e); 
-                }}
+                    }}
+                    return pywebview.api.py_get_debug_status();
+
+                }}).then(isDebug => {{
+                    dom.panelDebugBtn.style.display = isDebug ? 'flex' : 'none';
+                    return pywebview.api.py_get_launcher_version();
+                }}).then(version => {{
+                    if (version) dom.launcherVersion.textContent = `v${{version}}`;
+                }}).catch(e => {{
+                    showResult(false, "Error de Carga", `No se pudo cargar la configuración: ${{e}}`);
+                    startInitialSetupWizard();
+                }});
             }}
 
-            // Iniciar el proceso de inicialización
+            // (NUEVO) Punto de entrada principal
+            function initializeApp() {{
+                if (!window.pywebview || !window.pywebview.apiReady) {{
+                    return setTimeout(initializeApp, 50);
+                }}
+                console.log("¡DOM y API listos! Iniciando chequeo de actualización...");
+                window.quitting = false;
+                window.startMainApp = startMainApp; // Exponer globalmente para Python
+
+                try {{ pywebview.api.py_start_update_check(); }}
+                catch(e) {{ onUpdateError(`La comunicación con el backend falló: ${{e}}`); }}
+            }}
+
+            // Iniciar la aplicación
             initializeApp();
 
-
-            // --- Adjuntar todos los listeners de UI aquí ---
-            // (Ahora es seguro porque el DOM está cargado)
-
-            // --- Asistente Listeners ---
+            // --- Adjuntar Listeners de UI ---
             dom.wizard.btnAskYes.addEventListener('click', () => showWizardStep('find-manual'));
             dom.wizard.btnAskNo.addEventListener('click', () => showWizardStep('install-location'));
             
             dom.wizard.btnFindManual.addEventListener('click', () => {{
                 pywebview.api.py_setup_ask_for_prism_path().then(result => {{
-                    if (result.status === 'path_valid') {{
-                        handlePrismPathFound(result.path);
-                    }} else if (result.status === 'path_invalid') {{
-                        showResult(false, "Ruta Inválida", result.error);
-                    }}
-                    // Si 'cancelled', no hacer nada
+                    if (result.status === 'path_valid') {{ handlePrismPathFound(result.path); }}
+                    else if (result.status === 'path_invalid') {{ showResult(false, "Ruta Inválida", result.error); }}
                 }}).catch(err => showResult(false, "Error", "No se pudo abrir diálogo: " + err));
             }});
             
@@ -1433,31 +1437,19 @@ HTML_CONTENT = f"""
                     if (result.status === 'path_valid') {{
                         showWizardStep('install-progress');
                         dom.wizard.installTitle.textContent = "Instalando Prism Launcher";
-                        dom.wizard.installSubtitle.textContent = "Ejecutando Winget... Esto puede tardar.";
-                        pywebview.api.py_start_threaded_task('install_prism', result.path);
+                        dom.wizard.installSubtitle.textContent = "Descargando la versión portable...";
+                        pywebview.api.py_start_threaded_task('install_prism', {{install_path: result.path}});
                     }}
-                    // Si 'cancelled', no hacer nada
                 }}).catch(err => showResult(false, "Error", "No se pudo abrir diálogo: " + err));
             }});
             
             dom.wizard.btnCancelInstall.addEventListener('click', cancelCurrentProcess);
+            dom.wizard.btnLoginOpen.addEventListener('click', () => pywebview.api.py_setup_open_prism_for_login(setupState.prismPath).catch(e => showResult(false, "Error", "No se pudo abrir Prism: " + e)));
+            dom.wizard.btnLoginFinish.addEventListener('click', () => pywebview.api.py_save_paths(setupState.prismPath, setupState.instancePath).then(() => switchScreen('play')));
 
-            dom.wizard.btnLoginOpen.addEventListener('click', () => {{
-                pywebview.api.py_setup_open_prism_for_login(setupState.prismPath)
-                    .catch(e => showResult(false, "Error", "No se pudo abrir Prism: " + e));
-            }});
-
-            dom.wizard.btnLoginFinish.addEventListener('click', () => {{
-                // Guardar por si acaso (aunque ya debería estar guardado)
-                pywebview.api.py_save_paths(setupState.prismPath, setupState.instancePath).then(() => {{
-                    switchScreen('play'); // ¡Terminado!
-                }});
-            }});
-
-
-            // --- (ACTUALIZADO) Settings Screen Listeners ---
-            dom.settings.browsePrismBtn.addEventListener('click', () => {{ pywebview.api.py_browse_for_prism_exe().then(data => {{ if (data && data.is_valid) {{ setupState.prismPath = data.prism_path; setupState.instancePath = data.instance_path; }} else {{ setupState.prismPath = null; setupState.instancePath = null; }} validateSettings(); }}).catch(err => {{ showResult(false, "Error Examinar", "No se pudo abrir diálogo: " + err); }}); }});
-            dom.settings.browseInstanceBtn.addEventListener('click', () => {{ pywebview.api.py_browse_for_instance_folder().then(path => {{ setupState.instancePath = path; validateSettings(); }}).catch(err => {{ showResult(false, "Error Examinar", "No se pudo abrir diálogo: " + err); }}); }});
+            // Settings Screen Listeners
+            dom.settings.browsePrismBtn.addEventListener('click', () => pywebview.api.py_browse_for_prism_exe().then(data => {{ if (data && data.is_valid) {{ setupState.prismPath = data.prism_path; setupState.instancePath = data.instance_path; }} else {{ setupState.prismPath = null; setupState.instancePath = null; }} validateSettings(); }}).catch(err => showResult(false, "Error Examinar", "No se pudo abrir diálogo: " + err)));
+            dom.settings.browseInstanceBtn.addEventListener('click', () => pywebview.api.py_browse_for_instance_folder().then(path => {{ setupState.instancePath = path; validateSettings(); }}).catch(err => showResult(false, "Error Examinar", "No se pudo abrir diálogo: " + err)));
             [dom.settings.prismDisplay, dom.settings.instanceDisplay].forEach(el => {{
                 el.addEventListener('dragenter', (e) => {{ e.preventDefault(); e.stopPropagation(); el.classList.add('dragover'); }}, false);
                 el.addEventListener('dragover', (e) => {{ e.preventDefault(); e.stopPropagation(); el.classList.add('dragover'); }}, false);
@@ -1466,112 +1458,72 @@ HTML_CONTENT = f"""
                     e.preventDefault(); e.stopPropagation(); el.classList.remove('dragover'); 
                     if (e.dataTransfer.items && e.dataTransfer.items.length > 0 && e.dataTransfer.items[0].kind === 'file') {{
                         const droppedPath = e.dataTransfer.files[0].path; if (!droppedPath) return; 
-                        if (el === dom.settings.prismDisplay) {{
-                            pywebview.api.py_process_prism_path_drop(droppedPath).then(data => {{ setupState.prismPath = data.prism_path; setupState.instancePath = data.instance_path; validateSettings(); }}).catch(err => console.error("Error Prism drop:", err));
-                        }} else {{
-                            pywebview.api.py_process_instance_path_drop(droppedPath).then(data => {{ setupState.instancePath = data.path; validateSettings(); }}).catch(err => console.error("Error Instance drop:", err));
-                        }}
+                        if (el === dom.settings.prismDisplay) pywebview.api.py_process_prism_path_drop(droppedPath).then(data => {{ setupState.prismPath = data.prism_path; setupState.instancePath = data.instance_path; validateSettings(); }}).catch(err => console.error("Error Prism drop:", err));
+                        else pywebview.api.py_process_instance_path_drop(droppedPath).then(data => {{ setupState.instancePath = data.path; validateSettings(); }}).catch(err => console.error("Error Instance drop:", err));
                     }}
                 }}, false);
             }});
             dom.settings.saveBtn.addEventListener('click', () => {{
                 if (dom.settings.saveBtn.disabled) return; 
-                if (setupState.prismPath && setupState.instancePath) {{
-                    pywebview.api.py_save_paths(setupState.prismPath, setupState.instancePath).then(didSave => {{
-                        if (didSave) {{ switchScreen('play'); }}
-                        else {{ showResult(false, "Error Guardar", "No se pudieron guardar rutas."); }}
-                    }}).catch(err => {{ showResult(false, "Error Inesperado", "No se pudo guardar config: " + err); }});
-                }} else {{ showResult(false, "Error Interno", "Faltan rutas válidas."); }}
+                pywebview.api.py_save_paths(setupState.prismPath, setupState.instancePath).then(didSave => {{
+                    if (didSave) switchScreen('play');
+                    else showResult(false, "Error Guardar", "No se pudieron guardar rutas.");
+                }}).catch(err => showResult(false, "Error Inesperado", "No se pudo guardar config: " + err));
             }});
 
-            // --- Play Screen Listeners ---
+            // Play Screen Listeners
             dom.playBtn.addEventListener('click', () => {{
                 if (dom.playBtn.classList.contains('cancel-mode')) {{
                     cancelCurrentProcess();
                 }} else {{
-                    dom.playBtn.textContent = "CANCELAR";
-                    dom.playBtn.classList.add('cancel-mode');
+                    dom.playBtn.textContent = "CANCELAR"; dom.playBtn.classList.add('cancel-mode');
                     switchScreen('progress');
-                    dom.console.innerHTML = '';
-                    dom.changelogContent.innerHTML = '';
+                    dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';
                     logToConsole("Iniciando proceso...");
-                    dom.cancelBtn.disabled = false;
-                    dom.cancelBtn.textContent = "Cancelar";
+                    dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancelar";
                     updateProgress(0, "Iniciando...");
                     setLoadScreen("Actualizando...", "Comprobando versiones...");
-                    
-                    try {{
-                        pywebview.api.py_start_game();
-                    }} catch(e) {{
-                        console.error("Error calling py_start_game:", e);
-                        showResult(false, "Error de API", "No se pudo llamar a py_start_game: " + e);
-                        returnToPlayScreen();
-                    }}
+                    try {{ pywebview.api.py_start_game(); }}
+                    catch(e) {{ showResult(false, "Error de API", "No se pudo llamar a py_start_game: " + e); returnToPlayScreen(); }}
                 }}
              }});
             dom.menuBtn.addEventListener('click', openSidePanel);
 
-            // --- Side Panel Listeners ---
+            // Side Panel Listeners
             dom.panelOverlay.addEventListener('click', closeSidePanel);
-            dom.panelSettingsBtn.addEventListener('click', () => {{
-                closeSidePanel();
-                switchScreen('settings');
-                validateSettings();
-             }});
-            dom.panelDebugBtn.addEventListener('click', () => {{
-                const isVisible = dom.debugPanel.style.display === 'block';
-                toggleDebugPanel(!isVisible);
-                closeSidePanel();
-            }});
+            dom.panelSettingsBtn.addEventListener('click', () => {{ closeSidePanel(); switchScreen('settings'); validateSettings(); }});
+            dom.panelDebugBtn.addEventListener('click', () => {{ const isVisible = dom.debugPanel.style.display === 'block'; toggleDebugPanel(!isVisible); closeSidePanel(); }});
             dom.panelQuitBtn.addEventListener('click', () => {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} }});
 
-            // --- Progress Screen Listeners ---
-            dom.cancelBtn.addEventListener('click', () => {{
-                cancelCurrentProcess();
-            }});
+            // Progress Screen Listeners
+            dom.cancelBtn.addEventListener('click', cancelCurrentProcess);
             dom.console.addEventListener('scroll', () => {{ const atBottom = (dom.console.scrollHeight - dom.console.scrollTop - dom.console.clientHeight) < 30; isScrolledToBottom = atBottom; dom.scrollBottomBtn.classList.toggle('visible', !atBottom); }});
             dom.scrollBottomBtn.addEventListener('click', () => {{ dom.console.scrollTop = dom.console.scrollHeight; isScrolledToBottom = true; dom.scrollBottomBtn.classList.remove('visible'); }});
 
             dom.minimizeProgressBtn.addEventListener('click', () => {{
                 isProgressMinimized = true;
-
-                // (CORREGIDO) Sincronizar la barra minimizada con la principal ANTES de mostrarla
                 const currentMainWidth = dom.progressBar.style.width;
                 dom.minimizedProgressBarFill.style.transition = 'none';
                 dom.minimizedProgressBarFill.style.width = currentMainWidth;
                 setTimeout(() => {{ dom.minimizedProgressBarFill.style.transition = 'width 0.3s ease'; }}, 50);
-
                 dom.screens.progress.style.display = 'none';
-                dom.screens.progress.classList.remove('active');
                 dom.minimizedWidget.style.display = 'flex';
             }});
              dom.minimizedWidget.addEventListener('click', () => {{
                  isProgressMinimized = false;
                  dom.minimizedWidget.style.display = 'none';
                  dom.screens.progress.style.display = 'flex';
-                 dom.screens.progress.classList.add('active');
              }});
 
-            // --- Modal Listeners ---
-            dom.modal.closeBtn.addEventListener('click', () => {{
-                 returnToPlayScreen();
-             }});
-
-             // --- Music Player Listeners ---
-             domPlayer.playPauseBtn.addEventListener('click', () => {{
-                 if (isPlaying) {{ pauseTrack(); }} else {{ playTrack(); }}
-             }});
-             domPlayer.nextBtn.addEventListener('click', nextTrack);
-             domPlayer.audio.addEventListener('ended', nextTrack);
-             domPlayer.audio.addEventListener('error', (e) => {{
-                 console.error("Audio error:", domPlayer.audio.error);
-                 domPlayer.title.textContent = "Error al cargar";
-                 domPlayer.artist.textContent = playlist[currentTrackIndex]?.src || "URL inválida";
-                 domPlayer.progressBar.style.width = '0%';
-             }});
-             domPlayer.audio.addEventListener('timeupdate', updateProgressUI);
-             domPlayer.progressContainer.addEventListener('click', setProgress);
-             domPlayer.volumeSlider.addEventListener('input', setVolume);
+            // Modal & Music Player Listeners
+            dom.modal.closeBtn.addEventListener('click', returnToPlayScreen);
+            domPlayer.playPauseBtn.addEventListener('click', () => {{ if (isPlaying) pauseTrack(); else playTrack(); }});
+            domPlayer.nextBtn.addEventListener('click', nextTrack);
+            domPlayer.audio.addEventListener('ended', nextTrack);
+            domPlayer.audio.addEventListener('error', (e) => {{ console.error("Audio error:", domPlayer.audio.error); domPlayer.title.textContent = "Error al cargar"; domPlayer.artist.textContent = playlist[currentTrackIndex]?.src || "URL inválida"; domPlayer.progressBar.style.width = '0%'; }});
+            domPlayer.audio.addEventListener('timeupdate', updateProgressUI);
+            domPlayer.progressContainer.addEventListener('click', setProgress);
+            domPlayer.volumeSlider.addEventListener('input', setVolume);
 
             console.log("Initial event listeners attached.");
         }});
