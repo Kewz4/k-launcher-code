@@ -897,9 +897,9 @@ HTML_CONTENT = f"""
 
         function onUpdateCheckComplete(update_available, details_json) {{
             console.log(`onUpdateCheckComplete: disponible=${{update_available}}`);
-            const details = JSON.parse(details_json);
 
             if (update_available) {{
+                const details = JSON.parse(details_json);
                 logToUpdaterConsole(`¡Nueva versión disponible: ${{details.version}}!`);
                 dom.updater.title.textContent = `Actualización Disponible`;
 
@@ -907,29 +907,25 @@ HTML_CONTENT = f"""
                 notes.innerHTML = `<strong>Notas de la versión:</strong><br>${{details.notes || 'No disponibles.'}}`;
                 dom.updater.console.appendChild(notes);
 
-                dom.updater.buttons.innerHTML = ''; // Limpiar botones
+                logToUpdaterConsole('La actualización es obligatoria y comenzará en 5 segundos...');
 
-                const updateButton = document.createElement('button');
-                updateButton.innerHTML = '<i class="fas fa-download"></i> Actualizar Ahora';
-                updateButton.className = 'btn btn-primary';
-                updateButton.onclick = () => {{
-                    dom.updater.title.textContent = 'Descargando Actualización...';
-                    logToUpdaterConsole('Iniciando descarga...');
-                    updateButton.disabled = true;
-                    skipButton.disabled = true;
-                    pywebview.api.py_download_and_apply_update();
-                }};
-
-                const skipButton = document.createElement('button');
-                skipButton.innerHTML = '<i class="fas fa-arrow-right"></i> Ahora No';
-                skipButton.className = 'btn btn-secondary';
-                skipButton.onclick = () => {{
-                    dom.updater.screen.classList.add('hidden');
-                    startMainApp();
-                }};
-
-                dom.updater.buttons.appendChild(skipButton);
-                dom.updater.buttons.appendChild(updateButton);
+                let countdown = 5;
+                const countdownInterval = setInterval(() => {{
+                    countdown--;
+                    if (countdown > 0) {{
+                        logToUpdaterConsole(`Comenzando en ${{countdown}}...`);
+                    }} else {{
+                        clearInterval(countdownInterval);
+                        logToUpdaterConsole('Iniciando descarga...');
+                        dom.updater.title.textContent = 'Descargando Actualización...';
+                        dom.updater.buttons.innerHTML = ''; // Limpiar por si acaso
+                        try {{
+                            pywebview.api.py_download_and_apply_update();
+                        }} catch (e) {{
+                            onUpdateError("No se pudo iniciar la descarga: " + e.message);
+                        }}
+                    }}
+                }}, 1000);
 
             }} else {{
                 logToUpdaterConsole("Estás al día. Iniciando launcher...");

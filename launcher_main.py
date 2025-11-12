@@ -93,9 +93,28 @@ MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/tnii05n495nn7um3g08yc/Kewz-s-Vanilla-True.zip?rlkey=szgtdkxw1g8kf5xkqlv19qqa5&st=xkiv07rn&dl=1"
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
-# (NUEVO) Versión del Launcher
-LAUNCHER_VERSION = "1.0"
-GITHUB_REPO = "Kewz4/k-launcher-code" # (NUEVO) Repositorio para la auto-actualización
+# (NUEVO) Lógica para leer la versión del launcher dinámicamente
+def get_current_launcher_version(default_version="1.0"):
+    """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
+    version_file = "launcher_version.txt"
+    if os.path.exists(version_file):
+        try:
+            with open(version_file, 'r', encoding='utf-8') as f:
+                version = f.read().strip()
+                if re.fullmatch(r'\d+(\.\d+)*', version):
+                    print(f"Versión del launcher leída desde archivo: {version}")
+                    return version
+                else:
+                    print(f"Advertencia: Contenido de '{version_file}' no es una versión válida: '{version}'. Usando por defecto.")
+        except Exception as e:
+            print(f"Advertencia: No se pudo leer '{version_file}': {e}. Usando por defecto.")
+
+    print(f"Archivo '{version_file}' no encontrado. Usando versión por defecto: {default_version}")
+    return default_version
+
+# La versión del Launcher ahora se lee dinámicamente
+LAUNCHER_VERSION = get_current_launcher_version()
+GITHUB_REPO = "Kewz4/k-launcher-code" # Repositorio para la auto-actualización
 
 # La línea que indica que el juego está listo
 LOG_TRIGGER_LINE = "[ModernFix/]: Game took"

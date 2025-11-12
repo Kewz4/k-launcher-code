@@ -185,6 +185,8 @@ class Updater:
             updater_script_path = os.path.join(base_dir, "updater.bat")
             final_exe_name = os.path.basename(current_exe_path)
 
+            version_file_path = os.path.join(base_dir, "launcher_version.txt")
+
             script_content = f"""
 @echo off
 echo Cerrando el launcher para actualizar...
@@ -200,7 +202,10 @@ if exist "{new_exe_path}" (
     goto :retry
 )
 
-echo Actualizacion completa. Reiniciando el launcher...
+echo Actualizacion completa. Escribiendo nuevo archivo de version...
+echo {latest_version_str}>{version_file_path}
+
+echo Reiniciando el launcher...
 start "" "{current_exe_path}"
 del "%~f0"
 """
