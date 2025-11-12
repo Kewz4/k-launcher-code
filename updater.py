@@ -187,13 +187,22 @@ class Updater:
 
             script_content = f"""
 @echo off
-echo Reemplazando el launcher...
-timeout /t 2 /nobreak > nul
+echo Cerrando el launcher para actualizar...
 taskkill /F /IM "{final_exe_name}" > nul
-if exist "{current_exe_path}" move /Y "{new_exe_path}" "{current_exe_path}"
-echo Actualizacion completa. Reiniciando...
+timeout /t 3 /nobreak > nul
+
+:retry
+echo Intentando reemplazar el archivo...
+move /Y "{new_exe_path}" "{current_exe_path}"
+if exist "{new_exe_path}" (
+    echo El reemplazo fallo, reintentando en 2 segundos...
+    timeout /t 2 /nobreak > nul
+    goto :retry
+)
+
+echo Actualizacion completa. Reiniciando el launcher...
 start "" "{current_exe_path}"
-del "{updater_script_path}"
+del "%~f0"
 """
             with open(updater_script_path, "w", encoding='utf-8') as f:
                 f.write(script_content)

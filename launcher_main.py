@@ -2433,7 +2433,7 @@ def main():
             width=900,
             height=650,
             resizable=False,
-            fullscreen=False,
+            fullscreen=True,
             min_size=(800, 600)
         )
         api.window = window
