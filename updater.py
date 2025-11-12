@@ -149,28 +149,25 @@ class Updater:
         :param on_finish_callback: Función a llamar cuando el proceso termina (éxito o error).
         """
         try:
-            latest_version_str = "0.0"
+            version_str = None
+            asset_to_download = None
             version_pattern = re.compile(r"Kewz\.Launcher\.v(\d+(\.\d+)?)\.exe")
             for asset in release_data.get("assets", []):
                 match = version_pattern.search(asset.get("name", ""))
                 if match:
                     version_str = match.group(1)
-                    # Tomamos la primera coincidencia válida
-                    break
+                    asset_to_download = asset
+                    break # Found the first valid asset, stop here
 
-            if version_str == "0.0":
-                 raise ValueError("No se pudo determinar la versión desde los assets.")
+            if not version_str or not asset_to_download:
+                 raise ValueError("No se pudo determinar la versión o el asset de descarga desde la release.")
 
             self._update_progress(f"Descargando v{version_str}...", 20)
 
-            asset_name_pattern = f"Kewz.Launcher.v{version_str}.exe"
-            asset_url = next(
-                (asset.get("browser_download_url") for asset in release_data.get("assets", [])
-                 if asset.get("name") == asset_name_pattern), None
-            )
-
+            asset_url = asset_to_download.get("browser_download_url")
             if not asset_url:
-                raise FileNotFoundError(f"No se encontró el asset '{asset_name_pattern}' en el release.")
+                raise FileNotFoundError(f"No se encontró la URL de descarga para el asset.")
+
 
             if not getattr(sys, 'frozen', False):
                  raise RuntimeError("La auto-actualización solo funciona en el ejecutable compilado (.exe).")
@@ -185,10 +182,11 @@ class Updater:
             updater_script_path = os.path.join(base_dir, "updater.bat")
             final_exe_name = os.path.basename(current_exe_path)
 
-            version_file_path = os.path.join(base_dir, "launcher_version.txt")
-
-            script_content = f"""
+            script_content = f'''
 @echo off
+chcp 65001 > nul
+cd /d "%~dp0"
+
 echo Cerrando el launcher para actualizar...
 taskkill /F /IM "{final_exe_name}" > nul
 timeout /t 3 /nobreak > nul
@@ -203,12 +201,14 @@ if exist "{new_exe_path}" (
 )
 
 echo Actualizacion completa. Escribiendo nuevo archivo de version...
-echo {latest_version_str}>{version_file_path}
+echo {version_str}>"launcher_version.txt"
 
-echo Reiniciando el launcher...
-start "" "{current_exe_path}"
+echo Reiniciando el launcher con flag post-update...
+start "" "{current_exe_path}" --post-update
+
+echo Limpiando...
 del "%~f0"
-"""
+'''
             with open(updater_script_path, "w", encoding='utf-8') as f:
                 f.write(script_content)
 

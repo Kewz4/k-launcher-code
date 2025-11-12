@@ -2540,6 +2540,25 @@ if __name__ == "__main__":
 
     print(f"Iniciando Vanilla+ Launcher... WD: {os.getcwd()}")
 
+    # --- (NUEVO) Lógica para manejar el reinicio post-actualización ---
+    if "--post-update" in sys.argv:
+        print("Argumento --post-update detectado. Limpiando archivos de bloqueo antiguos...")
+        time.sleep(2) # Dar tiempo a que el proceso antiguo termine completamente
+        temp_dir_for_cleanup = tempfile.gettempdir()
+        old_pid_file = os.path.join(temp_dir_for_cleanup, 'vplus_launcher.pid')
+        old_lock_file = os.path.join(temp_dir_for_cleanup, 'vplus_launcher.lock')
+        try:
+            if os.path.exists(old_lock_file):
+                os.remove(old_lock_file)
+                print(f"Archivo de bloqueo antiguo eliminado: {old_lock_file}")
+            if os.path.exists(old_pid_file):
+                os.remove(old_pid_file)
+                print(f"Archivo PID antiguo eliminado: {old_pid_file}")
+        except Exception as e:
+            print(f"Advertencia: No se pudieron eliminar los archivos de bloqueo antiguos: {e}")
+        print("Limpieza completada. Continuando con el inicio normal...")
+
+
     # --- Lógica de Instancia Única Mejorada ---
     temp_dir = tempfile.gettempdir()
     pid_file_path = os.path.join(temp_dir, 'vplus_launcher.pid')
