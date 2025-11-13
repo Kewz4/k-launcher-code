@@ -22,7 +22,7 @@ jobs:
         pip install pyinstaller Pillow
 
     - name: Download Icon
-      run: curl -L "https://github.com/Kewz4/k-launcher-code/raw/main/Kewz%20Launcher.ico" -o "Kewz Launcher.ico"
+      run: curl -L "https://raw.githubusercontent.com/Kewz4/k-launcher-code/refs/heads/v1.0/Kewz%20Launcher.ico" -o "Kewz Launcher.ico"
       shell: bash
 
     - name: Build the application
