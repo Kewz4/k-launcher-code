@@ -978,9 +978,11 @@ HTML_CONTENT = f"""
             domPlayer.player.classList.toggle('visible', !isSetupScreen);
 
             // Mostrar la pantalla de juego (fondo) en la mayoría de los casos
-            const showPlayBackground = (screenName !== 'initial-setup' && screenName !== 'settings');
-            dom.screens.play.style.display = showPlayBackground ? 'flex' : 'none';
-            dom.screens.play.classList.toggle('active', showPlayBackground);
+            // (CORREGIDO) #screen-play siempre debe estar visible (display: flex) para actuar como fondo.
+            // Su z-index se controla con la clase 'active', que lo pone por encima de otros elementos si es la pantalla principal.
+            const showPlayAsMainScreen = (screenName !== 'initial-setup' && screenName !== 'settings');
+            dom.screens.play.style.display = 'flex';
+            dom.screens.play.classList.toggle('active', showPlayAsMainScreen);
 
             if (screenName === 'play') {{
                 dom.playBtn.textContent = "JUGAR";
@@ -1373,8 +1375,15 @@ HTML_CONTENT = f"""
                 }}).then(pathsAreValid => {{
                     // Cargar música
                     pywebview.api.py_get_playlist().then(p => {{
-                        if (p && p.length > 0) {{ playlist = p; loadTrack(0); domPlayer.audio.play().catch(e => console.warn('Autoplay bloqueado:', e)); }}
-                        else {{ domPlayer.title.textContent = "Error al Cargar Playlist"; }}
+                        if (p && p.length > 0) {{
+                            playlist = p;
+                            loadTrack(0);
+                            // (CORREGIDO) Llamar a playTrack() en lugar de .play() directamente
+                            // para asegurar que la UI se actualice correctamente.
+                            playTrack();
+                        }} else {{
+                             domPlayer.title.textContent = "Error al Cargar Playlist";
+                        }}
                     }}).catch(e => {{ domPlayer.title.textContent = "Error de API Playlist"; console.error(e); }});
 
                     // Cargar volumen

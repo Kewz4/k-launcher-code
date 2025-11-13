@@ -1,9 +1,6 @@
 name: Build Vanilla+ Launcher EXE
 
-on:
-  push:
-    branches: [ main ] # Se activa en cada push a la rama main
-  workflow_dispatch: # Permite la ejecución manual
+on: [push]
 
 jobs:
   build:

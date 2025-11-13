@@ -7,6 +7,7 @@ Este es el launcher personalizado para el modpack **Kewz's Vanilla+ True**, dise
 - **Instalación Automática de Prism Launcher**: Si no detecta una instalación existente, el launcher puede descargar y configurar una versión portable de **Prism Launcher** por ti.
 - **Instalación del Modpack con Un Clic**: Instala la última versión de **Kewz's Vanilla+ True** directamente desde el repositorio, creando una instancia dedicada en Prism Launcher.
 - **Actualizaciones Automáticas**: Cada vez que inicias el juego, el launcher comprueba si hay una nueva versión del modpack. Si existe, descarga y aplica las actualizaciones de forma segura, respaldando tus archivos por si algo sale mal.
+- **Auto-Actualización del Launcher**: El launcher comprueba si hay una nueva versión de sí mismo al iniciar. Si encuentra una, se actualizará automáticamente a la última versión antes de continuar, asegurando que siempre tengas las últimas características y correcciones.
 - **Sincronización de Opciones**: Sincroniza automáticamente las configuraciones de `options.txt` relacionadas con los resource packs para asegurar que siempre tengas la configuración visual recomendada, sin perder tus ajustes personales.
 - **Reproductor de Música Integrado**: Disfruta de una selección de música curada directamente desde la interfaz del launcher, con controles de reproducción y volumen.
 - **Panel de Depuración en Tiempo Real**: Ofrece un feedback visual sobre los eventos clave durante el lanzamiento del juego, como la detección de triggers para el audio y el cierre del launcher.
@@ -61,6 +62,9 @@ No te preocupes. El launcher está diseñado para ser seguro. Si algo sale mal, 
 
 **¿Puedo usar mi instalación existente de Prism Launcher?**
 Sí. Durante el asistente de configuración, puedes seleccionar la opción para buscar manualmente tu archivo `PrismLauncher.exe`.
+
+**¿Qué pasa si abro el launcher más de una vez?**
+El launcher está diseñado para ejecutarse como una única instancia. Si intentas abrirlo mientras ya se está ejecutando, te mostrará un aviso preguntándote si deseas cerrar la instancia anterior y abrir una nueva.
 
 **¿El launcher es de código abierto?**
 Sí, puedes revisar todo el código fuente en el repositorio para asegurarte de su funcionamiento y seguridad.
