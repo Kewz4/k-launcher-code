@@ -118,8 +118,6 @@ GITHUB_REPO = "Kewz4/k-launcher-code" # Repositorio para la auto-actualización
 
 # La línea que indica que el juego está listo
 LOG_TRIGGER_LINE = "[ModernFix/]: Game took"
-# (NUEVO) Línea que indica que los recursos cargaron y el sonido puede activarse
-UNMUTE_TRIGGER_LINE = "[FANCYMENU] Minecraft resource reload: FINISHED"
 
 
 class ModpackLauncherAPI:
@@ -149,7 +147,6 @@ class ModpackLauncherAPI:
         self.hwnd = None # Handle de la ventana (solo Windows)
         self.cancel_event = threading.Event()
         self.game_ready_event = threading.Event()
-        self.unmute_event = threading.Event() # (NUEVO) Evento para el audio
         self.on_top_thread = None
         self.prism_exe_path = None
         self.instance_mc_path = None
@@ -174,7 +171,6 @@ class ModpackLauncherAPI:
 
         # (NUEVO) Atributos para el panel de depuración
         self.debug_mode = True # Habilitar para mostrar el panel
-        self.unmute_trigger_status = "PENDIENTE"
         self.close_trigger_status = "PENDIENTE"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
@@ -1103,129 +1099,6 @@ class ModpackLauncherAPI:
             except Exception as e:
                 print(f"Error closing window via JS: {e}")
 
-    # --- (NUEVO) Lógica de Control de Audio ---
-    def _audio_muter_thread(self, prism_process):
-        """
-        (MODIFICADO)
-        Hilo que busca y silencia cualquier proceso 'javaw.exe' en todo el sistema.
-        """
-        if not IS_WINDOWS:
-            self._log("[Audio] El control de audio solo es compatible con Windows. Hilo finalizado.")
-            return
-
-        self._log("[Audio] Hilo de silenciamiento iniciado. Buscando procesos 'javaw.exe' en todo el sistema...")
-
-        from comtypes import CoInitialize, CoUninitialize
-        from pycaw.pycaw import AudioUtilities
-
-        muted_sessions = []
-        target_pid = None
-
-        try:
-            CoInitialize()
-
-            # --- (NUEVO) Enfoque Robusto: Encontrar el PID del hijo ---
-            self._log("[Audio] Buscando el proceso 'javaw.exe' hijo de Prism...")
-            search_start_time = time.time()
-            search_timeout_seconds = 180 # 3 minutos
-
-            parent_process = psutil.Process(prism_process.pid)
-
-            while time.time() - search_start_time < search_timeout_seconds:
-                if self.cancel_event.is_set():
-                    self._log("[Audio] Búsqueda de proceso hijo cancelada.")
-                    return
-
-                try:
-                    children = parent_process.children(recursive=True)
-                    for child in children:
-                        if 'java' in child.name().lower():
-                            target_pid = child.pid
-                            self._log(f"[Audio] Proceso hijo 'javaw.exe' ENCONTRADO (PID: {target_pid}).")
-                            break
-                except psutil.NoSuchProcess:
-                    self._log("[Audio] El proceso de Prism terminó inesperadamente.")
-                    return
-
-                if target_pid:
-                    break
-
-                time.sleep(1)
-
-            if not target_pid:
-                self._log(f"[Audio] ADVERTENCIA: No se encontró un proceso 'javaw.exe' hijo en {search_timeout_seconds}s.")
-                return
-
-            # --- Ahora, buscar y silenciar la sesión de audio para ESE PID ---
-            self._log(f"[Audio] Buscando sesión de audio para PID: {target_pid}...")
-            session_found_and_muted = False
-            session_search_start_time = time.time()
-            session_search_timeout_seconds = 120 # 2 minutos
-
-            while time.time() - session_search_start_time < session_search_timeout_seconds:
-                if self.cancel_event.is_set():
-                    self._log("[Audio] Búsqueda de sesión de audio cancelada.")
-                    return
-
-                try:
-                    sessions = AudioUtilities.GetAllSessions()
-                    for session in sessions:
-                        if session.Process and session.Process.pid == target_pid:
-                            self._log(f"[Audio] Sesión de audio para '{session.Process.name()}' ENCONTRADA.")
-                            volume = session.SimpleAudioVolume
-                            if not volume.GetMute():
-                                volume.SetMute(1, None)
-                                self._log(f"[Audio] Proceso SILENCIADO.")
-                            else:
-                                self._log(f"[Audio] Proceso ya estaba silenciado.")
-
-                            muted_sessions.append({'session': session, 'pid': target_pid, 'name': session.Process.name()})
-                            session_found_and_muted = True
-                            break # Salir del bucle for
-                except Exception as e:
-                    self._log(f"[Audio] Error al iterar sesiones de audio: {e}")
-
-                if session_found_and_muted:
-                    break # Salir del bucle while
-
-                time.sleep(1)
-
-            if not muted_sessions:
-                self._log(f"[Audio] ADVERTENCIA: Se encontró el PID {target_pid}, pero su sesión de audio no apareció en {session_search_timeout_seconds}s.")
-                return
-
-            # Esperar la señal para reactivar el sonido
-            self._log("[Audio] Esperando señal para reactivar el sonido...")
-            unmuted = self.unmute_event.wait(timeout=300)
-
-            if unmuted:
-                self._log("[Audio] Señal recibida. Reactivando el sonido...")
-            else:
-                self._log("[Audio] ADVERTENCIA: Timeout esperando la señal de reactivación. Reactivando sonido igualmente.")
-
-            for item in muted_sessions:
-                try:
-                    volume = item['session'].SimpleAudioVolume
-                    volume.SetMute(0, None)
-                    self._log(f"[Audio] Sonido reactivado para: {item['name']}")
-                except Exception as e:
-                    self._log(f"[Audio] Error al reactivar el sonido para {item['name']}: {e}")
-
-        except ImportError as e:
-             self._log(f"[Audio] ERROR CRÍTICO: Falta una dependencia para el control de audio ({e}).")
-             self._log("[Audio] Asegúrate de que 'pycaw' y 'comtypes' están instalados.")
-        except Exception as e:
-            self._log(f"[Audio] Error inesperado en el hilo de audio: {e}")
-            import traceback
-            self._log(traceback.format_exc())
-        finally:
-            self._log("[Audio] Hilo de silenciamiento finalizado.")
-            try:
-                CoUninitialize()
-            except Exception:
-                pass
-
-
     # --- Lógica de Validación ---
 
     def _validate_prism_path(self, path):
@@ -1449,19 +1322,14 @@ class ModpackLauncherAPI:
                 if self.window:
                     # (NUEVO) Mostrar y resetear el panel de depuración si está activo
                     if self.debug_mode:
-                        self.unmute_trigger_status = "PENDIENTE"
                         self.close_trigger_status = "PENDIENTE"
-                        self.window.evaluate_js(f'updateDebugPanel("PENDIENTE", "PENDIENTE")')
+                        self.window.evaluate_js(f'updateDebugPanel("PENDIENTE")')
                         self.window.evaluate_js(f'toggleDebugPanel(true)')
 
                     self.window.evaluate_js(f'setLoadScreen("Cargando el Modpack", "Iniciando Minecraft...")')
                     self.window.evaluate_js(f'startLoadingAnimation({self.avg_launch_time_sec})')
             except Exception as e:
                 self._log(f"Error al iniciar animación JS: {e}")
-
-            # (NUEVO) Iniciar el hilo de silenciamiento de audio
-            self.unmute_event.clear()
-            # (MODIFICADO) El hilo de audio ahora se inicia más tarde, después de obtener el proceso
 
             watch_thread = threading.Thread(target=self._watch_log, args=(log_path,), name="LogWatcherThread")
             watch_thread.daemon = True
@@ -1495,11 +1363,6 @@ class ModpackLauncherAPI:
                 stderr_thread = threading.Thread(target=self._stream_reader, args=(self.prism_process.stderr, "Prism Stderr"), daemon=True)
                 stdout_thread.start()
                 stderr_thread.start()
-
-                # (NUEVO) Iniciar el hilo de audio ahora que tenemos el proceso
-                audio_thread = threading.Thread(target=self._audio_muter_thread, args=(self.prism_process,), name="AudioMuterThread")
-                audio_thread.daemon = True
-                audio_thread.start()
 
                 self._log(f"Comando de lanzamiento enviado a Prism Launcher (PID: {self.prism_process.pid}).")
 
@@ -1612,7 +1475,6 @@ class ModpackLauncherAPI:
         log_filename = os.path.basename(log_path)
         self._log(f"Vigilando el log: {log_filename}")
         self._log(f"Buscando línea gatillo de cierre: '{LOG_TRIGGER_LINE}'")
-        self._log(f"Buscando línea gatillo de audio (x2): '{UNMUTE_TRIGGER_LINE}'")
 
         file_handle = None
         self.on_top_thread = None
@@ -1660,8 +1522,6 @@ class ModpackLauncherAPI:
             line_batch = []
             last_batch_time = time.time()
 
-            unmute_trigger_count = 0 # (NUEVO) Contador para el trigger de audio
-
             while True:
                 if not self.window or self.cancel_event.is_set() or self.game_ready_event.is_set():
                     self._log("Vigilante: Ventana cerrada, cancelado o ya listo. Deteniendo lectura.")
@@ -1690,26 +1550,6 @@ class ModpackLauncherAPI:
                     line_strip = line.strip()
                     if not line_strip: continue
 
-                    # (MODIFICADO) Comprobar el trigger de audio y usar un contador
-                    if UNMUTE_TRIGGER_LINE in line_strip:
-                        if not self.unmute_event.is_set():
-                            unmute_trigger_count += 1
-                            self._log(f"[UNMUTE_TRIGGER] Detectado '{UNMUTE_TRIGGER_LINE}' ({unmute_trigger_count}/2)")
-
-                            # (NUEVO) Actualizar estado de depuración
-                            if self.debug_mode:
-                                self.unmute_trigger_status = f"{unmute_trigger_count}/2"
-                                if self.window: self.window.evaluate_js(f'updateDebugPanel("{self.unmute_trigger_status}", "{self.close_trigger_status}")')
-
-                            if unmute_trigger_count >= 2:
-                                self._log("[UNMUTE_TRIGGER] Límite alcanzado. Enviando señal para reactivar audio.")
-                                self.unmute_event.set()
-                                # (NUEVO) Actualizar estado de depuración a final
-                                if self.debug_mode:
-                                    self.unmute_trigger_status = "TRIGGERED"
-                                    if self.window: self.window.evaluate_js(f'updateDebugPanel("{self.unmute_trigger_status}", "{self.close_trigger_status}")')
-
-
                     read_start_time = time.time()
                     trigger_line_found = None
                     for trigger in trigger_lines:
@@ -1735,7 +1575,7 @@ class ModpackLauncherAPI:
                                 # (NUEVO) Actualizar estado de depuración final
                                 if self.debug_mode:
                                     self.close_trigger_status = "TRIGGERED"
-                                    if self.window: self.window.evaluate_js(f'updateDebugPanel("{self.unmute_trigger_status}", "{self.close_trigger_status}")')
+                                    if self.window: self.window.evaluate_js(f'updateDebugPanel("{self.close_trigger_status}")')
                                     time.sleep(1) # Pequeña pausa para ver el estado final
 
                                 self.game_ready_event.set()
