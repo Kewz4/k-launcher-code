@@ -35,7 +35,6 @@ jobs:
           --hidden-import="win32gui" `
           --hidden-import="win32con" `
           --hidden-import="psutil" `
-          --hidden-import="pycaw" `
           --hidden-import="comtypes" `
           --hidden-import="requests" `
           launcher_main.py

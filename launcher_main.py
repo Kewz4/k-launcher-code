@@ -90,7 +90,7 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
 ]
 MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 # (ACTUALIZADO) Nueva URL de Dropbox (confirmado que es .ZIP)
-MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/tnii05n495nn7um3g08yc/Kewz-s-Vanilla-True.zip?rlkey=szgtdkxw1g8kf5xkqlv19qqa5&st=xkiv07rn&dl=1"
+MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dyjfxl6luyz238l1gfjgl/Kewz-s-Vanilla-True-final.zip?rlkey=od3uxrkity7b564pb2wyrgeig&st=y0zyku3q&dl=1"
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
@@ -1351,7 +1351,9 @@ class ModpackLauncherAPI:
                 if IS_WINDOWS:
                     startupinfo = subprocess.STARTUPINFO()
                     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = win32con.SW_MINIMIZE # <-- CORREGIDO
+                    # (CORREGIDO) Usar SW_SHOWNOACTIVATE (4) para que se muestre pero no robe foco (launcher sigue encima)
+                    # Esto evita que el juego se pause o mutee por estar minimizado.
+                    startupinfo.wShowWindow = 4 # win32con.SW_SHOWNOACTIVATE might not be defined in all versions
 
                 self.prism_process = subprocess.Popen(command, startupinfo=startupinfo,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -1415,6 +1417,40 @@ class ModpackLauncherAPI:
             stream.close()
         except Exception as e:
             self._log(f"Error leyendo stream '{log_prefix}': {e}")
+
+    def _focus_game_window(self):
+        """(NUEVO) Busca y enfoca la ventana principal de Minecraft/Java."""
+        if not IS_WINDOWS or not win32gui: return
+
+        self._log("Intentando enfocar ventana del juego...")
+
+        def find_mc_window(hwnd, results):
+            if win32gui.IsWindowVisible(hwnd):
+                title = win32gui.GetWindowText(hwnd)
+                # Buscar ventanas que contengan 'Minecraft' (ej: 'Minecraft 1.20.1', 'Minecraft* 1.20.1', etc.)
+                if "Minecraft" in title:
+                    results.append(hwnd)
+            return True
+
+        hwnds = []
+        try:
+            win32gui.EnumWindows(find_mc_window, hwnds)
+            if hwnds:
+                # Si hay varias, tomamos la primera (usualmente solo hay una instancia lanzada por nosotros)
+                target_hwnd = hwnds[0]
+                self._log(f"Ventana encontrada: {target_hwnd} - '{win32gui.GetWindowText(target_hwnd)}'")
+
+                # Restaurar si está minimizada (aunque con SW_SHOWNOACTIVATE no debería estarlo)
+                if win32gui.IsIconic(target_hwnd):
+                    win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
+
+                # Traer al frente y dar foco
+                win32gui.SetForegroundWindow(target_hwnd)
+                self._log("Foco transferido al juego.")
+            else:
+                self._log("No se encontró ninguna ventana visible con 'Minecraft' en el título.")
+        except Exception as e:
+            self._log(f"Error al intentar enfocar el juego: {e}")
 
     def _keep_on_top(self, hwnd):
         """Hilo agresivo que mantiene la ventana del launcher "siempre encima"."""
@@ -1579,6 +1615,7 @@ class ModpackLauncherAPI:
                                     time.sleep(1) # Pequeña pausa para ver el estado final
 
                                 self.game_ready_event.set()
+                                self._focus_game_window() # (NUEVO) Enfocar juego antes de cerrar
                                 self.window.evaluate_js('fadeLauncherOut()')
                             except Exception as e:
                                 self._log(f"Error calling fadeLauncherOut: {e}")
