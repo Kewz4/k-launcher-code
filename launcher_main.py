@@ -90,7 +90,7 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
 ]
 MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 # (ACTUALIZADO) Nueva URL de Dropbox (confirmado que es .ZIP)
-MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dyjfxl6luyz238l1gfjgl/Kewz-s-Vanilla-True-final.zip?rlkey=od3uxrkity7b564pb2wyrgeig&st=y0zyku3q&dl=1"
+MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/kq5r2gbkojx2uq3pjt1dv/Kewz-s-Vanilla-True-Final-v2.zip?rlkey=d1d7vd0qf2l8vpwqmjs415yde&st=hofjxzhf&dl=1"
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
@@ -170,7 +170,7 @@ class ModpackLauncherAPI:
         self.current_task_thread = None
 
         # (NUEVO) Atributos para el panel de depuración
-        self.debug_mode = True # Habilitar para mostrar el panel
+        self.debug_mode = False # (MODIFICADO) Oculto por defecto
         self.close_trigger_status = "PENDIENTE"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
@@ -1093,11 +1093,21 @@ class ModpackLauncherAPI:
     def py_quit_launcher(self):
         """Cierra la aplicación (llamado por JS después del fade-out)."""
         self._log("Cerrando el launcher vía JS.")
+        self._force_quit()
+
+    def _force_quit(self):
+        """(NUEVO) Cierre forzado del proceso."""
+        self._log("Ejecutando _force_quit()...")
         if self.window:
             try:
                 self.window.destroy()
             except Exception as e:
-                print(f"Error closing window via JS: {e}")
+                print(f"Error closing window in _force_quit: {e}")
+
+        # Asegurar terminación del proceso
+        self._log("Saliendo del proceso Python...")
+        time.sleep(0.1)
+        os._exit(0) # Forzar salida inmediata (evita bloqueos de hilos)
 
     # --- Lógica de Validación ---
 
@@ -1617,6 +1627,9 @@ class ModpackLauncherAPI:
                                 self.game_ready_event.set()
                                 self._focus_game_window() # (NUEVO) Enfocar juego antes de cerrar
                                 self.window.evaluate_js('fadeLauncherOut()')
+                                # (NUEVO) Forzar cierre "hard quit" después de un breve delay
+                                # para dar tiempo a la animación de fade out.
+                                threading.Timer(1.5, self._force_quit).start()
                             except Exception as e:
                                 self._log(f"Error calling fadeLauncherOut: {e}")
                         return
