@@ -687,10 +687,6 @@ HTML_CONTENT = f"""
     <div id="debug-panel">
         <h3>Debug Triggers</h3>
         <div class="debug-trigger">
-            <span id="debug-unmute-name" class="debug-trigger-name">Quitar Mute (0/2)</span>
-            <span id="debug-unmute-status" class="debug-trigger-status pending">PENDIENTE</span>
-        </div>
-        <div class="debug-trigger">
             <span class="debug-trigger-name">Cerrar Launcher</span>
             <span id="debug-close-status" class="debug-trigger-status pending">PENDIENTE</span>
         </div>
@@ -718,28 +714,8 @@ HTML_CONTENT = f"""
             }}
         }}
 
-        function updateDebugPanel(unmute_status, close_status) {{
-            if (dom && dom.debugUnmuteStatus && dom.debugCloseStatus) {{
-                // Actualizar estado de Quitar Mute
-                dom.debugUnmuteStatus.textContent = unmute_status;
-                dom.debugUnmuteStatus.className = 'debug-trigger-status'; // Reset class
-
-                // (NUEVO) Actualizar dinámicamente el contador de unmute
-                if (unmute_status.includes('/')) {{ // p.e. "1/2"
-                    dom.debugUnmuteName.textContent = `Quitar Mute (${{unmute_status}})`;
-                    dom.debugUnmuteStatus.textContent = 'EN PROGRESO';
-                    dom.debugUnmuteStatus.classList.add('pending');
-                }} else if (unmute_status === 'TRIGGERED') {{
-                    dom.debugUnmuteName.textContent = 'Quitar Mute (2/2)';
-                    dom.debugUnmuteStatus.textContent = 'TRIGGERED';
-                    dom.debugUnmuteStatus.classList.add('triggered');
-                }} else {{ // PENDIENTE
-                    dom.debugUnmuteName.textContent = 'Quitar Mute (0/2)';
-                    dom.debugUnmuteStatus.textContent = 'PENDIENTE';
-                    dom.debugUnmuteStatus.classList.add('pending');
-                }}
-
-
+        function updateDebugPanel(close_status) {{
+            if (dom && dom.debugCloseStatus) {{
                 // Actualizar estado de Cerrar Launcher
                 dom.debugCloseStatus.textContent = close_status;
                 dom.debugCloseStatus.className = 'debug-trigger-status'; // Reset class
@@ -1084,7 +1060,7 @@ HTML_CONTENT = f"""
                 dom.progressLabel.textContent = progressLabel || "..."; 
                 dom.minimizedProgressLabel.textContent = progressLabel || "...";
                 // (NUEVO) Restablecer el panel de depuración al iniciar una carga
-                updateDebugPanel("PENDIENTE", "PENDIENTE");
+                updateDebugPanel("PENDIENTE");
             }} catch(e) {{ console.error("Error en setLoadScreen:", e); }}
         }}
         
@@ -1363,7 +1339,7 @@ HTML_CONTENT = f"""
                 playBtn: document.getElementById('play-btn'), menuBtn: document.getElementById('menu-btn'), sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'), panelSettingsBtn: document.getElementById('panel-settings-btn'), panelDebugBtn: document.getElementById('panel-debug-btn'), panelQuitBtn: document.getElementById('panel-quit-btn'), cancelBtn: document.getElementById('cancel-btn'), progressTitle: document.getElementById('progress-title'), progressBar: document.getElementById('progress-fill'), progressLabel: document.getElementById('progress-label'), console: document.getElementById('console'), scrollBottomBtn: document.getElementById('scroll-bottom-btn'), changelogContent: document.getElementById('changelog-content'),
                 modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
                 minimizeProgressBtn: document.getElementById('minimize-progress-btn'), minimizedWidget: document.getElementById('minimized-progress-widget'), minimizedProgressLabel: document.getElementById('minimized-progress-label'), minimizedProgressPercent: document.getElementById('minimized-progress-percent'), minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill'),
-                debugPanel: document.getElementById('debug-panel'), debugUnmuteName: document.getElementById('debug-unmute-name'), debugUnmuteStatus: document.getElementById('debug-unmute-status'), debugCloseStatus: document.getElementById('debug-close-status'), launcherVersion: document.getElementById('launcher-version')
+                debugPanel: document.getElementById('debug-panel'), debugCloseStatus: document.getElementById('debug-close-status'), launcherVersion: document.getElementById('launcher-version')
             }};
 
             // (NUEVO) Función que inicia la app principal DESPUÉS del update check
