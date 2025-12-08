@@ -826,12 +826,11 @@ class ModpackLauncherAPI:
         (REESCRITO) Tarea en hilo: Descarga y extrae la versión portable de Prism.
         Llama a JS: onPrismInstallComplete(success, path, error)
         """
-
-        dedicated_install_path = os.path.join(install_location_base, "Prism Launcher")
-        self._update_install_status(f"Creando directorio de instalación en: {dedicated_install_path}")
-
         tmp_dir = None
         try:
+            dedicated_install_path = os.path.join(install_location_base, "Prism Launcher")
+            self._update_install_status(f"Creando directorio de instalación en: {dedicated_install_path}")
+
             os.makedirs(dedicated_install_path, exist_ok=True)
 
             if self.cancel_event.is_set():
@@ -891,7 +890,7 @@ class ModpackLauncherAPI:
             self._log(msg)
             import traceback
             self._log(traceback.format_exc())
-            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
+            if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(str(msg))})')
 
         finally:
             if tmp_dir and os.path.exists(tmp_dir):
@@ -907,10 +906,10 @@ class ModpackLauncherAPI:
         Llama a JS: onModpackInstallComplete(success, prismPath, instancePath, error)
         """
         tmp_dir = None
-        final_instance_path = os.path.join(instance_base_path, MODPACK_INSTANCE_NAME)
-        final_mc_path = os.path.join(final_instance_path, "minecraft")
-
         try:
+            final_instance_path = os.path.join(instance_base_path, MODPACK_INSTANCE_NAME)
+            final_mc_path = os.path.join(final_instance_path, "minecraft")
+
             tmp_dir = tempfile.mkdtemp(prefix="vplus_install_")
             self._update_install_status(f"Directorio temporal creado: {os.path.basename(tmp_dir)}")
             zip_path = os.path.join(tmp_dir, "modpack.zip")
@@ -1021,7 +1020,7 @@ class ModpackLauncherAPI:
             self._log(msg)
             import traceback
             self._log(traceback.format_exc())
-            if self.window: self.window.evaluate_js(f'onModpackInstallComplete(false, null, null, {json.dumps(msg)})')
+            if self.window: self.window.evaluate_js(f'onModpackInstallComplete(false, null, null, {json.dumps(str(msg))})')
 
         finally:
             if tmp_dir and os.path.exists(tmp_dir):
