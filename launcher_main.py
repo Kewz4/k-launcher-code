@@ -89,7 +89,9 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
     r"C:\Program Files\PrismLauncher\prismlauncher.exe"   # Sin espacio, p minúscula
 ]
 MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
-# (ACTUALIZADO) Nueva URL de Dropbox (confirmado que es .ZIP)
+# (NUEVO) URL del archivo de texto que contiene el enlace de descarga del modpack
+MODPACK_URL_SOURCE = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/modpack-url.txt"
+# (ACTUALIZADO) URL de respaldo por si falla la obtención dinámica
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/Kewz-s-Vanilla-True-Final-Final-2.zip?rlkey=c3j5zpme73l9n8g8nmx941lpz&st=2d3v518q&dl=1"
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
@@ -911,10 +913,28 @@ class ModpackLauncherAPI:
             self._update_install_status(f"Directorio temporal creado: {os.path.basename(tmp_dir)}")
             zip_path = os.path.join(tmp_dir, "modpack.zip")
 
-            # 1. Descargar
-            self._update_install_status(f"Descargando Modpack desde: {MODPACK_INSTALL_ZIP_URL}")
+            # 1. Obtener URL y Descargar
+            modpack_url = MODPACK_INSTALL_ZIP_URL # Valor por defecto (fallback)
+
+            self._update_install_status(f"Obteniendo enlace de descarga dinámico...")
+            try:
+                # Intentar obtener la URL desde GitLab
+                resp = requests.get(MODPACK_URL_SOURCE, timeout=15)
+                resp.raise_for_status()
+                # Limpiar la respuesta (quitar saltos de línea y espacios)
+                remote_url = resp.text.replace('\n', '').replace('\r', '').strip()
+
+                if remote_url.startswith('http'):
+                    modpack_url = remote_url
+                    self._log(f"URL de modpack obtenida dinámicamente: {modpack_url}")
+                else:
+                    self._log(f"Advertencia: El contenido de modpack-url.txt no parece una URL válida. Usando fallback.")
+            except Exception as e:
+                self._log(f"Advertencia: No se pudo obtener la URL dinámica del modpack: {e}. Usando fallback.")
+
+            self._update_install_status(f"Descargando Modpack desde: {modpack_url}")
             # (NOTA) Esta URL debe apuntar a un .ZIP, no a un .RAR
-            self._download_file(MODPACK_INSTALL_ZIP_URL, zip_path, "wizard_install")
+            self._download_file(modpack_url, zip_path, "wizard_install")
 
             if self.cancel_event.is_set(): raise InterruptedError("Descarga cancelada.")
 
