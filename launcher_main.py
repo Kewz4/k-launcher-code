@@ -90,7 +90,7 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
 ]
 MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 # (ACTUALIZADO) Nueva URL de Dropbox (confirmado que es .ZIP)
-MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/kq5r2gbkojx2uq3pjt1dv/Kewz-s-Vanilla-True-Final-v2.zip?rlkey=d1d7vd0qf2l8vpwqmjs415yde&st=hofjxzhf&dl=1"
+MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/Kewz-s-Vanilla-True-Final-Final-2.zip?rlkey=c3j5zpme73l9n8g8nmx941lpz&st=2d3v518q&dl=1"
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
@@ -1098,11 +1098,8 @@ class ModpackLauncherAPI:
     def _force_quit(self):
         """(NUEVO) Cierre forzado del proceso."""
         self._log("Ejecutando _force_quit()...")
-        if self.window:
-            try:
-                self.window.destroy()
-            except Exception as e:
-                print(f"Error closing window in _force_quit: {e}")
+        # (MODIFICADO) Se eliminó self.window.destroy() porque causaba bloqueos (freeze)
+        # al ser llamado desde un hilo secundario. El usuario prefiere un "hard quit".
 
         # Asegurar terminación del proceso
         self._log("Saliendo del proceso Python...")
