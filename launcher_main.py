@@ -914,7 +914,7 @@ class ModpackLauncherAPI:
             zip_path = os.path.join(tmp_dir, "modpack.zip")
 
             # 1. Obtener URL y Descargar
-            modpack_url = MODPACK_INSTALL_ZIP_URL # Valor por defecto (fallback)
+            modpack_url = None
 
             self._update_install_status(f"Obteniendo enlace de descarga dinámico...")
             try:
@@ -928,9 +928,10 @@ class ModpackLauncherAPI:
                     modpack_url = remote_url
                     self._log(f"URL de modpack obtenida dinámicamente: {modpack_url}")
                 else:
-                    self._log(f"Advertencia: El contenido de modpack-url.txt no parece una URL válida. Usando fallback.")
+                    raise ValueError(f"El contenido de modpack-url.txt no es una URL válida: '{remote_url}'")
             except Exception as e:
-                self._log(f"Advertencia: No se pudo obtener la URL dinámica del modpack: {e}. Usando fallback.")
+                # Si falla, lanzamos error para detener la instalación (sin fallback)
+                raise RuntimeError(f"No se pudo obtener la URL de descarga: {e}")
 
             self._update_install_status(f"Descargando Modpack desde: {modpack_url}")
             # (NOTA) Esta URL debe apuntar a un .ZIP, no a un .RAR
