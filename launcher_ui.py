@@ -948,10 +948,9 @@ HTML_CONTENT = f"""
             closeSidePanel();
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); loadingAnimationId = null; }}
 
-            // Mostrar reproductor si NO estamos en una pantalla de setup/settings/updater
-            const isSetupScreen = (screenName === 'initial-setup' || screenName === 'settings');
-            domPlayer.player.style.display = isSetupScreen ? 'none' : 'flex';
-            domPlayer.player.classList.toggle('visible', !isSetupScreen);
+            // Mostrar reproductor siempre (solicitud de usuario)
+            domPlayer.player.style.display = 'flex';
+            domPlayer.player.classList.add('visible');
 
             // Mostrar la pantalla de juego (fondo) en la mayoría de los casos
             // (CORREGIDO) #screen-play siempre debe estar visible (display: flex) para actuar como fondo.

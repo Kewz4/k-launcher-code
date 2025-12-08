@@ -93,7 +93,7 @@ MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
 MODPACK_URL_SOURCE = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/modpack-url.txt"
 # (ACTUALIZADO) URL de respaldo por si falla la obtención dinámica
 MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/Kewz-s-Vanilla-True-Final-Final-2.zip?rlkey=c3j5zpme73l9n8g8nmx941lpz&st=2d3v518q&dl=1"
-PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/8.4/PrismLauncher-Windows-MSVC-Portable-8.4.zip"
+PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
 def get_current_launcher_version(default_version="1.2"):
@@ -804,6 +804,8 @@ class ModpackLauncherAPI:
         """
         if self.current_task_thread and self.current_task_thread.is_alive():
             self._log("Error: Ya hay una tarea en ejecución.")
+            if self.window:
+                self.window.evaluate_js(f'onTaskError("{task_name}", "Ya hay una tarea en ejecución.")')
             return
 
         self.cancel_event.clear()
