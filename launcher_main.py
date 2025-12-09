@@ -826,8 +826,14 @@ class ModpackLauncherAPI:
         (REESCRITO) Tarea en hilo: Descarga y extrae la versión portable de Prism.
         Llama a JS: onPrismInstallComplete(success, path, error)
         """
+        time.sleep(0.5) # Esperar a que la UI esté lista
+        self._update_install_status("DEBUG: Hilo de instalación de Prism iniciado.")
+
         tmp_dir = None
         try:
+            if install_location_base is None:
+                raise ValueError("La ruta de instalación base es None.")
+
             dedicated_install_path = os.path.join(install_location_base, "Prism Launcher")
             self._update_install_status(f"Creando directorio de instalación en: {dedicated_install_path}")
 
@@ -905,8 +911,26 @@ class ModpackLauncherAPI:
         (NUEVO) Tarea en hilo: Descarga y extrae el modpack.
         Llama a JS: onModpackInstallComplete(success, prismPath, instancePath, error)
         """
+        time.sleep(0.5) # Esperar a que la UI esté lista
+        self._update_install_status("DEBUG: Hilo de instalación de modpack iniciado.")
+
+        # Validar argumentos explícitamente y reportar a la UI si fallan
+        if prism_exe_path is None or instance_base_path is None:
+             error_msg = f"Argumentos inválidos: prism={prism_exe_path}, instance={instance_base_path}"
+             self._update_install_status(error_msg)
+             # Esto lanzará excepción abajo y se capturará
+        else:
+             self._update_install_status(f"DEBUG: Args recibidos: Prism='{prism_exe_path}', InstanceBase='{instance_base_path}'")
+
         tmp_dir = None
         try:
+            # Comprobación de integridad de requests
+            if 'requests' not in sys.modules:
+                raise ImportError("El módulo 'requests' no está disponible en este entorno.")
+
+            if prism_exe_path is None or instance_base_path is None:
+                raise ValueError("Se recibieron rutas nulas (None) desde la interfaz.")
+
             final_instance_path = os.path.join(instance_base_path, MODPACK_INSTANCE_NAME)
             final_mc_path = os.path.join(final_instance_path, "minecraft")
 
@@ -920,6 +944,7 @@ class ModpackLauncherAPI:
             self._update_install_status(f"Obteniendo enlace de descarga dinámico...")
             try:
                 # Intentar obtener la URL desde GitLab
+                self._log(f"DEBUG: Consultando {MODPACK_URL_SOURCE}")
                 resp = requests.get(MODPACK_URL_SOURCE, timeout=15)
                 resp.raise_for_status()
                 # Limpiar la respuesta (quitar saltos de línea y espacios)
@@ -932,7 +957,9 @@ class ModpackLauncherAPI:
                     raise ValueError(f"El contenido de modpack-url.txt no es una URL válida: '{remote_url}'")
             except Exception as e:
                 # Si falla, lanzamos error para detener la instalación (sin fallback)
-                raise RuntimeError(f"No se pudo obtener la URL de descarga: {e}")
+                err_msg = f"No se pudo obtener la URL de descarga: {e}"
+                self._update_install_status(f"ERROR: {err_msg}")
+                raise RuntimeError(err_msg)
 
             self._update_install_status(f"Descargando Modpack desde: {modpack_url}")
             # (NOTA) Esta URL debe apuntar a un .ZIP, no a un .RAR

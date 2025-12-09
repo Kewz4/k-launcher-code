@@ -1251,10 +1251,19 @@ HTML_CONTENT = f"""
                         showWizardStep('login'); // Avanzar al paso de login
                     }} else if (result.status === 'modpack_not_installed') {{
                         console.log("Modpack no instalado. Iniciando instalación...");
+
+                        // Validar datos antes de llamar al backend
+                        if (!result.prism_path || !result.instance_base_path) {
+                             throw new Error("Datos incompletos para instalar modpack: prism=" + result.prism_path + ", base=" + result.instance_base_path);
+                        }
+
                         showWizardStep('install-progress');
                         dom.wizard.installTitle.textContent = "Instalando Modpack";
                         dom.wizard.installSubtitle.textContent = "Descargando y extrayendo archivos...";
-                        pywebview.api.py_start_threaded_task('install_modpack', {{prism_path: result.prism_path, instance_base_path: result.instance_base_path}});
+
+                        // Enviar strings explícitos en lugar de objeto para evitar confusiones en pywebview
+                        console.log("Iniciando tarea 'install_modpack' con args:", result.prism_path, result.instance_base_path);
+                        pywebview.api.py_start_threaded_task('install_modpack', result.prism_path, result.instance_base_path);
                     }} else {{
                         throw new Error(result.error || "Respuesta desconocida al comprobar modpack.");
                     }}
