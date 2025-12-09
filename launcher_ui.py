@@ -1419,6 +1419,7 @@ HTML_CONTENT = f"""
                         dom.wizard.installTitle.textContent = "Instalando Prism Launcher";
                         dom.wizard.installSubtitle.textContent = "Descargando la versión portable...";
                         // (CORREGIDO) Pasar el argumento como string directo, no objeto
+                        console.log("Iniciando tarea 'install_prism' con ruta:", result.path);
                         pywebview.api.py_start_threaded_task('install_prism', result.path);
                     }}
                 }}).catch(err => showResult(false, "Error", "No se pudo abrir diálogo: " + err));

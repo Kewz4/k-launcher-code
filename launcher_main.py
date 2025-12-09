@@ -885,7 +885,7 @@ class ModpackLauncherAPI:
                 self._log(msg)
                 if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(msg)})')
 
-        except (InterruptedError, FileNotFoundError, zipfile.BadZipFile, IOError, Exception) as e:
+        except BaseException as e:
             msg = f"Fallo en la instalación de Prism Launcher: {e}"
             self._log(msg)
             import traceback
@@ -1015,7 +1015,7 @@ class ModpackLauncherAPI:
             else:
                 raise FileNotFoundError("La instancia se movió pero no es válida.")
 
-        except (InterruptedError, FileNotFoundError, zipfile.BadZipFile, IOError, Exception) as e:
+        except BaseException as e:
             msg = f"Fallo en la instalación del Modpack: {e}"
             self._log(msg)
             import traceback
@@ -2468,96 +2468,75 @@ if __name__ == "__main__":
         print("Limpieza completada. Continuando con el inicio normal...")
 
 
-    # --- Lógica de Instancia Única Mejorada ---
+    # --- Lógica de Instancia Única Mejorada (Auto-Kill) ---
     temp_dir = tempfile.gettempdir()
     pid_file_path = os.path.join(temp_dir, 'vplus_launcher.pid')
     lock_file_path = os.path.join(temp_dir, 'vplus_launcher.lock')
     lock_file_handle = None
 
-    try:
-        flags = os.O_CREAT | os.O_EXCL | os.O_RDWR | getattr(os, 'O_BINARY', 0)
-        lock_file_handle = os.open(lock_file_path, flags)
-        print(f"Archivo de bloqueo creado: {lock_file_path}")
+    def acquire_lock():
         try:
-            with open(pid_file_path, 'w') as f:
-                f.write(str(os.getpid()))
-        except Exception as e:
-            print(f"Advertencia: No se pudo escribir el PID file: {e}")
-
-    except OSError as e:
-        if e.errno == 17: # EEXIST
-            print("Archivo de bloqueo detectado. Comprobando PID...")
-            old_pid = None
+            flags = os.O_CREAT | os.O_EXCL | os.O_RDWR | getattr(os, 'O_BINARY', 0)
+            handle = os.open(lock_file_path, flags)
+            print(f"Archivo de bloqueo creado: {lock_file_path}")
             try:
+                with open(pid_file_path, 'w') as f:
+                    f.write(str(os.getpid()))
+            except Exception as e:
+                print(f"Advertencia: No se pudo escribir el PID file: {e}")
+            return handle
+        except OSError as e:
+            if e.errno == 17: # EEXIST
+                return None
+            else:
+                raise e
+
+    lock_file_handle = acquire_lock()
+
+    if lock_file_handle is None:
+        print("Archivo de bloqueo detectado. Intentando matar instancia anterior automáticamente...")
+        old_pid = None
+        try:
+            if os.path.exists(pid_file_path):
                 with open(pid_file_path, 'r') as f:
                     old_pid_str = f.read().strip()
                     if old_pid_str.isdigit():
                         old_pid = int(old_pid_str)
-                        print(f"Instancia anterior detectada (PID: {old_pid}). Preguntando al usuario...")
-                    else:
-                        print(f"Contenido inválido en PID file: '{old_pid_str}'.")
-                        raise ValueError("PID inválido")
-            except Exception as read_err:
-                print(f"Archivo de bloqueo existe pero no se pudo leer o validar el PID file ({pid_file_path}): {read_err}")
-                print("Asumiendo que no se puede continuar.")
-                try:
-                    import importlib
-                    if importlib.util.find_spec("tkinter"):
-                        import tkinter as tk; from tkinter import messagebox
-                        root = tk.Tk(); root.withdraw()
-                        messagebox.showerror("Error de Launcher", f"No se pudo leer el archivo PID de la instancia anterior.\nPor favor, cierra el launcher manualmente o borra '{pid_file_path}' y '{lock_file_path}'.")
-                        root.destroy()
-                except Exception: pass
-                sys.exit(1)
+        except Exception as e:
+            print(f"Error leyendo PID anterior: {e}")
 
+        if old_pid:
+            print(f"Terminando proceso anterior (PID: {old_pid})...")
             try:
-                import importlib
-                if not importlib.util.find_spec("tkinter"):
-                    print("tkinter no disponible. No se puede preguntar al usuario. Saliendo.")
-                    sys.exit(1)
-
-                import tkinter as tk; from tkinter import messagebox
-                root = tk.Tk(); root.withdraw()
-                answer = messagebox.askyesno(
-                    "Launcher ya en ejecución",
-                    f"Vanilla+ Launcher (PID: {old_pid}) ya se está ejecutando.\n\n¿Deseas cerrar la instancia anterior y abrir una nueva?"
-                )
-                root.destroy()
-
-                if answer:
-                    print(f"Usuario eligió cerrar PID: {old_pid}. Intentando...")
-                    try:
-                        if platform.system() == "Windows":
-                            result = subprocess.run(["taskkill", "/PID", str(old_pid), "/F"], check=False, capture_output=True)
-                            if result.returncode != 0 and b"could not be terminated" not in result.stderr.lower():
-                                print(f"Error al ejecutar taskkill: {result.stderr.decode(errors='ignore')}")
-                        else:
-                            os.kill(old_pid, 9)
-                        print(f"Comando para terminar proceso {old_pid} enviado.")
-                        time.sleep(1)
-
-                        try: os.remove(lock_file_path)
-                        except Exception: pass
-                        try: os.remove(pid_file_path)
-                        except Exception: pass
-
-                        flags = os.O_CREAT | os.O_EXCL | os.O_RDWR | getattr(os, 'O_BINARY', 0)
-                        lock_file_handle = os.open(lock_file_path, flags)
-                        with open(pid_file_path, 'w') as f:
-                            f.write(str(os.getpid()))
-                        print("Nuevo archivo de bloqueo y PID creados. Continuando...")
-
-                    except Exception as kill_err:
-                        print(f"Fallo al intentar terminar el proceso {old_pid}: {kill_err}")
-                        if 'messagebox' in locals():
-                            messagebox.showerror("Error", f"No se pudo cerrar la instancia anterior (PID: {old_pid}).\n\nPor favor, ciérrala manualmente.")
-                        sys.exit(1)
+                if platform.system() == "Windows":
+                    subprocess.run(["taskkill", "/PID", str(old_pid), "/F"], check=False, capture_output=True)
                 else:
-                    print("Usuario eligió no continuar. Cerrando nueva instancia.")
-                    sys.exit(0)
-            except Exception as tk_err:
-                print(f"Error al mostrar diálogo de tkinter: {tk_err}")
+                    try:
+                        os.kill(old_pid, 9)
+                    except ProcessLookupError:
+                        pass # Ya no existe
+                print("Proceso terminado (o intento realizado).")
+                time.sleep(1) # Esperar liberación de recursos
+            except Exception as kill_err:
+                print(f"Fallo al matar proceso: {kill_err}")
+
+        # Limpiar locks antiguos
+        try:
+            if os.path.exists(lock_file_path): os.remove(lock_file_path)
+            if os.path.exists(pid_file_path): os.remove(pid_file_path)
+        except Exception as e:
+            print(f"Error limpiando archivos de lock: {e}")
+
+        # Reintentar adquirir lock
+        try:
+            lock_file_handle = acquire_lock()
+            if lock_file_handle is None:
+                print("Error: No se pudo adquirir el lock incluso después de matar la instancia anterior.")
                 sys.exit(1)
+            print("Lock adquirido exitosamente tras limpieza.")
+        except Exception as e:
+            print(f"Error fatal al re-adquirir lock: {e}")
+            sys.exit(1)
         elif e.errno == 13:
             print(f"Error: Permiso denegado para crear archivo de bloqueo en '{temp_dir}'.")
             try:
