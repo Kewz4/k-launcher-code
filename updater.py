@@ -11,6 +11,8 @@ import threading
 # Configurar un logger simple para el módulo de actualización
 log = logging.getLogger(__name__)
 
+LAUNCHER_VERSION_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/%20launcher_version.txt"
+
 class Updater:
     """
     Maneja la comprobación, descarga y aplicación de actualizaciones para el launcher.
@@ -44,63 +46,70 @@ class Updater:
 
     def check_for_updates(self):
         """
-        Comprueba si hay una nueva versión del launcher disponible en GitHub.
+        Comprueba si hay una nueva versión del launcher disponible.
+        Ahora consulta GitLab para saber la última versión, y si hay update, busca el asset en GitHub.
 
         Returns:
             dict: Un diccionario con el resultado.
         """
-        self._log(f"Buscando actualizaciones en {self.api_url}")
+        self._log(f"Consultando versión en {LAUNCHER_VERSION_URL}")
         try:
             current_version_float = float(self.current_version)
         except (ValueError, TypeError):
             return {'error': f"Formato de versión actual inválido: '{self.current_version}'"}
 
+        # 1. Fetch GitLab version
+        try:
+            v_response = requests.get(LAUNCHER_VERSION_URL, timeout=10)
+            v_response.raise_for_status()
+            remote_version_str = v_response.text.strip()
+            remote_version_float = float(remote_version_str)
+        except Exception as e:
+             self._log(f"Error obteniendo versión remota desde GitLab: {e}")
+             return {'error': f"Error obteniendo versión remota: {e}"}
+
+        self._log(f"Versión local: {current_version_float} | Versión remota: {remote_version_float}")
+
+        if remote_version_float <= current_version_float:
+             return {'update_available': False}
+
+        # 2. Update available, fetch GitHub assets
+        self._log(f"Actualización detectada. Buscando assets en {self.api_url}")
         try:
             response = requests.get(self.api_url, timeout=15)
             response.raise_for_status()
-            self.latest_release_data = response.json()
+            full_release_data = response.json()
 
-            assets = self.latest_release_data.get("assets", [])
-            if not assets:
-                return {'error': "La última release no tiene archivos adjuntos (assets)."}
+            assets = full_release_data.get("assets", [])
+            target_asset_name = f"Kewz.Launcher.v{remote_version_str}.exe"
 
-            latest_version_from_asset = 0.0
-            version_pattern = re.compile(r"Kewz\.Launcher\.v(\d+(\.\d+)?)\.exe")
-
+            # Find exact match
+            found_asset = None
             for asset in assets:
-                asset_name = asset.get("name", "")
-                match = version_pattern.search(asset_name)
-                if match:
-                    version_str = match.group(1)
-                    try:
-                        version_float = float(version_str)
-                        if version_float > latest_version_from_asset:
-                            latest_version_from_asset = version_float
-                    except ValueError:
-                        self._log(f"Se encontró una versión con formato no válido '{version_str}' en el asset '{asset_name}'.")
+                if asset.get("name") == target_asset_name:
+                    found_asset = asset
+                    break
 
-            if latest_version_from_asset == 0.0:
-                return {'error': "No se encontró un asset con un nombre de versión válido (ej: 'Kewz.Launcher.v1.1.exe')."}
+            if not found_asset:
+                 return {'error': f"La versión {remote_version_str} está disponible, pero no se encontró el archivo '{target_asset_name}' en GitHub."}
 
-            self._log(f"Versión actual: {current_version_float}, Versión más reciente encontrada: {latest_version_from_asset}")
+            # Prepare filtered data for the downloader
+            filtered_release_data = full_release_data.copy()
+            filtered_release_data['assets'] = [found_asset]
+            self.latest_release_data = filtered_release_data # Store for later use if needed
 
-            if latest_version_from_asset > current_version_float:
-                notes = self.latest_release_data.get("body", "No hay notas para esta versión.").strip()
-                return {
-                    'update_available': True,
-                    'version': str(latest_version_from_asset),
-                    'notes': notes,
-                    'release_data': self.latest_release_data
-                }
-            else:
-                return {'update_available': False}
+            notes = full_release_data.get("body", "No hay notas.").strip()
+
+            return {
+                'update_available': True,
+                'version': remote_version_str,
+                'notes': notes,
+                'release_data': filtered_release_data
+            }
 
         except requests.RequestException as e:
-            self._log(f"Error de red buscando actualizaciones: {e}")
-            return {'error': f"Error de red: {e}"}
-        except (ValueError, TypeError) as e:
-            self._log(f"Error parseando la versión desde el nombre del asset: {e}")
-            return {'error': "No se pudo parsear la versión desde los assets de la release."}
+            self._log(f"Error de red buscando assets en GitHub: {e}")
+            return {'error': f"Error de red en GitHub: {e}"}
         except Exception as e:
             log.exception("Ocurrió un error inesperado durante la comprobación de actualizaciones.")
             return {'error': f"Ocurrió un error inesperado: {e}"}
