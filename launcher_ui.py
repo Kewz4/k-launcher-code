@@ -1253,9 +1253,9 @@ HTML_CONTENT = f"""
                         console.log("Modpack no instalado. Iniciando instalación...");
 
                         // Validar datos antes de llamar al backend
-                        if (!result.prism_path || !result.instance_base_path) {
+                        if (!result.prism_path || !result.instance_base_path) {{
                              throw new Error("Datos incompletos para instalar modpack: prism=" + result.prism_path + ", base=" + result.instance_base_path);
-                        }
+                        }}
 
                         showWizardStep('install-progress');
                         dom.wizard.installTitle.textContent = "Instalando Modpack";
