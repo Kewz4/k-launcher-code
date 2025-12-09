@@ -948,10 +948,9 @@ HTML_CONTENT = f"""
             closeSidePanel();
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); loadingAnimationId = null; }}
 
-            // Mostrar reproductor si NO estamos en una pantalla de setup/settings/updater
-            const isSetupScreen = (screenName === 'initial-setup' || screenName === 'settings');
-            domPlayer.player.style.display = isSetupScreen ? 'none' : 'flex';
-            domPlayer.player.classList.toggle('visible', !isSetupScreen);
+            // Mostrar reproductor siempre (solicitud de usuario)
+            domPlayer.player.style.display = 'flex';
+            domPlayer.player.classList.add('visible');
 
             // Mostrar la pantalla de juego (fondo) en la mayoría de los casos
             // (CORREGIDO) #screen-play siempre debe estar visible (display: flex) para actuar como fondo.
@@ -961,7 +960,12 @@ HTML_CONTENT = f"""
             dom.screens.play.classList.toggle('active', showPlayAsMainScreen);
 
             if (screenName === 'play') {{
-                dom.playBtn.textContent = "JUGAR";
+                // Determinar el estado del botón JUGAR/DESCARGAR
+                if (setupState.prismPath && setupState.instancePath) {{
+                    dom.playBtn.textContent = "JUGAR";
+                }} else {{
+                    dom.playBtn.textContent = "DESCARGAR";
+                }}
                 dom.playBtn.classList.remove('cancel-mode');
             }} else if (screenName === 'initial-setup') {{
                 dom.mainContainer.classList.add('visible');
@@ -1147,7 +1151,13 @@ HTML_CONTENT = f"""
             updateProgress(0, ""); 
             dom.progressTitle.textContent = "Actualizando..."; 
             
-            dom.playBtn.textContent = "JUGAR";
+            // Texto dinámico basado en estado
+            if (setupState.prismPath && setupState.instancePath) {{
+                dom.playBtn.textContent = "JUGAR";
+            }} else {{
+                dom.playBtn.textContent = "DESCARGAR";
+            }}
+
             dom.playBtn.classList.remove('cancel-mode');
             dom.playBtn.disabled = false;
 
@@ -1252,10 +1262,19 @@ HTML_CONTENT = f"""
                         showWizardStep('login'); // Avanzar al paso de login
                     }} else if (result.status === 'modpack_not_installed') {{
                         console.log("Modpack no instalado. Iniciando instalación...");
+
+                        // Validar datos antes de llamar al backend
+                        if (!result.prism_path || !result.instance_base_path) {{
+                             throw new Error("Datos incompletos para instalar modpack: prism=" + result.prism_path + ", base=" + result.instance_base_path);
+                        }}
+
                         showWizardStep('install-progress');
                         dom.wizard.installTitle.textContent = "Instalando Modpack";
                         dom.wizard.installSubtitle.textContent = "Descargando y extrayendo archivos...";
-                        pywebview.api.py_start_threaded_task('install_modpack', {{prism_path: result.prism_path, instance_base_path: result.instance_base_path}});
+
+                        // Enviar strings explícitos en lugar de objeto para evitar confusiones en pywebview
+                        console.log("Iniciando tarea 'install_modpack' con args:", result.prism_path, result.instance_base_path);
+                        pywebview.api.py_start_threaded_task('install_modpack', result.prism_path, result.instance_base_path);
                     }} else {{
                         throw new Error(result.error || "Respuesta desconocida al comprobar modpack.");
                     }}
@@ -1419,7 +1438,9 @@ HTML_CONTENT = f"""
                         showWizardStep('install-progress');
                         dom.wizard.installTitle.textContent = "Instalando Prism Launcher";
                         dom.wizard.installSubtitle.textContent = "Descargando la versión portable...";
-                        pywebview.api.py_start_threaded_task('install_prism', {{install_path: result.path}});
+                        // (CORREGIDO) Pasar el argumento como string directo, no objeto
+                        console.log("Iniciando tarea 'install_prism' con ruta:", result.path);
+                        pywebview.api.py_start_threaded_task('install_prism', result.path);
                     }}
                 }}).catch(err => showResult(false, "Error", "No se pudo abrir diálogo: " + err));
             }});
@@ -1457,15 +1478,21 @@ HTML_CONTENT = f"""
                 if (dom.playBtn.classList.contains('cancel-mode')) {{
                     cancelCurrentProcess();
                 }} else {{
-                    dom.playBtn.textContent = "CANCELAR"; dom.playBtn.classList.add('cancel-mode');
-                    switchScreen('progress');
-                    dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';
-                    logToConsole("Iniciando proceso...");
-                    dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancelar";
-                    updateProgress(0, "Iniciando...");
-                    setLoadScreen("Actualizando...", "Comprobando versiones...");
-                    try {{ pywebview.api.py_start_game(); }}
-                    catch(e) {{ showResult(false, "Error de API", "No se pudo llamar a py_start_game: " + e); returnToPlayScreen(); }}
+                    // Chequear si estamos en modo "JUGAR" o "DESCARGAR"
+                    if (!setupState.prismPath || !setupState.instancePath) {{
+                        console.log("Datos incompletos, iniciando asistente de descarga...");
+                        startInitialSetupWizard();
+                    }} else {{
+                        dom.playBtn.textContent = "CANCELAR"; dom.playBtn.classList.add('cancel-mode');
+                        switchScreen('progress');
+                        dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';
+                        logToConsole("Iniciando proceso...");
+                        dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancelar";
+                        updateProgress(0, "Iniciando...");
+                        setLoadScreen("Actualizando...", "Comprobando versiones...");
+                        try {{ pywebview.api.py_start_game(); }}
+                        catch(e) {{ showResult(false, "Error de API", "No se pudo llamar a py_start_game: " + e); returnToPlayScreen(); }}
+                    }}
                 }}
              }});
             dom.menuBtn.addEventListener('click', openSidePanel);
