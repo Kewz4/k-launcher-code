@@ -960,7 +960,12 @@ HTML_CONTENT = f"""
             dom.screens.play.classList.toggle('active', showPlayAsMainScreen);
 
             if (screenName === 'play') {{
-                dom.playBtn.textContent = "JUGAR";
+                // Determinar el estado del botón JUGAR/DESCARGAR
+                if (setupState.prismPath && setupState.instancePath) {{
+                    dom.playBtn.textContent = "JUGAR";
+                }} else {{
+                    dom.playBtn.textContent = "DESCARGAR";
+                }}
                 dom.playBtn.classList.remove('cancel-mode');
             }} else if (screenName === 'initial-setup') {{
                 dom.mainContainer.classList.add('visible');
@@ -1146,7 +1151,13 @@ HTML_CONTENT = f"""
             updateProgress(0, ""); 
             dom.progressTitle.textContent = "Actualizando..."; 
             
-            dom.playBtn.textContent = "JUGAR";
+            // Texto dinámico basado en estado
+            if (setupState.prismPath && setupState.instancePath) {{
+                dom.playBtn.textContent = "JUGAR";
+            }} else {{
+                dom.playBtn.textContent = "DESCARGAR";
+            }}
+
             dom.playBtn.classList.remove('cancel-mode');
             dom.playBtn.disabled = false;
 
@@ -1467,15 +1478,21 @@ HTML_CONTENT = f"""
                 if (dom.playBtn.classList.contains('cancel-mode')) {{
                     cancelCurrentProcess();
                 }} else {{
-                    dom.playBtn.textContent = "CANCELAR"; dom.playBtn.classList.add('cancel-mode');
-                    switchScreen('progress');
-                    dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';
-                    logToConsole("Iniciando proceso...");
-                    dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancelar";
-                    updateProgress(0, "Iniciando...");
-                    setLoadScreen("Actualizando...", "Comprobando versiones...");
-                    try {{ pywebview.api.py_start_game(); }}
-                    catch(e) {{ showResult(false, "Error de API", "No se pudo llamar a py_start_game: " + e); returnToPlayScreen(); }}
+                    // Chequear si estamos en modo "JUGAR" o "DESCARGAR"
+                    if (!setupState.prismPath || !setupState.instancePath) {{
+                        console.log("Datos incompletos, iniciando asistente de descarga...");
+                        startInitialSetupWizard();
+                    }} else {{
+                        dom.playBtn.textContent = "CANCELAR"; dom.playBtn.classList.add('cancel-mode');
+                        switchScreen('progress');
+                        dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';
+                        logToConsole("Iniciando proceso...");
+                        dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancelar";
+                        updateProgress(0, "Iniciando...");
+                        setLoadScreen("Actualizando...", "Comprobando versiones...");
+                        try {{ pywebview.api.py_start_game(); }}
+                        catch(e) {{ showResult(false, "Error de API", "No se pudo llamar a py_start_game: " + e); returnToPlayScreen(); }}
+                    }}
                 }}
              }});
             dom.menuBtn.addEventListener('click', openSidePanel);

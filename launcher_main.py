@@ -96,7 +96,7 @@ MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
-def get_current_launcher_version(default_version="1.2"):
+def get_current_launcher_version(default_version="1.3"):
     """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
     version_file = "launcher_version.txt"
     if os.path.exists(version_file):
@@ -803,10 +803,18 @@ class ModpackLauncherAPI:
         y llama a un callback de JS al completarse.
         """
         if self.current_task_thread and self.current_task_thread.is_alive():
-            self._log("Error: Ya hay una tarea en ejecución.")
-            if self.window:
-                self.window.evaluate_js(f'onTaskError("{task_name}", "Ya hay una tarea en ejecución.")')
-            return
+            self._log(f"Advertencia: Tarea anterior aún en ejecución al solicitar '{task_name}'. Esperando...")
+            # Opción: Esperar a que termine (con timeout) o rechazar.
+            # Dado el flujo secuencial (Install Prism -> Install Modpack), esperar un poco es razonable.
+            try:
+                self.current_task_thread.join(timeout=2.0)
+                if self.current_task_thread.is_alive():
+                     self._log("Error: La tarea anterior no terminó a tiempo.")
+                     if self.window:
+                        self.window.evaluate_js(f'onTaskError("{task_name}", "Ya hay una tarea en ejecución.")')
+                     return
+            except Exception as e:
+                self._log(f"Error esperando thread anterior: {e}")
 
         self.cancel_event.clear()
 
@@ -899,6 +907,7 @@ class ModpackLauncherAPI:
             if self.window: self.window.evaluate_js(f'onPrismInstallComplete(false, null, {json.dumps(str(msg))})')
 
         finally:
+            self.current_task_thread = None # Liberar referencia al hilo
             if tmp_dir and os.path.exists(tmp_dir):
                 try:
                     shutil.rmtree(tmp_dir)
@@ -1050,6 +1059,7 @@ class ModpackLauncherAPI:
             if self.window: self.window.evaluate_js(f'onModpackInstallComplete(false, null, null, {json.dumps(str(msg))})')
 
         finally:
+            self.current_task_thread = None # Liberar referencia al hilo
             if tmp_dir and os.path.exists(tmp_dir):
                 try:
                     shutil.rmtree(tmp_dir)
