@@ -1583,7 +1583,8 @@ class ModpackLauncherAPI:
 
         try:
             start_wait = time.time()
-            timeout_seconds = 120
+            # (MODIFICADO) Aumentado de 120s a 900s (15 min) para permitir la descarga inicial de bibliotecas
+            timeout_seconds = 900
             log_found = False
 
             # (NUEVO) Log de diagnóstico
@@ -1603,7 +1604,7 @@ class ModpackLauncherAPI:
                 if self.window:
                     try:
                         self.window.evaluate_js('returnToPlayScreen()')
-                        self._show_result(False, "Error de Inicio", f"Minecraft no generó el archivo '{log_filename}' en {timeout_seconds} segundos.")
+                        self._show_result(False, "Error de Inicio", f"Minecraft no generó el archivo '{log_filename}' en {int(timeout_seconds/60)} minutos (descarga lenta o error).")
                     except Exception: pass
                 return
 
