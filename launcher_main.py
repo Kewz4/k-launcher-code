@@ -2537,20 +2537,6 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error fatal al re-adquirir lock: {e}")
             sys.exit(1)
-        elif e.errno == 13:
-            print(f"Error: Permiso denegado para crear archivo de bloqueo en '{temp_dir}'.")
-            try:
-                import importlib
-                if importlib.util.find_spec("tkinter"):
-                    import tkinter as tk; from tkinter import messagebox
-                    root = tk.Tk(); root.withdraw()
-                    messagebox.showerror("Error de Permisos", f"No se pudo crear archivo de bloqueo.\nVerifica permisos en carpeta temporal o ejecuta como admin.")
-                    root.destroy()
-            except Exception: pass
-            sys.exit(1)
-        else:
-            print(f"Error inesperado al crear archivo de bloqueo ({e.errno}): {e}")
-            sys.exit(1)
 
     # --- Ejecución Principal ---
     try:
