@@ -1179,26 +1179,25 @@ class ModpackLauncherAPI:
 
     def _force_quit(self):
         """(NUEVO) Cierre forzado del proceso."""
-        self._log("Ejecutando _force_quit()...")
-        # (MODIFICADO) Se eliminó self.window.destroy() porque causaba bloqueos (freeze)
-        # al ser llamado desde un hilo secundario. El usuario prefiere un "hard quit".
-
-        # Asegurar terminación del proceso
-        self._log("Saliendo del proceso Python (os._exit)...")
+        # IMPORTANTE: NO usar self._log aquí. Si la UI está colgada, self._log bloqueará
+        # este hilo esperando que la UI responda, y os._exit(0) nunca se ejecutará.
+        # Usamos print() que va al archivo de log en builds congeladas.
+        print("Ejecutando _force_quit()...")
 
         # Intento 1: os._exit
         try:
+            print("Saliendo del proceso Python (os._exit)...")
             os._exit(0)
         except Exception as e:
-            self._log(f"Fallo en os._exit: {e}")
+            print(f"Fallo en os._exit: {e}")
 
         # Intento 2: psutil suicide (Fallback por si os._exit se bloquea)
-        self._log("Saliendo del proceso Python (psutil.kill)...")
         try:
+            print("Saliendo del proceso Python (psutil.kill)...")
             p = psutil.Process(os.getpid())
             p.kill()
         except Exception as e:
-            self._log(f"Fallo en psutil kill: {e}")
+            print(f"Fallo en psutil kill: {e}")
 
     # --- Lógica de Validación ---
 
