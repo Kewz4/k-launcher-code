@@ -27,7 +27,8 @@ class Updater:
         """
         self.github_repo = repo_owner_repo
         self.current_version = current_version
-        self.api_url = f"https://api.github.com/repos/{self.github_repo}/releases/tags/Update"
+        # (MODIFICADO) Ya no usamos hardcode "Update". Se construye dinámicamente en check_for_updates.
+        self.base_api_url = f"https://api.github.com/repos/{self.github_repo}/releases"
         self.latest_release_data = None
         self.progress_callback = progress_callback
         self.log_callback = log_callback
@@ -74,29 +75,83 @@ class Updater:
              return {'update_available': False}
 
         # 2. Update available, fetch GitHub assets
-        self._log(f"Actualización detectada. Buscando assets en {self.api_url}")
+        self._log(f"Actualización detectada. Buscando release para v{remote_version_str} en GitHub...")
+
+        target_asset_name = f"Kewz.Launcher.v{remote_version_str}.exe"
+        full_release_data = None
+
         try:
-            response = requests.get(self.api_url, timeout=15)
-            response.raise_for_status()
-            full_release_data = response.json()
+            # Estrategia 1: Buscar por tag exacto (ej: "1.4")
+            try:
+                tag_url = f"{self.base_api_url}/tags/{remote_version_str}"
+                self._log(f"Intentando obtener release por tag: {tag_url}")
+                response = requests.get(tag_url, timeout=15)
 
+                if response.status_code == 200:
+                    self._log("Release encontrada por tag exacto.")
+                    full_release_data = response.json()
+                elif response.status_code == 404:
+                    self._log(f"Tag '{remote_version_str}' no encontrado. Probando 'latest'...")
+                else:
+                    response.raise_for_status()
+            except Exception as e:
+                self._log(f"Advertencia: Falló búsqueda por tag: {e}")
+
+            # Estrategia 2: Si falla tag, buscar en "latest"
+            if not full_release_data:
+                try:
+                    latest_url = f"{self.base_api_url}/latest"
+                    self._log(f"Intentando obtener release 'latest': {latest_url}")
+                    response = requests.get(latest_url, timeout=15)
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Verificar si la 'latest' contiene el asset que buscamos
+                        temp_assets = data.get("assets", [])
+                        if any(a.get("name") == target_asset_name for a in temp_assets):
+                            self._log(f"Release 'latest' contiene el asset '{target_asset_name}'. Usándola.")
+                            full_release_data = data
+                        else:
+                            self._log(f"Release 'latest' encontrada ({data.get('tag_name')}), pero NO contiene '{target_asset_name}'.")
+                except Exception as e:
+                     self._log(f"Advertencia: Falló búsqueda por latest: {e}")
+
+            # Estrategia 3: Si todo falla, probar tag "Update" (Legacy)
+            if not full_release_data:
+                try:
+                    legacy_url = f"{self.base_api_url}/tags/Update"
+                    self._log(f"Intentando fallback a tag 'Update': {legacy_url}")
+                    response = requests.get(legacy_url, timeout=15)
+                    if response.status_code == 200:
+                        full_release_data = response.json()
+                except Exception as e:
+                    self._log(f"Advertencia: Falló búsqueda por tag legacy 'Update': {e}")
+
+
+            if not full_release_data:
+                 error_msg = f"No se pudo encontrar ninguna release válida en GitHub para la versión {remote_version_str}."
+                 self._log(error_msg)
+                 return {'error': error_msg}
+
+            # Buscar el asset en la release encontrada
             assets = full_release_data.get("assets", [])
-            target_asset_name = f"Kewz.Launcher.v{remote_version_str}.exe"
-
-            # Find exact match
             found_asset = None
+            available_assets = [a.get("name") for a in assets]
+            self._log(f"Assets disponibles en la release: {available_assets}")
+
             for asset in assets:
                 if asset.get("name") == target_asset_name:
                     found_asset = asset
                     break
 
             if not found_asset:
-                 return {'error': f"La versión {remote_version_str} está disponible, pero no se encontró el archivo '{target_asset_name}' en GitHub."}
+                 error_msg = f"La release existe, pero no contiene el archivo '{target_asset_name}'. (Disponibles: {available_assets})"
+                 self._log(error_msg)
+                 return {'error': error_msg}
 
             # Prepare filtered data for the downloader
             filtered_release_data = full_release_data.copy()
             filtered_release_data['assets'] = [found_asset]
-            self.latest_release_data = filtered_release_data # Store for later use if needed
+            self.latest_release_data = filtered_release_data
 
             notes = full_release_data.get("body", "No hay notas.").strip()
 
@@ -106,10 +161,6 @@ class Updater:
                 'notes': notes,
                 'release_data': filtered_release_data
             }
-
-        except requests.RequestException as e:
-            self._log(f"Error de red buscando assets en GitHub: {e}")
-            return {'error': f"Error de red en GitHub: {e}"}
         except Exception as e:
             log.exception("Ocurrió un error inesperado durante la comprobación de actualizaciones.")
             return {'error': f"Ocurrió un error inesperado: {e}"}
