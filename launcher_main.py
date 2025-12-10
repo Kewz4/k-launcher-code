@@ -1179,9 +1179,7 @@ class ModpackLauncherAPI:
 
     def _force_quit(self):
         """(NUEVO) Cierre forzado del proceso."""
-        # IMPORTANTE: NO usar self._log aquí. Si la UI está colgada, self._log bloqueará
-        # este hilo esperando que la UI responda, y os._exit(0) nunca se ejecutará.
-        # Usamos print() que va al archivo de log en builds congeladas.
+        # IMPORTANTE: NO usar self._log aquí. Si la UI está colgada, self._log bloqueará.
         print("Ejecutando _force_quit()...")
 
         # Intento 1: os._exit
@@ -1191,13 +1189,21 @@ class ModpackLauncherAPI:
         except Exception as e:
             print(f"Fallo en os._exit: {e}")
 
-        # Intento 2: psutil suicide (Fallback por si os._exit se bloquea)
+        # Intento 2: psutil suicide
         try:
             print("Saliendo del proceso Python (psutil.kill)...")
             p = psutil.Process(os.getpid())
             p.kill()
         except Exception as e:
             print(f"Fallo en psutil kill: {e}")
+
+        # Intento 3: Taskkill (Windows nuclear option)
+        if IS_WINDOWS:
+            try:
+                print("Ejecutando taskkill de emergencia...")
+                subprocess.Popen(f"taskkill /F /PID {os.getpid()}", shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            except Exception as e:
+                print(f"Fallo en taskkill: {e}")
 
     # --- Lógica de Validación ---
 
@@ -1696,39 +1702,35 @@ class ModpackLauncherAPI:
 
                     if trigger_line_found:
                         # (CRÍTICO) Iniciar el timer de cierre forzoso INMEDIATAMENTE.
-                        # Esto garantiza que el proceso muera en 1.5s pase lo que pase con la UI o los hilos.
-                        threading.Timer(1.5, self._force_quit).start()
+                        # Reducido a 1.0s para ser más agresivo.
+                        # Esto garantiza que el proceso muera pase lo que pase con la UI o los hilos.
+                        kill_timer = threading.Timer(1.0, self._force_quit)
+                        kill_timer.daemon = True
+                        kill_timer.start()
 
-                        if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
-                        self._log(f"[LOG_TRIGGER] {line_strip}")
+                        # Intentar logging y UI (Best Effort)
+                        try:
+                            if line_batch: self._log("\n".join(line_batch))
+                            self._log(f"[LOG_TRIGGER] {line_strip}")
 
-                        match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
-                        if match:
-                            try:
-                                game_load_time = float(match.group(1))
-                                self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
-                                threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
-                            except Exception as e:
-                                self._log(f"Error al parsear tiempo de carga: {e}")
-
-                        if self.window:
-                            try:
-                                # (NUEVO) Actualizar estado de depuración final
-                                if self.debug_mode:
-                                    self.close_trigger_status = "TRIGGERED"
-                                    if self.window: self.window.evaluate_js(f'updateDebugPanel("{self.close_trigger_status}")')
-                                    time.sleep(0.5) # Pausa reducida
-
-                                self.game_ready_event.set()
-                                self._focus_game_window() # (NUEVO) Enfocar juego antes de cerrar
-
+                            match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
+                            if match:
                                 try:
-                                    self.window.evaluate_js('fadeLauncherOut()')
-                                except Exception as js_err:
-                                    self._log(f"Advertencia: Error al llamar fadeLauncherOut (el cierre forzoso ocurrirá igual): {js_err}")
+                                    game_load_time = float(match.group(1))
+                                    # Lanzar en hilo daemon para no bloquear
+                                    threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
+                                except Exception: pass
 
-                            except Exception as e:
-                                self._log(f"Error en bloque de cierre: {e}")
+                            # Enfocar juego (Prioritario)
+                            self._focus_game_window()
+
+                            if self.window:
+                                # Intentar fade out, pero no bloquear si falla
+                                self.window.evaluate_js('fadeLauncherOut()')
+
+                        except Exception as e:
+                            print(f"Error durante cierre suave (Ignorado, kill timer activo): {e}")
+
                         return
 
                     is_spam = any(keyword in line_strip for keyword in self.LOG_IGNORE_KEYWORDS)
