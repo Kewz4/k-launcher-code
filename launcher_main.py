@@ -98,7 +98,7 @@ MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
-def get_current_launcher_version(default_version="1.4"):
+def get_current_launcher_version(default_version="1.5"):
     """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
     version_file = "launcher_version.txt"
     if os.path.exists(version_file):
@@ -1184,9 +1184,21 @@ class ModpackLauncherAPI:
         # al ser llamado desde un hilo secundario. El usuario prefiere un "hard quit".
 
         # Asegurar terminación del proceso
-        self._log("Saliendo del proceso Python...")
-        time.sleep(0.1)
-        os._exit(0) # Forzar salida inmediata (evita bloqueos de hilos)
+        self._log("Saliendo del proceso Python (os._exit)...")
+
+        # Intento 1: os._exit
+        try:
+            os._exit(0)
+        except Exception as e:
+            self._log(f"Fallo en os._exit: {e}")
+
+        # Intento 2: psutil suicide (Fallback por si os._exit se bloquea)
+        self._log("Saliendo del proceso Python (psutil.kill)...")
+        try:
+            p = psutil.Process(os.getpid())
+            p.kill()
+        except Exception as e:
+            self._log(f"Fallo en psutil kill: {e}")
 
     # --- Lógica de Validación ---
 
@@ -1684,6 +1696,10 @@ class ModpackLauncherAPI:
                             break
 
                     if trigger_line_found:
+                        # (CRÍTICO) Iniciar el timer de cierre forzoso INMEDIATAMENTE.
+                        # Esto garantiza que el proceso muera en 1.5s pase lo que pase con la UI o los hilos.
+                        threading.Timer(1.5, self._force_quit).start()
+
                         if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
                         self._log(f"[LOG_TRIGGER] {line_strip}")
 
@@ -1702,14 +1718,10 @@ class ModpackLauncherAPI:
                                 if self.debug_mode:
                                     self.close_trigger_status = "TRIGGERED"
                                     if self.window: self.window.evaluate_js(f'updateDebugPanel("{self.close_trigger_status}")')
-                                    time.sleep(1) # Pequeña pausa para ver el estado final
+                                    time.sleep(0.5) # Pausa reducida
 
                                 self.game_ready_event.set()
                                 self._focus_game_window() # (NUEVO) Enfocar juego antes de cerrar
-
-                                # (CORREGIDO) Programar el cierre forzoso ANTES de llamar a JS
-                                # Esto asegura que el launcher se cierre incluso si la UI se congela.
-                                threading.Timer(1.5, self._force_quit).start()
 
                                 try:
                                     self.window.evaluate_js('fadeLauncherOut()')
