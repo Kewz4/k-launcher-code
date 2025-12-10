@@ -83,6 +83,8 @@ LOCAL_OPTIONS_BACKUP_FILENAME = "options_backup.txt"
 # (NUEVO) Constantes para el nuevo flujo de instalación
 # (CORREGIDO) Lista de rutas comunes a comprobar, incluyendo la tuya
 PRISM_DEFAULT_PATHS_WINDOWS = [
+    os.path.expandvars(r"%LocalAppData%\Programs\PrismLauncher\prismlauncher.exe"),
+    os.path.expandvars(r"%LocalAppData%\Programs\Prism Launcher\prismlauncher.exe"),
     r"C:\Program Files\Prism Launcher\prismlauncher.exe", # Con espacio, p minúscula
     r"C:\Program Files\Prism Launcher\PrismLauncher.exe", # Con espacio, P mayúscula
     r"C:\Program Files\PrismLauncher\PrismLauncher.exe",  # Sin espacio, P mayúscula
@@ -96,7 +98,7 @@ MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
-def get_current_launcher_version(default_version="1.3"):
+def get_current_launcher_version(default_version="1.4"):
     """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
     version_file = "launcher_version.txt"
     if os.path.exists(version_file):
@@ -309,6 +311,13 @@ class ModpackLauncherAPI:
         """Devuelve si el modo depuración está activo."""
         return self.debug_mode
 
+    def py_get_current_paths(self):
+        """Devuelve las rutas actuales configuradas para actualizar la UI."""
+        return {
+            "prism_path": self.prism_exe_path,
+            "instance_path": self.instance_mc_path
+        }
+
     # --- Funciones de Utilidad de la GUI ---
 
     def _log(self, message):
@@ -500,15 +509,29 @@ class ModpackLauncherAPI:
                 return None
 
             prism_dir = os.path.dirname(exe_path)
-            # (MODIFICADO) Usar la constante global
-            instance_mc_path = os.path.join(prism_dir, "instances", MODPACK_INSTANCE_NAME, "minecraft")
 
+            # 1. Intentar ruta relativa (Portable)
+            instance_mc_path = os.path.join(prism_dir, "instances", MODPACK_INSTANCE_NAME, "minecraft")
             if self._validate_instance_path(instance_mc_path):
-                self._log(f"Instancia auto-detectada con éxito: {instance_mc_path}")
+                self._log(f"Instancia auto-detectada con éxito (Portable): {instance_mc_path}")
                 return instance_mc_path
-            else:
-                self._log(f"Auto-detect: Se encontró Prism en '{prism_dir}', pero la instancia '{MODPACK_INSTANCE_NAME}/minecraft' no existe o no es válida.")
-                return None
+
+            # 2. Intentar ruta AppData/Roaming (Non-portable)
+            if IS_WINDOWS:
+                appdata = os.environ.get('APPDATA')
+                if appdata:
+                    # Probar variantes de carpeta de datos
+                    roaming_paths = [
+                        os.path.join(appdata, "PrismLauncher", "instances", MODPACK_INSTANCE_NAME, "minecraft"),
+                        os.path.join(appdata, "Prism Launcher", "instances", MODPACK_INSTANCE_NAME, "minecraft")
+                    ]
+                    for path in roaming_paths:
+                        if self._validate_instance_path(path):
+                            self._log(f"Instancia auto-detectada con éxito (Roaming): {path}")
+                            return path
+
+            self._log(f"Auto-detect: No se encontró la instancia '{MODPACK_INSTANCE_NAME}/minecraft' ni en '{prism_dir}' ni en AppData.")
+            return None
         except Exception as e:
             self._log(f"Error durante la auto-detección de instancia: {e}")
         return None
@@ -1683,12 +1706,18 @@ class ModpackLauncherAPI:
 
                                 self.game_ready_event.set()
                                 self._focus_game_window() # (NUEVO) Enfocar juego antes de cerrar
-                                self.window.evaluate_js('fadeLauncherOut()')
-                                # (NUEVO) Forzar cierre "hard quit" después de un breve delay
-                                # para dar tiempo a la animación de fade out.
+
+                                # (CORREGIDO) Programar el cierre forzoso ANTES de llamar a JS
+                                # Esto asegura que el launcher se cierre incluso si la UI se congela.
                                 threading.Timer(1.5, self._force_quit).start()
+
+                                try:
+                                    self.window.evaluate_js('fadeLauncherOut()')
+                                except Exception as js_err:
+                                    self._log(f"Advertencia: Error al llamar fadeLauncherOut (el cierre forzoso ocurrirá igual): {js_err}")
+
                             except Exception as e:
-                                self._log(f"Error calling fadeLauncherOut: {e}")
+                                self._log(f"Error en bloque de cierre: {e}")
                         return
 
                     is_spam = any(keyword in line_strip for keyword in self.LOG_IGNORE_KEYWORDS)
