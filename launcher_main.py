@@ -83,6 +83,8 @@ LOCAL_OPTIONS_BACKUP_FILENAME = "options_backup.txt"
 # (NUEVO) Constantes para el nuevo flujo de instalación
 # (CORREGIDO) Lista de rutas comunes a comprobar, incluyendo la tuya
 PRISM_DEFAULT_PATHS_WINDOWS = [
+    os.path.expandvars(r"%LocalAppData%\Programs\PrismLauncher\prismlauncher.exe"),
+    os.path.expandvars(r"%LocalAppData%\Programs\Prism Launcher\prismlauncher.exe"),
     r"C:\Program Files\Prism Launcher\prismlauncher.exe", # Con espacio, p minúscula
     r"C:\Program Files\Prism Launcher\PrismLauncher.exe", # Con espacio, P mayúscula
     r"C:\Program Files\PrismLauncher\PrismLauncher.exe",  # Sin espacio, P mayúscula
@@ -96,7 +98,7 @@ MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
-def get_current_launcher_version(default_version="1.3"):
+def get_current_launcher_version(default_version="1.5"):
     """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
     version_file = "launcher_version.txt"
     if os.path.exists(version_file):
@@ -309,6 +311,13 @@ class ModpackLauncherAPI:
         """Devuelve si el modo depuración está activo."""
         return self.debug_mode
 
+    def py_get_current_paths(self):
+        """Devuelve las rutas actuales configuradas para actualizar la UI."""
+        return {
+            "prism_path": self.prism_exe_path,
+            "instance_path": self.instance_mc_path
+        }
+
     # --- Funciones de Utilidad de la GUI ---
 
     def _log(self, message):
@@ -500,15 +509,29 @@ class ModpackLauncherAPI:
                 return None
 
             prism_dir = os.path.dirname(exe_path)
-            # (MODIFICADO) Usar la constante global
-            instance_mc_path = os.path.join(prism_dir, "instances", MODPACK_INSTANCE_NAME, "minecraft")
 
+            # 1. Intentar ruta relativa (Portable)
+            instance_mc_path = os.path.join(prism_dir, "instances", MODPACK_INSTANCE_NAME, "minecraft")
             if self._validate_instance_path(instance_mc_path):
-                self._log(f"Instancia auto-detectada con éxito: {instance_mc_path}")
+                self._log(f"Instancia auto-detectada con éxito (Portable): {instance_mc_path}")
                 return instance_mc_path
-            else:
-                self._log(f"Auto-detect: Se encontró Prism en '{prism_dir}', pero la instancia '{MODPACK_INSTANCE_NAME}/minecraft' no existe o no es válida.")
-                return None
+
+            # 2. Intentar ruta AppData/Roaming (Non-portable)
+            if IS_WINDOWS:
+                appdata = os.environ.get('APPDATA')
+                if appdata:
+                    # Probar variantes de carpeta de datos
+                    roaming_paths = [
+                        os.path.join(appdata, "PrismLauncher", "instances", MODPACK_INSTANCE_NAME, "minecraft"),
+                        os.path.join(appdata, "Prism Launcher", "instances", MODPACK_INSTANCE_NAME, "minecraft")
+                    ]
+                    for path in roaming_paths:
+                        if self._validate_instance_path(path):
+                            self._log(f"Instancia auto-detectada con éxito (Roaming): {path}")
+                            return path
+
+            self._log(f"Auto-detect: No se encontró la instancia '{MODPACK_INSTANCE_NAME}/minecraft' ni en '{prism_dir}' ni en AppData.")
+            return None
         except Exception as e:
             self._log(f"Error durante la auto-detección de instancia: {e}")
         return None
@@ -1156,14 +1179,31 @@ class ModpackLauncherAPI:
 
     def _force_quit(self):
         """(NUEVO) Cierre forzado del proceso."""
-        self._log("Ejecutando _force_quit()...")
-        # (MODIFICADO) Se eliminó self.window.destroy() porque causaba bloqueos (freeze)
-        # al ser llamado desde un hilo secundario. El usuario prefiere un "hard quit".
+        # IMPORTANTE: NO usar self._log aquí. Si la UI está colgada, self._log bloqueará.
+        print("Ejecutando _force_quit()...")
 
-        # Asegurar terminación del proceso
-        self._log("Saliendo del proceso Python...")
-        time.sleep(0.1)
-        os._exit(0) # Forzar salida inmediata (evita bloqueos de hilos)
+        # Intento 1: os._exit
+        try:
+            print("Saliendo del proceso Python (os._exit)...")
+            os._exit(0)
+        except Exception as e:
+            print(f"Fallo en os._exit: {e}")
+
+        # Intento 2: psutil suicide
+        try:
+            print("Saliendo del proceso Python (psutil.kill)...")
+            p = psutil.Process(os.getpid())
+            p.kill()
+        except Exception as e:
+            print(f"Fallo en psutil kill: {e}")
+
+        # Intento 3: Taskkill (Windows nuclear option)
+        if IS_WINDOWS:
+            try:
+                print("Ejecutando taskkill de emergencia...")
+                subprocess.Popen(f"taskkill /F /PID {os.getpid()}", shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            except Exception as e:
+                print(f"Fallo en taskkill: {e}")
 
     # --- Lógica de Validación ---
 
@@ -1661,34 +1701,36 @@ class ModpackLauncherAPI:
                             break
 
                     if trigger_line_found:
-                        if line_batch: self._log("\n".join(line_batch)); line_batch.clear()
-                        self._log(f"[LOG_TRIGGER] {line_strip}")
+                        # (CRÍTICO) Iniciar el timer de cierre forzoso INMEDIATAMENTE.
+                        # Reducido a 1.0s para ser más agresivo.
+                        # Esto garantiza que el proceso muera pase lo que pase con la UI o los hilos.
+                        kill_timer = threading.Timer(1.0, self._force_quit)
+                        kill_timer.daemon = True
+                        kill_timer.start()
 
-                        match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
-                        if match:
-                            try:
-                                game_load_time = float(match.group(1))
-                                self._log(f"¡Juego cargado en {game_load_time:.2f}s!")
-                                threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
-                            except Exception as e:
-                                self._log(f"Error al parsear tiempo de carga: {e}")
+                        # Intentar logging y UI (Best Effort)
+                        try:
+                            if line_batch: self._log("\n".join(line_batch))
+                            self._log(f"[LOG_TRIGGER] {line_strip}")
 
-                        if self.window:
-                            try:
-                                # (NUEVO) Actualizar estado de depuración final
-                                if self.debug_mode:
-                                    self.close_trigger_status = "TRIGGERED"
-                                    if self.window: self.window.evaluate_js(f'updateDebugPanel("{self.close_trigger_status}")')
-                                    time.sleep(1) # Pequeña pausa para ver el estado final
+                            match = re.search(r'Game took ([\d\.]+) seconds', line_strip)
+                            if match:
+                                try:
+                                    game_load_time = float(match.group(1))
+                                    # Lanzar en hilo daemon para no bloquear
+                                    threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
+                                except Exception: pass
 
-                                self.game_ready_event.set()
-                                self._focus_game_window() # (NUEVO) Enfocar juego antes de cerrar
+                            # Enfocar juego (Prioritario)
+                            self._focus_game_window()
+
+                            if self.window:
+                                # Intentar fade out, pero no bloquear si falla
                                 self.window.evaluate_js('fadeLauncherOut()')
-                                # (NUEVO) Forzar cierre "hard quit" después de un breve delay
-                                # para dar tiempo a la animación de fade out.
-                                threading.Timer(1.5, self._force_quit).start()
-                            except Exception as e:
-                                self._log(f"Error calling fadeLauncherOut: {e}")
+
+                        except Exception as e:
+                            print(f"Error durante cierre suave (Ignorado, kill timer activo): {e}")
+
                         return
 
                     is_spam = any(keyword in line_strip for keyword in self.LOG_IGNORE_KEYWORDS)

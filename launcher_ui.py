@@ -1368,6 +1368,16 @@ HTML_CONTENT = f"""
                     osSep = sep || '/';
                     return pywebview.api.py_load_and_migrate_config();
                 }}).then(pathsAreValid => {{
+                    // (NUEVO) Obtener las rutas actuales para actualizar el estado de la UI
+                    return pywebview.api.py_get_current_paths().then(paths => {{
+                        console.log("Rutas actuales obtenidas:", paths);
+                        if (paths) {{
+                            setupState.prismPath = paths.prism_path;
+                            setupState.instancePath = paths.instance_path;
+                        }}
+                        return pathsAreValid;
+                    }});
+                }}).then(pathsAreValid => {{
                     // Cargar música
                     pywebview.api.py_get_playlist().then(p => {{
                         if (p && p.length > 0) {{
