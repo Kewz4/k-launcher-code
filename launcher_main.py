@@ -1,15 +1,38 @@
 import os
 import sys
+import tempfile
 
 # (NUEVO) Solución para PyInstaller: Añadir la carpeta temporal al path
 if getattr(sys, 'frozen', False):
-    # Si se ejecuta como un bundle, _MEIPASS es la carpeta temporal
-    # Usamos insert(0) para asegurar que las libs empaquetadas tengan prioridad sobre cualquier basura en sys.path
-    sys.path.insert(0, sys._MEIPASS)
+    # Limpieza AGRESIVA de sys.path para evitar cargar librerías de versiones anteriores (v1.5 -> v1.6)
+    try:
+        temp_base = tempfile.gettempdir().lower()
+        my_meipass = sys._MEIPASS.lower()
+
+        # Filtrar sys.path: Eliminar cualquier ruta en TEMP que no sea la nuestra
+        new_sys_path = []
+        for p in sys.path:
+            p_lower = p.lower()
+            if p_lower.startswith(temp_base):
+                if p_lower.startswith(my_meipass):
+                    new_sys_path.append(p)
+                # else: Ignorar (basura de v1.5)
+            else:
+                new_sys_path.append(p)
+
+        sys.path = new_sys_path
+    except Exception as e:
+        print(f"Advertencia limpiando sys.path: {e}")
+
+    # Asegurar que nuestra carpeta temporal esté PRIMERO
+    if sys._MEIPASS not in sys.path:
+        sys.path.insert(0, sys._MEIPASS)
+    elif sys.path[0] != sys._MEIPASS:
+        sys.path.remove(sys._MEIPASS)
+        sys.path.insert(0, sys._MEIPASS)
 
 import threading
 import time
-import tempfile
 import zipfile
 import requests
 import shutil
