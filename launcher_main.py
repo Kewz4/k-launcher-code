@@ -1,14 +1,38 @@
 import os
 import sys
+import tempfile
 
 # (NUEVO) Solución para PyInstaller: Añadir la carpeta temporal al path
 if getattr(sys, 'frozen', False):
-    # Si se ejecuta como un bundle, _MEIPASS es la carpeta temporal
-    sys.path.append(os.path.join(sys._MEIPASS))
+    # Limpieza AGRESIVA de sys.path para evitar cargar librerías de versiones anteriores (v1.5 -> v1.6)
+    try:
+        temp_base = tempfile.gettempdir().lower()
+        my_meipass = sys._MEIPASS.lower()
+
+        # Filtrar sys.path: Eliminar cualquier ruta en TEMP que no sea la nuestra
+        new_sys_path = []
+        for p in sys.path:
+            p_lower = p.lower()
+            if p_lower.startswith(temp_base):
+                if p_lower.startswith(my_meipass):
+                    new_sys_path.append(p)
+                # else: Ignorar (basura de v1.5)
+            else:
+                new_sys_path.append(p)
+
+        sys.path = new_sys_path
+    except Exception as e:
+        print(f"Advertencia limpiando sys.path: {e}")
+
+    # Asegurar que nuestra carpeta temporal esté PRIMERO
+    if sys._MEIPASS not in sys.path:
+        sys.path.insert(0, sys._MEIPASS)
+    elif sys.path[0] != sys._MEIPASS:
+        sys.path.remove(sys._MEIPASS)
+        sys.path.insert(0, sys._MEIPASS)
 
 import threading
 import time
-import tempfile
 import zipfile
 import requests
 import shutil
@@ -98,7 +122,7 @@ MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
-def get_current_launcher_version(default_version="1.5"):
+def get_current_launcher_version(default_version="1.6"):
     """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
     version_file = "launcher_version.txt"
     if os.path.exists(version_file):
@@ -285,12 +309,104 @@ class ModpackLauncherAPI:
             if is_prism_valid and is_instance_valid:
                 self.prism_exe_path = prism_path
                 self.instance_mc_path = instance_path
+
+                # (NUEVO) Sincronizar configuración de Prism (Portable/Installer)
+                self._sync_prism_config()
+
                 # Cargar el resto de las configuraciones
                 self.avg_launch_time_sec = self._calculate_avg_launch_time(config_data.get("launch_times_sec", []))
                 # El volumen de la música se carga desde JS
                 return True
             else:
                 return False
+
+    def _sync_prism_config(self):
+        """Sincroniza prismlauncher.cfg según si es portable o instalador."""
+        if not self.prism_exe_path: return
+
+        # 1. Check Portable: prismlauncher.cfg en la misma carpeta que el exe
+        prism_dir = os.path.dirname(self.prism_exe_path)
+        portable_cfg = os.path.join(prism_dir, "prismlauncher.cfg")
+
+        if os.path.exists(portable_cfg):
+            self._log(f"Detectado Prism Portable config en: {portable_cfg}")
+            self._update_prism_cfg_file(portable_cfg, remove_instance_dir=True)
+            return
+
+        # 2. Check Installer: %AppData%\PrismLauncher\prismlauncher.cfg
+        if IS_WINDOWS:
+            appdata = os.environ.get('APPDATA')
+            if appdata:
+                installer_cfg = os.path.join(appdata, "PrismLauncher", "prismlauncher.cfg")
+                if os.path.exists(installer_cfg):
+                    self._log(f"Detectado Prism Installer config en: {installer_cfg}")
+                    self._update_prism_cfg_file(installer_cfg, remove_instance_dir=False, new_path=self.instance_mc_path)
+                    return
+
+        # Si no se encuentra ninguno, no hacemos nada (o podríamos loguear aviso)
+        # self._log("No se encontró prismlauncher.cfg (ni portable ni en AppData).")
+
+    def _update_prism_cfg_file(self, filepath, remove_instance_dir=False, new_path=None):
+        """Lee y modifica prismlauncher.cfg para gestionar 'InstanceDir'."""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            new_lines = []
+            in_general = False
+            key_found = False
+
+            for line in lines:
+                stripped = line.strip()
+                if stripped == '[General]':
+                    in_general = True
+                    new_lines.append(line)
+                    continue
+
+                if in_general and stripped.startswith('[') and stripped != '[General]':
+                    in_general = False
+
+                if in_general and stripped.split('=')[0].strip() == 'InstanceDir':
+                    key_found = True
+                    if remove_instance_dir:
+                        self._log("Eliminando InstanceDir de prismlauncher.cfg (Modo Portable)")
+                        continue # Skip (Remove)
+                    else:
+                        if new_path:
+                            # Normalizar a barras inclinadas (Prism suele aceptarlas mejor en config)
+                            clean_path = new_path.replace('\\', '/')
+                            new_lines.append(f"InstanceDir={clean_path}\n")
+                            self._log(f"Actualizando InstanceDir a: {clean_path}")
+                        continue
+
+                new_lines.append(line)
+
+            # Si necesitamos añadirlo y no estaba presente
+            if not remove_instance_dir and not key_found and new_path:
+                clean_path = new_path.replace('\\', '/')
+                final_lines = []
+                inserted = False
+                has_general = any(l.strip() == '[General]' for l in new_lines)
+
+                if not has_general:
+                     # Si no hay sección [General], la creamos al final
+                     final_lines = new_lines + ["\n", "[General]\n", f"InstanceDir={clean_path}\n"]
+                     self._log(f"Añadiendo sección [General] y InstanceDir: {clean_path}")
+                else:
+                    for line in new_lines:
+                        final_lines.append(line)
+                        if line.strip() == '[General]' and not inserted:
+                            final_lines.append(f"InstanceDir={clean_path}\n")
+                            inserted = True
+                            self._log(f"Insertando InstanceDir en [General]: {clean_path}")
+                new_lines = final_lines
+
+            # Escribir de vuelta (sobrescribir)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+
+        except Exception as e:
+            self._log(f"Error actualizando prismlauncher.cfg: {e}")
 
     def _calculate_avg_launch_time(self, launch_times):
         """Calcula el tiempo de lanzamiento promedio desde una lista de tiempos."""

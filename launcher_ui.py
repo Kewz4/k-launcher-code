@@ -906,10 +906,7 @@ HTML_CONTENT = f"""
             }} else {{
                 logToUpdaterConsole("Estás al día. Iniciando launcher...");
                 updateUpdaterProgress(100);
-                setTimeout(() => {{
-                    dom.updater.screen.classList.add('hidden');
-                    startMainApp();
-                }}, 1200);
+                startMainApp();
             }}
         }}
 
@@ -925,7 +922,6 @@ HTML_CONTENT = f"""
             skipButton.textContent = 'Continuar de todas formas';
             skipButton.className = 'btn btn-secondary';
             skipButton.onclick = () => {{
-                dom.updater.screen.classList.add('hidden');
                 startMainApp();
             }};
             dom.updater.buttons.appendChild(skipButton);
@@ -937,6 +933,7 @@ HTML_CONTENT = f"""
         function switchScreen(screenName) {{
             console.log("Switching screen to:", screenName);
             // Ocultar todo primero
+            if (dom.updater && dom.updater.screen) dom.updater.screen.classList.add('hidden'); // Ocultar pantalla de actualización
             dom.screens.progress.style.display = 'none';
             dom.screens.progress.classList.remove('active');
             dom.mainContainer.classList.remove('visible');
@@ -1027,6 +1024,14 @@ HTML_CONTENT = f"""
                     else {{ textContent = '> ' + line; }}
                     p.appendChild(document.createTextNode(textContent)); 
                     dom.console.appendChild(p); 
+
+                    // Forward to Updater Console if visible
+                    if (dom.updater && dom.updater.screen && !dom.updater.screen.classList.contains('hidden')) {{
+                        let cleanMsg = line;
+                        if (line.startsWith('[LOG_PASSTHROUGH] ')) cleanMsg = line.substring(18);
+                        else if (line.startsWith('[LOG_TRIGGER] ')) cleanMsg = line.substring(14);
+                        logToUpdaterConsole(cleanMsg);
+                    }}
                 }}
                 if (isScrolledToBottom) {{ dom.console.scrollTop = dom.console.scrollHeight; }}
             }} catch (e) {{ console.error("Error en logToConsole:", e); }}
