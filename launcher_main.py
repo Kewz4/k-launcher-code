@@ -4,7 +4,8 @@ import sys
 # (NUEVO) Solución para PyInstaller: Añadir la carpeta temporal al path
 if getattr(sys, 'frozen', False):
     # Si se ejecuta como un bundle, _MEIPASS es la carpeta temporal
-    sys.path.append(os.path.join(sys._MEIPASS))
+    # Usamos insert(0) para asegurar que las libs empaquetadas tengan prioridad sobre cualquier basura en sys.path
+    sys.path.insert(0, sys._MEIPASS)
 
 import threading
 import time

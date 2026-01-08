@@ -275,7 +275,12 @@ del "%~f0"
             self._update_progress("Reiniciando para actualizar...", 100)
 
             # Lanzar el script y terminar
-            subprocess.Popen(f'"{updater_script_path}"', shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            # (CORREGIDO) Limpiar variables de entorno que puedan contaminar el nuevo proceso (PYTHONPATH, etc.)
+            env = os.environ.copy()
+            for key in ['PYTHONPATH', 'PYTHONHOME', 'LD_LIBRARY_PATH']:
+                env.pop(key, None)
+
+            subprocess.Popen(f'"{updater_script_path}"', shell=True, creationflags=subprocess.CREATE_NO_WINDOW, env=env)
 
             on_finish_callback(True, None) # Éxito
 
