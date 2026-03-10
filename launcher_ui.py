@@ -1816,24 +1816,14 @@ HTML_CONTENT = f"""
                 }}
             }}
 
-            // Called by Python during a video download with live progress
+            // Called by Python during a video download — updates progress bar only.
+            // Console detail is handled by onBgVideoStatus.
             function onBgVideoProgress(videoIdx, totalVideos, pct) {{
                 if (dom && dom.updater.title) {{
                     dom.updater.title.textContent = `Downloading Launcher Assets (${{videoIdx}}/${{totalVideos}})...`;
                 }}
-                // Map this video's progress onto its share of the 0-100 bar
                 const overall = Math.round(((videoIdx - 1) / totalVideos + pct / 100 / totalVideos) * 100);
                 updateUpdaterProgress(overall);
-                if (dom && dom.updater.console) {{
-                    let line = dom.updater.console.querySelector('p[data-bg-progress]');
-                    if (!line) {{
-                        line = document.createElement('p');
-                        line.setAttribute('data-bg-progress', '1');
-                        dom.updater.console.appendChild(line);
-                    }}
-                    line.textContent = `Downloading video ${{videoIdx}}/${{totalVideos}}: ${{pct}}%`;
-                    dom.updater.console.scrollTop = dom.updater.console.scrollHeight;
-                }}
             }}
 
             // Called by Python at each LFS resolution step with a stage label and detail string

@@ -457,24 +457,52 @@ class ModpackLauncherAPI:
 
             tmp_path = out_path + ".tmp"
             try:
+                import time as _time
+
+                def _dl_loop(response, file_obj, total_b, on_tick):
+                    """Read chunks, call on_tick(downloaded, speed_mbps, eta_s, pct) periodically."""
+                    downloaded = 0
+                    t_start = _time.monotonic()
+                    t_last_tick = t_start
+                    last_pct = -1
+                    while True:
+                        chunk = response.read(CHUNK)
+                        if not chunk:
+                            break
+                        file_obj.write(chunk)
+                        downloaded += len(chunk)
+                        now = _time.monotonic()
+                        elapsed = max(now - t_start, 0.001)
+                        speed = downloaded / elapsed / 1024 / 1024  # MB/s
+                        pct = int(downloaded / total_b * 100) if total_b > 0 else 0
+                        eta_s = int((total_b - downloaded) / (downloaded / elapsed)) if total_b > 0 and downloaded > 0 else 0
+                        if pct - last_pct >= 1 or now - t_last_tick >= 0.5:
+                            last_pct = pct
+                            t_last_tick = now
+                            on_tick(downloaded, speed, eta_s, pct)
+
                 self._log(f"Downloading background video: {vdef['filename']}")
                 req = urllib.request.Request(src_url, headers={"User-Agent": "KewzLauncher/1.0"})
                 with urllib.request.urlopen(req, timeout=120) as resp:
                     total_b = int(resp.headers.get("Content-Length") or 0)
-                    downloaded = 0
-                    last_pct = -1
+                    total_mb_str = f"{total_b / 1024 / 1024:.1f} MB" if total_b else "? MB"
+
+                    def _on_tick(dl, spd, eta, pct):
+                        dl_mb = dl / 1024 / 1024
+                        if total_b:
+                            eta_str = f"{eta // 60}m {eta % 60}s" if eta >= 60 else f"{eta}s"
+                            detail = f"{dl_mb:.1f} / {total_mb_str}  •  {spd:.2f} MB/s  •  ETA {eta_str}"
+                        else:
+                            detail = f"{dl_mb:.1f} MB  •  {spd:.2f} MB/s"
+                        _js(
+                            f'typeof onBgVideoStatus==="function"&&'
+                            f'onBgVideoStatus({video_idx},{video_total},'
+                            f'{json.dumps("Downloading video")},{json.dumps(detail)})'
+                        )
+                        _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
+
                     with open(tmp_path, "wb") as f:
-                        while True:
-                            chunk = resp.read(CHUNK)
-                            if not chunk:
-                                break
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total_b > 0:
-                                pct = int(downloaded / total_b * 100)
-                                if pct - last_pct >= 5:
-                                    last_pct = pct
-                                    _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
+                        _dl_loop(resp, f, total_b, _on_tick)
 
                 if not os.path.exists(tmp_path):
                     raise RuntimeError("Download produced no file")
@@ -505,24 +533,21 @@ class ModpackLauncherAPI:
                         lfs_req = urllib.request.Request(lfs_url, headers={"User-Agent": "KewzLauncher/1.0"})
                         with urllib.request.urlopen(lfs_req, timeout=300) as lfs_resp:
                             total_b = int(lfs_resp.headers.get("Content-Length") or 0)
-                            total_mb = f"{total_b / 1024 / 1024:.1f} MB" if total_b else "unknown size"
-                            _lfs_status("Downloading LFS content", total_mb)
-                            downloaded = 0
-                            last_pct = -1
+                            total_mb_str = f"{total_b / 1024 / 1024:.1f} MB" if total_b else "? MB"
+                            _lfs_status("Downloading LFS content", total_mb_str)
+
+                            def _on_lfs_tick(dl, spd, eta, pct):
+                                dl_mb = dl / 1024 / 1024
+                                if total_b:
+                                    eta_str = f"{eta // 60}m {eta % 60}s" if eta >= 60 else f"{eta}s"
+                                    detail = f"{dl_mb:.1f} / {total_mb_str}  •  {spd:.2f} MB/s  •  ETA {eta_str}"
+                                else:
+                                    detail = f"{dl_mb:.1f} MB  •  {spd:.2f} MB/s"
+                                _lfs_status("Downloading LFS content", detail)
+                                _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
+
                             with open(tmp_path, "wb") as f:
-                                while True:
-                                    chunk = lfs_resp.read(CHUNK)
-                                    if not chunk:
-                                        break
-                                    f.write(chunk)
-                                    downloaded += len(chunk)
-                                    pct = int(downloaded / total_b * 100) if total_b > 0 else 0
-                                    if pct - last_pct >= 2:
-                                        last_pct = pct
-                                        done_mb = downloaded / 1024 / 1024
-                                        detail = f"{done_mb:.1f} / {total_mb} ({pct}%)" if total_b else f"{done_mb:.1f} MB"
-                                        _lfs_status("Downloading LFS content", detail)
-                                        _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
+                                _dl_loop(lfs_resp, f, total_b, _on_lfs_tick)
                         dl_size = os.path.getsize(tmp_path)
                         if dl_size < MIN_VIDEO_SIZE:
                             raise RuntimeError(f"LFS download also too small ({dl_size} bytes)")
