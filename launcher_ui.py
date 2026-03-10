@@ -3,7 +3,7 @@ import sys
 
 # --- HTML Content Definition ---
 
-FONT_IMPORT_URL = f"https://fonts.googleapis.com/css2?family={'&family='.join(f.replace(' ', '+') for f in ['Inter:wght@400;500;700;900', 'Montserrat:wght@900'])}&display=swap"
+FONT_IMPORT_URL = "https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Montserrat:wght@900&display=swap"
 FONT_AWESOME_URL = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
 UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
 LOGO_URL = f"{UNIFIED_REPO_RAW_URL}/minecraftlogo.png"
@@ -25,7 +25,7 @@ HTML_CONTENT = f"""
     <style>
         /* --- Reset & Fonts --- */
         :root {{
-            --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-family-sans: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             --font-family-display: 'Montserrat', sans-serif;
             --color-bg: #000000;
             --color-bg-light: #0d1117;
@@ -964,6 +964,11 @@ HTML_CONTENT = f"""
                     <button class="btn btn-secondary" id="settings-browse-instance-btn"><i class="fas fa-folder-open"></i> Browse Folder...</button>
                 </div>
                 <button class="btn btn-primary" id="save-settings-btn" style="margin-top: 24px;" disabled>Save & Close</button>
+                <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(0,207,170,0.12);">
+                    <button class="btn" id="settings-quit-btn" style="width:100%; background: none; border: 1px solid rgba(229,57,53,0.25); color: #d45e5e; gap: 10px;">
+                        <i class="fas fa-power-off"></i> Quit Launcher
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1607,6 +1612,26 @@ HTML_CONTENT = f"""
         function openSidePanel() {{ dom.sidePanel.classList.add('panel-open'); dom.panelOverlay.classList.add('visible'); }}
         function closeSidePanel() {{ dom.sidePanel.classList.remove('panel-open'); dom.panelOverlay.classList.remove('visible'); }}
 
+        // Called by Python when a duplicate task start is attempted.
+        // Instead of an error, we just bring whatever is running back into view.
+        function restoreRunningTaskView() {{
+            console.log("restoreRunningTaskView: bringing active task back into view.");
+            isProgressMinimized = false;
+            dom.minimizedWidget.style.display = 'none';
+            if (dom.screens.initialSetup.classList.contains('active')) {{
+                // Wizard was running — restore container and make sure install-progress step shows
+                dom.mainContainer.classList.add('visible');
+                const activeStep = document.querySelector('#screen-initial-setup .wizard-step.active');
+                if (!activeStep || activeStep.getAttribute('data-step') !== 'install-progress') {{
+                    showWizardStep('install-progress');
+                }}
+            }} else {{
+                // Regular progress screen was running
+                dom.screens.progress.style.display = 'flex';
+                dom.screens.progress.classList.add('active');
+            }}
+        }}
+
         // --- Setup Wizard Logic ---
 
         function showWizardStep(stepName) {{
@@ -1915,6 +1940,12 @@ HTML_CONTENT = f"""
                     cancelCurrentProcess();
                 }} else {{
                     if (!setupState.prismPath || !setupState.instancePath) {{
+                        // If a wizard download is already running (just minimized), restore it
+                        // instead of restarting setup — which would cause a task conflict.
+                        if (isProgressMinimized && dom.screens.initialSetup.classList.contains('active')) {{
+                            restoreRunningTaskView();
+                            return;
+                        }}
                         console.log("Paths not set, starting setup wizard...");
                         startInitialSetupWizard();
                     }} else {{
@@ -1966,6 +1997,9 @@ HTML_CONTENT = f"""
             // Settings drawer close button + overlay
             dom.settingsDrawerCloseBtn.addEventListener('click', closeSettingsDrawer);
             dom.settingsDrawerOverlay.addEventListener('click', closeSettingsDrawer);
+            document.getElementById('settings-quit-btn').addEventListener('click', () => {{
+                if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }}
+            }});
 
             // Wizard minimize button
             dom.wizardMinimizeBtn.addEventListener('click', () => {{

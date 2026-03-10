@@ -1017,18 +1017,11 @@ class ModpackLauncherAPI:
         y llama a un callback de JS al completarse.
         """
         if self.current_task_thread and self.current_task_thread.is_alive():
-            self._log(f"Advertencia: Tarea anterior aún en ejecución al solicitar '{task_name}'. Esperando...")
-            # Opción: Esperar a que termine (con timeout) o rechazar.
-            # Dado el flujo secuencial (Install Prism -> Install Modpack), esperar un poco es razonable.
-            try:
-                self.current_task_thread.join(timeout=2.0)
-                if self.current_task_thread.is_alive():
-                     self._log("Error: La tarea anterior no terminó a tiempo.")
-                     if self.window:
-                        self.window.evaluate_js(f'onTaskError("{task_name}", "Ya hay una tarea en ejecución.")')
-                     return
-            except Exception as e:
-                self._log(f"Error esperando thread anterior: {e}")
+            self._log(f"Advertencia: Tarea '{task_name}' solicitada pero ya hay una tarea activa. Restaurando vista...")
+            # Don't error — just tell the UI to show whatever is already running
+            if self.window:
+                self.window.evaluate_js('restoreRunningTaskView()')
+            return
 
         self.cancel_event.clear()
         self.pause_event.clear()  # Ensure download is not paused at start of new task
