@@ -129,7 +129,21 @@ DOWNLOAD_STATE_FILE = os.path.join(os.getcwd(), ".download_state.json")
 # Host the pre-trimmed .mp4 files as assets on a GitHub Release and paste
 # the direct download URLs here.  Each URL must return the raw video bytes
 # (GitHub Release assets, R2, S3, etc. all work fine).
-VIDEO_DIR = os.path.join(os.getcwd(), "videos")
+# NOTE: raw.githubusercontent.com does NOT work for Git LFS files — it serves
+# the 134-byte LFS pointer text instead of the actual video.  Use GitHub Release
+# asset URLs or another direct-download host.
+def _get_video_dir():
+    if getattr(sys, 'frozen', False):
+        # Frozen exe: store in %APPDATA%\KewzLauncher\videos
+        appdata = os.environ.get('APPDATA') or os.path.expanduser('~')
+        return os.path.join(appdata, 'KewzLauncher', 'videos')
+    # Dev: store next to the script
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'videos')
+
+VIDEO_DIR = _get_video_dir()
+MIN_VIDEO_SIZE = 2_000_000   # 2 MB — any real background video will exceed this
+LFS_POINTER_PREFIX = b'version https://git-lfs.github.com/spec/v1'
+
 VIDEO_DEFINITIONS = [
     {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg1_cob.mp4", "filename": "video_bg1_cob.mp4"},
     {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg2_cob.mp4", "filename": "video_bg2_cob.mp4"},
@@ -380,10 +394,19 @@ class ModpackLauncherAPI:
             out_path = os.path.join(VIDEO_DIR, vdef["filename"])
             serve_url = f"http://127.0.0.1:{port}/{vdef['filename']}"
 
-            # Already cached — notify immediately
-            if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-                _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
-                return
+            # Already cached with a plausible size — notify immediately.
+            # If the cached file is suspiciously small (e.g. a stale LFS pointer),
+            # delete it and re-download.
+            if os.path.exists(out_path):
+                if os.path.getsize(out_path) >= MIN_VIDEO_SIZE:
+                    _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
+                    return
+                else:
+                    self._log(f"Cached file {vdef['filename']} is too small ({os.path.getsize(out_path)} bytes) — deleting and re-downloading")
+                    try:
+                        os.remove(out_path)
+                    except Exception:
+                        pass
 
             src_url = vdef["url"]
             if src_url.startswith("PLACEHOLDER"):
@@ -412,8 +435,21 @@ class ModpackLauncherAPI:
                                     last_pct = pct
                                     _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
 
-                if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
-                    raise RuntimeError("Download produced an empty file")
+                if not os.path.exists(tmp_path):
+                    raise RuntimeError("Download produced no file")
+
+                dl_size = os.path.getsize(tmp_path)
+                if dl_size < MIN_VIDEO_SIZE:
+                    # Read first bytes to give a clear error for LFS pointers
+                    with open(tmp_path, 'rb') as _f:
+                        header = _f.read(64)
+                    if header.startswith(LFS_POINTER_PREFIX):
+                        raise RuntimeError(
+                            f"{vdef['filename']} is a Git LFS pointer ({dl_size} bytes). "
+                            "raw.githubusercontent.com does not serve LFS content. "
+                            "Host the video on GitHub Releases or another direct-download URL."
+                        )
+                    raise RuntimeError(f"Download too small ({dl_size} bytes) — expected a real video file")
 
                 # Compress using bundled ffmpeg; fall back to raw file if unavailable
                 if ffmpeg_exe:

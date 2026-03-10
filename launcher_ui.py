@@ -1206,23 +1206,13 @@ HTML_CONTENT = f"""
 
         function onUpdateError(error_message) {{
             console.error("onUpdateError:", error_message);
-            logToUpdaterConsole(`Error: ${{error_message}}`);
-            dom.updater.title.textContent = 'Update Error';
-            dom.updater.console.innerHTML += `<p>Could not check for updates. You can continue, but something may not work correctly.</p>`;
-
-            dom.updater.buttons.innerHTML = '';
-
-            const skipButton = document.createElement('button');
-            skipButton.textContent = 'Continue Anyway';
-            skipButton.className = 'btn btn-secondary';
-            skipButton.onclick = () => {{
-                // Skip video gate — user chose to continue despite error
-                _updateCheckDone = true;
-                _firstVideoReady = true;
-                _pendingStartMainApp = startMainApp;
-                tryAdvanceToMain();
-            }};
-            dom.updater.buttons.appendChild(skipButton);
+            logToUpdaterConsole(`Warning: ${{error_message}}`);
+            logToUpdaterConsole("Could not check for updates. Continuing...");
+            dom.updater.title.textContent = 'Skipping Update Check';
+            // Auto-advance — no user interaction needed for a failed update check
+            _updateCheckDone = true;
+            _pendingStartMainApp = startMainApp;
+            tryAdvanceToMain();
         }}
 
         // --- Funciones UI ---
