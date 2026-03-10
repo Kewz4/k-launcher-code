@@ -353,8 +353,10 @@ class ModpackLauncherAPI:
                 try:
                     self._log(f"Downloading background video: {vdef['filename']}")
 
-                    # Download with the yt-dlp Python API (no external exe needed)
-                    ydl_opts = {
+                    # Download with the yt-dlp Python API (no external exe needed).
+                    # YouTube returns 403 without browser cookies due to bot-detection,
+                    # so we try each installed browser in turn, then fall back to no cookies.
+                    base_opts = {
                         'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
                         'merge_output_format': 'mp4',
                         'outtmpl': tmp_path,
@@ -363,8 +365,25 @@ class ModpackLauncherAPI:
                         'no_warnings': True,
                         'ffmpeg_location': os.path.dirname(ffmpeg_exe),
                     }
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([vdef["url"]])
+                    browsers_to_try = ['edge', 'chrome', 'firefox', 'brave', 'opera', 'chromium', None]
+                    last_err = None
+                    for browser in browsers_to_try:
+                        opts = dict(base_opts)
+                        if browser:
+                            opts['cookiesfrombrowser'] = (browser,)
+                        try:
+                            with yt_dlp.YoutubeDL(opts) as ydl:
+                                ydl.download([vdef["url"]])
+                            last_err = None
+                            break  # success
+                        except Exception as e:
+                            last_err = e
+                            err_str = str(e)
+                            # Only retry with next browser on 403/auth errors
+                            if '403' not in err_str and 'Forbidden' not in err_str and 'cookies' not in err_str.lower():
+                                break
+                    if last_err:
+                        raise last_err
 
                     if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
                         raise RuntimeError("yt-dlp produced no output file")
