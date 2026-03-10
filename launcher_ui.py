@@ -1191,9 +1191,16 @@ HTML_CONTENT = f"""
                 }}, 1000);
 
             }} else {{
-                logToUpdaterConsole("You're up to date. Starting launcher...");
                 updateUpdaterProgress(100);
-                startMainApp();
+                _updateCheckDone = true;
+                _pendingStartMainApp = startMainApp;
+                if (!_firstVideoReady) {{
+                    dom.updater.title.textContent = 'Preparing videos...';
+                    logToUpdaterConsole("Update check done. Waiting for first video to be ready...");
+                }} else {{
+                    logToUpdaterConsole("You're up to date. Starting launcher...");
+                    tryAdvanceToMain();
+                }}
             }}
         }}
 
@@ -1209,7 +1216,11 @@ HTML_CONTENT = f"""
             skipButton.textContent = 'Continue Anyway';
             skipButton.className = 'btn btn-secondary';
             skipButton.onclick = () => {{
-                startMainApp();
+                // Skip video gate — user chose to continue despite error
+                _updateCheckDone = true;
+                _firstVideoReady = true;
+                _pendingStartMainApp = startMainApp;
+                tryAdvanceToMain();
             }};
             dom.updater.buttons.appendChild(skipButton);
         }}
@@ -1794,14 +1805,25 @@ HTML_CONTENT = f"""
             let bgVideoIndex = 0;
             let bgVideoPlaying = false;
 
+            // Gate: both update check AND first video must be ready before advancing
+            let _updateCheckDone = false;
+            let _firstVideoReady = false;
+            let _pendingStartMainApp = null; // stores the bound startMainApp call
+
+            function tryAdvanceToMain() {{
+                if (_updateCheckDone && _firstVideoReady && _pendingStartMainApp) {{
+                    const fn = _pendingStartMainApp;
+                    _pendingStartMainApp = null;
+                    fn();
+                }}
+            }}
+
             // Called by Python each time a video becomes ready (downloaded or already cached)
             function onBgVideoReady(url) {{
                 bgVideoList.push(url);
-                // Start playing immediately when the first video arrives
-                if (!bgVideoPlaying) {{
-                    bgVideoPlaying = true;
-                    bgVideoIndex = 0;
-                    _loadBgVideo(0);
+                if (!_firstVideoReady) {{
+                    _firstVideoReady = true;
+                    tryAdvanceToMain();
                 }}
             }}
 
