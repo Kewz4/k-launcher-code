@@ -322,36 +322,31 @@ class ModpackLauncherAPI:
         self._log(f"Video HTTP server started on port {port}")
         return port
 
-    def py_get_background_video_urls(self):
-        """Return localhost URLs for any already-downloaded background videos."""
-        port = self._start_video_server()
-        urls = []
-        for vdef in VIDEO_DEFINITIONS:
-            fpath = os.path.join(VIDEO_DIR, vdef["filename"])
-            if os.path.exists(fpath) and os.path.getsize(fpath) > 0:
-                urls.append(f"http://127.0.0.1:{port}/{vdef['filename']}")
-        return urls
-
-    def py_download_background_videos(self):
-        """Download & trim all background videos using yt-dlp + ffmpeg. Reports progress via JS callbacks."""
+    def py_ensure_background_videos(self):
+        """
+        Called on startup. For each video:
+          - If already downloaded, immediately fires onBgVideoReady(url) in JS.
+          - Otherwise downloads + trims it, then fires onBgVideoReady(url).
+        All runs in a background thread so it never blocks the UI.
+        """
         os.makedirs(VIDEO_DIR, exist_ok=True)
+        port = self._start_video_server()
 
         def _task():
-            total = len(VIDEO_DEFINITIONS)
-            for i, vdef in enumerate(VIDEO_DEFINITIONS):
+            for vdef in VIDEO_DEFINITIONS:
                 out_path = os.path.join(VIDEO_DIR, vdef["filename"])
+                url = f"http://127.0.0.1:{port}/{vdef['filename']}"
+
+                # Already downloaded — notify immediately and move on
                 if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-                    pct = int((i + 1) / total * 100)
                     if self.window:
-                        self.window.evaluate_js(f'onVideoDownloadProgress({pct}, "{vdef["filename"]} (already exists)")')
+                        self.window.evaluate_js(f'onBgVideoReady({json.dumps(url)})')
                     continue
 
+                # Download with yt-dlp
                 tmp_path = out_path + ".tmp_raw.mp4"
                 try:
-                    # Step 1: Download best video+audio up to 1080p with yt-dlp
-                    if self.window:
-                        self.window.evaluate_js(f'onVideoDownloadProgress({int(i / total * 100)}, "Downloading {vdef[\'filename\']}...")')
-
+                    self._log(f"Downloading background video: {vdef['filename']}")
                     yt_cmd = [
                         "yt-dlp",
                         "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
@@ -364,10 +359,7 @@ class ModpackLauncherAPI:
                     if result.returncode != 0:
                         raise RuntimeError(f"yt-dlp failed: {result.stderr[-300:]}")
 
-                    # Step 2: Trim with ffmpeg
-                    if self.window:
-                        self.window.evaluate_js(f'onVideoDownloadProgress({int((i + 0.6) / total * 100)}, "Trimming {vdef[\'filename\']}...")')
-
+                    # Trim with ffmpeg
                     ffmpeg_cmd = ["ffmpeg", "-y"]
                     if vdef.get("ss"):
                         ffmpeg_cmd += ["-ss", vdef["ss"]]
@@ -376,27 +368,18 @@ class ModpackLauncherAPI:
                     if result.returncode != 0:
                         raise RuntimeError(f"ffmpeg failed: {result.stderr[-300:]}")
 
+                    self._log(f"Background video ready: {vdef['filename']}")
+                    if self.window:
+                        self.window.evaluate_js(f'onBgVideoReady({json.dumps(url)})')
+
                 except Exception as e:
                     self._log(f"Error downloading {vdef['filename']}: {e}")
-                    if self.window:
-                        self.window.evaluate_js(f'onVideoDownloadError("{vdef["filename"]}", {json.dumps(str(e))})')
                 finally:
                     if os.path.exists(tmp_path):
                         try:
                             os.remove(tmp_path)
                         except Exception:
                             pass
-
-                pct = int((i + 1) / total * 100)
-                if self.window:
-                    self.window.evaluate_js(f'onVideoDownloadProgress({pct}, "{vdef["filename"]} done")')
-
-            if self.window:
-                port = self._start_video_server()
-                urls = [f"http://127.0.0.1:{port}/{v['filename']}" for v in VIDEO_DEFINITIONS
-                        if os.path.exists(os.path.join(VIDEO_DIR, v['filename'])) and os.path.getsize(os.path.join(VIDEO_DIR, v['filename'])) > 0]
-                urls_json = json.dumps(urls)
-                self.window.evaluate_js(f'onVideoDownloadComplete({urls_json})')
 
         t = threading.Thread(target=_task, daemon=True)
         t.start()

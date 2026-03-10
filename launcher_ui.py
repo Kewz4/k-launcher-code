@@ -962,18 +962,6 @@ HTML_CONTENT = f"""
                 </div>
                 <button class="btn btn-primary" id="save-settings-btn" style="margin-top: 24px;" disabled>Save & Close</button>
                 <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(0,207,170,0.12);">
-                    <label class="setup-label" style="margin-bottom: 8px;">Background Videos</label>
-                    <button class="btn btn-secondary" id="download-videos-btn" style="width:100%; gap: 10px;">
-                        <i class="fas fa-film"></i> Download Background Videos
-                    </button>
-                    <div id="video-download-status" style="margin-top: 8px; font-size: 12px; color: var(--color-text-muted); min-height: 18px;"></div>
-                    <div id="video-download-progress-wrap" style="display:none; margin-top: 6px;">
-                        <div style="background: var(--color-bg-lighter); border-radius: 4px; height: 6px; overflow: hidden;">
-                            <div id="video-download-progress-fill" style="height:100%; width:0%; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); transition: width 0.3s ease;"></div>
-                        </div>
-                    </div>
-                </div>
-                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(0,207,170,0.12);">
                     <button class="btn" id="settings-quit-btn" style="width:100%; background: none; border: 1px solid rgba(229,57,53,0.25); color: #d45e5e; gap: 10px;">
                         <i class="fas fa-power-off"></i> Quit Launcher
                     </button>
@@ -1797,22 +1785,23 @@ HTML_CONTENT = f"""
                 resumeDiscardBtn: document.getElementById('resume-discard-btn'),
                 resumeContinueBtn: document.getElementById('resume-continue-btn'),
                 debugPanel: document.getElementById('debug-panel'), debugCloseStatus: document.getElementById('debug-close-status'), launcherVersion: document.getElementById('launcher-version'),
-                bgVideo: document.getElementById('bg-video'),
-                downloadVideosBtn: document.getElementById('download-videos-btn'),
-                videoDownloadStatus: document.getElementById('video-download-status'),
-                videoDownloadProgressWrap: document.getElementById('video-download-progress-wrap'),
-                videoDownloadProgressFill: document.getElementById('video-download-progress-fill')
+                bgVideo: document.getElementById('bg-video')
             }};
 
             // --- Background Video Slideshow ---
             let bgVideoList = [];
             let bgVideoIndex = 0;
+            let bgVideoPlaying = false;
 
-            function initBackgroundVideos(urls) {{
-                if (!urls || urls.length === 0) return;
-                bgVideoList = urls;
-                bgVideoIndex = 0;
-                _loadBgVideo(0);
+            // Called by Python each time a video becomes ready (downloaded or already cached)
+            function onBgVideoReady(url) {{
+                bgVideoList.push(url);
+                // Start playing immediately when the first video arrives
+                if (!bgVideoPlaying) {{
+                    bgVideoPlaying = true;
+                    bgVideoIndex = 0;
+                    _loadBgVideo(0);
+                }}
             }}
 
             function _loadBgVideo(index) {{
@@ -1830,29 +1819,10 @@ HTML_CONTENT = f"""
                     _loadBgVideo(bgVideoIndex);
                 }});
                 dom.bgVideo.addEventListener('error', () => {{
-                    // Skip broken video
                     if (bgVideoList.length === 0) return;
                     bgVideoIndex = (bgVideoIndex + 1) % bgVideoList.length;
                     setTimeout(() => _loadBgVideo(bgVideoIndex), 500);
                 }});
-            }}
-
-            // Callbacks from Python for video download
-            function onVideoDownloadProgress(pct, label) {{
-                if (dom.videoDownloadProgressWrap) dom.videoDownloadProgressWrap.style.display = 'block';
-                if (dom.videoDownloadProgressFill) dom.videoDownloadProgressFill.style.width = pct + '%';
-                if (dom.videoDownloadStatus) dom.videoDownloadStatus.textContent = label || '';
-            }}
-
-            function onVideoDownloadError(filename, errMsg) {{
-                if (dom.videoDownloadStatus) dom.videoDownloadStatus.textContent = `Error: ${{filename}} — ${{errMsg}}`;
-            }}
-
-            function onVideoDownloadComplete(urls) {{
-                if (dom.videoDownloadProgressWrap) dom.videoDownloadProgressWrap.style.display = 'none';
-                if (dom.videoDownloadStatus) dom.videoDownloadStatus.textContent = 'Videos ready!';
-                if (dom.downloadVideosBtn) dom.downloadVideosBtn.disabled = false;
-                initBackgroundVideos(urls);
             }}
 
             // Main app startup (after update check)
@@ -1871,15 +1841,8 @@ HTML_CONTENT = f"""
                         return pathsAreValid;
                     }});
                 }}).then(pathsAreValid => {{
-                    // Load background videos
-                    pywebview.api.py_get_background_video_urls().then(urls => {{
-                        if (urls && urls.length > 0) {{
-                            initBackgroundVideos(urls);
-                            if (dom.videoDownloadStatus) dom.videoDownloadStatus.textContent = 'Videos ready!';
-                        }} else {{
-                            if (dom.videoDownloadStatus) dom.videoDownloadStatus.textContent = 'No videos downloaded yet.';
-                        }}
-                    }}).catch(() => {{}});
+                    // Start background video pipeline (downloads if needed, plays as soon as first is ready)
+                    pywebview.api.py_ensure_background_videos().catch(() => {{}});
 
                     // Load music
                     pywebview.api.py_get_playlist().then(p => {{
@@ -2076,16 +2039,6 @@ HTML_CONTENT = f"""
             dom.settingsDrawerOverlay.addEventListener('click', closeSettingsDrawer);
             document.getElementById('settings-quit-btn').addEventListener('click', () => {{
                 if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }}
-            }});
-
-            // Download background videos button
-            dom.downloadVideosBtn.addEventListener('click', () => {{
-                dom.downloadVideosBtn.disabled = true;
-                if (dom.videoDownloadStatus) dom.videoDownloadStatus.textContent = 'Starting download...';
-                pywebview.api.py_download_background_videos().catch(e => {{
-                    if (dom.videoDownloadStatus) dom.videoDownloadStatus.textContent = 'Error: ' + e;
-                    dom.downloadVideosBtn.disabled = false;
-                }});
             }});
 
             // Wizard minimize button
