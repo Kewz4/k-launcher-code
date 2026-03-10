@@ -54,7 +54,7 @@ jobs:
             echo "  -> ${BEFORE} -> ${AFTER}"
           done
 
-      - name: Upload compressed videos to GitHub Release (tag: bg-videos)
+      - name: "Upload compressed videos to GitHub Release (tag: bg-videos)"
         env:
           GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
         run: |
