@@ -5,8 +5,9 @@ import sys
 
 FONT_IMPORT_URL = f"https://fonts.googleapis.com/css2?family={'&family='.join(f.replace(' ', '+') for f in ['Inter:wght@400;500;700;900', 'Montserrat:wght@900'])}&display=swap"
 FONT_AWESOME_URL = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-LOGO_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main/minecraftlogo.png"
-URL_ALBUM_COVER = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/148f8426c0b238c82ff1d52cab94f0abbcb23685/albumcover.png"
+UNIFIED_REPO_RAW_URL = "https://gitlab.com/Kewz4/kewz-cobblemon/-/raw/main"
+LOGO_URL = f"{UNIFIED_REPO_RAW_URL}/logo.png"
+URL_ALBUM_COVER = f"{UNIFIED_REPO_RAW_URL}/albumcover.png"
 VIMEO_EMBED_SRC = "https://player.vimeo.com/video/1131522974?badge=0&autopause=0&player_id=0&app_id=58479&background=1&autoplay=1&loop=1&muted=1"
 
 
@@ -18,47 +19,47 @@ HTML_CONTENT = f"""
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vanilla+ Launcher</title>
+    <title>Kewz's Cobblemon Launcher</title>
     <link rel="stylesheet" href="{FONT_IMPORT_URL}">
     <link rel="stylesheet" href="{FONT_AWESOME_URL}">
     <style>
-        /* --- Reset y Fuentes --- */
+        /* --- Reset & Fonts --- */
         :root {{
             --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             --font-family-display: 'Montserrat', sans-serif;
             --color-bg: #000000;
-            --color-bg-light: #1e1e1e;
-            --color-bg-lighter: #2a2a2a;
+            --color-bg-light: #0d1117;
+            --color-bg-lighter: #161b22;
             --color-text: #e0e0e0;
-            --color-text-muted: #888;
-            /* Paleta dorada */
-            --color-accent: #eebd3b;
-            --color-accent-dark: #b65009;
+            --color-text-muted: #7a8fa6;
+            /* Cyan / Aqua accent palette */
+            --color-accent: #00d4ff;
+            --color-accent-dark: #0078a8;
             --color-danger: #e53935;
             --color-danger-dark: #b71c1c;
-            --color-success: #43a047;
-            --color-success-dark: #2e7d32;
+            --color-success: #00e676;
+            --color-success-dark: #00c853;
             --radius-md: 8px;
             --radius-lg: 12px;
             --radius-btn: 11px;
-            --shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            /* Colores botones */
-            --play-btn-grad-start: #b65009;
-            --play-btn-grad-end: #eebd3b;
+            --shadow: 0 4px 20px rgba(0, 212, 255, 0.08);
+            /* Button colors */
+            --play-btn-grad-start: #0078a8;
+            --play-btn-grad-end: #00d4ff;
             --cancel-btn-grad-start: #b71c1c;
             --cancel-btn-grad-end: #e53935;
 
             --menu-btn-fill-start: #000000;
-            --menu-btn-fill-end: #383737;
-            --menu-btn-stroke-start: #000000;
-            --menu-btn-stroke-end: #b4b4b3;
-            /* Panel lateral */
-            --panel-bg: #1a1a1a;
+            --menu-btn-fill-end: #0d1117;
+            --menu-btn-stroke-start: #003d5c;
+            --menu-btn-stroke-end: #00d4ff;
+            /* Side panel */
+            --panel-bg: #080d13;
             --panel-width: 280px;
-            /* Altura y ancho del reproductor para cálculo */
+            /* Music player dimensions */
             --player-height: 80px;
             --player-width: 300px;
-            /* Sombra para texto del reproductor */
+            /* Text shadow for player */
             --player-text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
         }}
 
@@ -134,9 +135,9 @@ HTML_CONTENT = f"""
         /* --- (RENOMBRADO) Pantalla de Ajustes (Post-Setup) --- */
         #screen-settings .setup-label {{ font-size: 16px; font-weight: 500; margin-bottom: 8px; margin-top: 16px; display: block; }}
         #screen-settings .folder-display {{ display: flex; align-items: center; background-color: var(--color-bg); border-radius: var(--radius-md); padding: 12px 16px; border: 2px dashed var(--color-bg-lighter); margin-bottom: 12px; transition: all 0.3s ease; min-height: 48px; cursor: default; }}
-        #screen-settings .folder-display.dragover {{ border-color: var(--color-accent); background-color: rgba(238, 189, 59, 0.1); }}
-        #screen-settings .folder-display.valid {{ border-style: solid; border-color: var(--color-success-dark); background-color: rgba(67, 160, 71, 0.1); }}
-        #screen-settings .folder-display.invalid {{ border-style: solid; border-color: var(--color-danger-dark); background-color: rgba(229, 57, 53, 0.1); }}
+        #screen-settings .folder-display.dragover {{ border-color: var(--color-accent); background-color: rgba(0, 212, 255, 0.07); }}
+        #screen-settings .folder-display.valid {{ border-style: solid; border-color: var(--color-success-dark); background-color: rgba(0, 230, 118, 0.07); }}
+        #screen-settings .folder-display.invalid {{ border-style: solid; border-color: var(--color-danger-dark); background-color: rgba(229, 57, 53, 0.07); }}
         #screen-settings .folder-display span {{ flex-grow: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; pointer-events: none; }}
         #screen-settings .folder-display span.placeholder {{ color: var(--color-text-muted); font-style: italic; }}
         #screen-settings .folder-buttons {{ display: grid; grid-template-columns: 1fr; gap: 12px; }}
@@ -149,7 +150,7 @@ HTML_CONTENT = f"""
         #screen-initial-setup .wizard-step-content p {{ font-size: 15px; color: var(--color-text); margin-bottom: 24px; line-height: 1.6; }}
         #screen-initial-setup .wizard-buttons-horizontal {{ display: flex; gap: 16px; justify-content: center; }}
         #screen-initial-setup .wizard-buttons-horizontal .btn {{ flex: 1; }}
-        #screen-initial-setup .wizard-spinner {{ width: 40px; height: 40px; border: 4px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto 20px auto; }}
+        #screen-initial-setup .wizard-spinner {{ width: 40px; height: 40px; border: 4px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto 20px auto; box-shadow: 0 0 12px rgba(0, 212, 255, 0.3); }}
         
         /* (NUEVO) Consola y progreso para el asistente */
         #wizard-progress-container {{ display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }}
@@ -163,7 +164,7 @@ HTML_CONTENT = f"""
         #wizard-step-install-progress .btn, #wizard-step-install-modpack .btn {{ margin-top: 16px; }}
 
 
-        /* --- Pantalla 2: JUGAR --- */
+        /* --- Play Screen --- */
         #screen-play {{
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
@@ -207,10 +208,11 @@ HTML_CONTENT = f"""
             transition: transform 0.2s ease, box-shadow 0.2s ease, background-image 0.3s ease;
             z-index: 101;
             background-image: linear-gradient(30deg, var(--play-btn-grad-start), var(--play-btn-grad-end));
-            border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            border: none; box-shadow: 0 5px 25px rgba(0, 212, 255, 0.3);
+            color: #000; font-weight: 900;
         }}
         #play-btn::before {{ content: ''; position: absolute; inset: -6px; border-radius: calc(var(--radius-btn) + 6px); background-image: linear-gradient(90deg, var(--play-btn-grad-start), var(--play-btn-grad-end)); z-index: -1; padding: 6px; -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; transition: background-image 0.3s ease; }}
-        #play-btn:hover {{ transform: translateX(-50%) scale(1.03); box-shadow: 0 8px 20px rgba(0,0,0,0.4); }}
+        #play-btn:hover {{ transform: translateX(-50%) scale(1.04); box-shadow: 0 10px 35px rgba(0, 212, 255, 0.45); }}
         #play-btn:active {{ transform: translateX(-50%) scale(0.98); box-shadow: 0 3px 10px rgba(0,0,0,0.2); }}
 
         #play-btn.cancel-mode {{
@@ -292,11 +294,12 @@ HTML_CONTENT = f"""
         }}
 
         /* --- Panel Lateral --- */
-        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid var(--color-bg-lighter); box-shadow: 5px 0 15px rgba(0,0,0,0.3); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding-top: 80px; display: flex; flex-direction: column; gap: 10px; padding-left: 15px; padding-right: 15px; }}
+        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid rgba(0,212,255,0.12); box-shadow: 5px 0 30px rgba(0,212,255,0.06); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding-top: 80px; display: flex; flex-direction: column; gap: 10px; padding-left: 15px; padding-right: 15px; }}
         #side-panel.panel-open {{ transform: translateX(0); }}
-        .panel-button {{ display: flex; align-items: center; gap: 15px; padding: 15px; background-color: var(--color-bg-lighter); color: var(--color-text); border: none; border-radius: var(--radius-md); cursor: pointer; transition: background-color 0.2s ease; text-align: left; font-size: 16px; }}
-        .panel-button:hover {{ background-color: #3a3a3a; }}
-        .panel-button i {{ font-size: 18px; width: 20px; text-align: center; color: var(--color-text-muted); }}
+        .panel-button {{ display: flex; align-items: center; gap: 15px; padding: 15px; background-color: var(--color-bg-lighter); color: var(--color-text); border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; text-align: left; font-size: 16px; border: 1px solid transparent; }}
+        .panel-button:hover {{ background-color: rgba(0, 212, 255, 0.07); border-color: rgba(0, 212, 255, 0.2); color: var(--color-accent); }}
+        .panel-button:hover i {{ color: var(--color-accent); }}
+        .panel-button i {{ font-size: 18px; width: 20px; text-align: center; color: var(--color-text-muted); transition: color 0.2s ease; }}
         #panel-overlay {{ position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s linear; }}
         #panel-overlay.visible {{ opacity: 1; visibility: visible; transition: opacity 0.3s ease; }}
 
@@ -330,7 +333,7 @@ HTML_CONTENT = f"""
         .changelog-item h4 .status-updated {{ color: var(--color-success); }}
         .changelog-item h4 .status-removed {{ color: var(--color-danger); }}
         .changelog-item h4 a {{ color: var(--color-text); text-decoration: none; vertical-align: middle; }}
-        .changelog-item h4 a:hover {{ color: var(--color-accent); text-decoration: underline; }}
+        .changelog-item h4 a:hover {{ color: var(--color-accent); text-decoration: underline; text-shadow: 0 0 8px rgba(0, 212, 255, 0.4); }}
         .changelog-item h4 span.no-link {{ color: var(--color-text); vertical-align: middle; }}
         .changelog-item p {{ font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
         .progress-bar {{ width: 100%; height: 16px; background-color: var(--color-bg); border-radius: 10px; overflow: hidden; }}
@@ -342,8 +345,8 @@ HTML_CONTENT = f"""
         #console::-webkit-scrollbar-thumb {{ background-color: var(--color-bg-lighter); border-radius: 4px; border: 2px solid var(--color-bg); }}
         #console p {{ margin-bottom: 4px; word-break: break-all; user-select: text; }}
         #console p:last-child {{ margin-bottom: 0; }}
-        #console p.highlight {{ color: var(--color-success); font-weight: 500; background-color: rgba(67, 160, 71, 0.1); border-radius: 4px; padding: 2px 4px; }}
-        #scroll-bottom-btn {{ display: none; position: absolute; bottom: 20px; right: 20px; z-index: 10; background-color: var(--color-accent); color: white; border: none; border-radius: 50px; padding: 8px 16px; font-size: 12px; font-weight: 500; cursor: pointer; opacity: 0.8; transition: all 0.2s ease; }}
+        #console p.highlight {{ color: var(--color-accent); font-weight: 500; background-color: rgba(0, 212, 255, 0.08); border-radius: 4px; padding: 2px 4px; }}
+        #scroll-bottom-btn {{ display: none; position: absolute; bottom: 20px; right: 20px; z-index: 10; background-color: var(--color-accent); color: #000; border: none; border-radius: 50px; padding: 8px 16px; font-size: 12px; font-weight: 700; cursor: pointer; opacity: 0.85; transition: all 0.2s ease; }}
         #scroll-bottom-btn:hover {{ opacity: 1; transform: scale(1.05); }}
         #scroll-bottom-btn.visible {{ display: block; }}
 
@@ -360,7 +363,7 @@ HTML_CONTENT = f"""
         #minimized-progress-widget:hover {{ background-color: rgba(42, 42, 42, 0.5); }}
         .minimized-progress-text {{ display: flex; justify-content: space-between; align-items: center; width: 100%; }}
         #minimized-progress-label {{ font-size: 13px; font-weight: 500; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }}
-        #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; }}
+        #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; text-shadow: 0 0 8px rgba(0, 212, 255, 0.4); }}
         .minimized-progress-bar-container {{ width: 100%; height: 6px; background-color: var(--color-bg); border-radius: 3px; overflow: hidden; }}
         #minimized-progress-bar-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); border-radius: 3px; transition: width 0.3s ease; }}
 
@@ -417,14 +420,18 @@ HTML_CONTENT = f"""
 
         /* --- Botones Generales --- */
         .btn {{ font-family: var(--font-family-sans); font-size: 14px; font-weight: 500; padding: 12px 16px; border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; }}
-        .btn:focus-visible {{ box-shadow: 0 0 0 3px rgba(182, 80, 9, 0.4); }}
+        .btn:focus-visible {{ box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.35); }}
         .btn:disabled {{ opacity: 0.5; cursor: not-allowed; background: var(--color-bg-lighter) !important; box-shadow: none !important; transform: none !important; }}
         .btn:not(:disabled):hover {{ transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); }}
         .btn:not(:disabled):active {{ transform: translateY(0) scale(0.98); box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15); }}
-        .btn-primary {{ background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); color: white; width: 100%; }}
-        .btn-secondary {{ background-color: var(--color-bg-lighter); color: var(--color-text); }}
-        .btn-secondary:not(:disabled):hover {{ background-color: #3a3a3a; }}
+        .btn-primary {{ background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); color: #000; font-weight: 700; width: 100%; }}
+        .btn-secondary {{ background-color: var(--color-bg-lighter); color: var(--color-text); border: 1px solid rgba(0,212,255,0.1); }}
+        .btn-secondary:not(:disabled):hover {{ background-color: rgba(0,212,255,0.08); border-color: rgba(0,212,255,0.3); color: var(--color-accent); }}
         .btn-danger {{ background: linear-gradient(90deg, var(--color-danger-dark), var(--color-danger)); color: white; width: 100%; }}
+
+        /* --- Download Manager Banner --- */
+        #download-details-banner {{ animation: fadeIn 0.3s ease; }}
+        #wizard-download-details {{ animation: fadeIn 0.3s ease; }}
 
         /* --- Modal de Resultado --- */
         #result-modal {{ display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0, 0, 0, 0.7); backdrop-filter: blur(3px); align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }}
@@ -436,18 +443,18 @@ HTML_CONTENT = f"""
     </style>
 </head>
 <body>
-    <!-- (NUEVO) Pantalla de Auto-Actualización -->
+    <!-- Auto-Update Screen -->
     <div id="screen-updater">
         <div id="updater-container">
-            <h1 id="updater-title">Buscando Actualizaciones...</h1>
+            <h1 id="updater-title">Checking for Updates...</h1>
             <div id="updater-progress-bar-container">
                 <div id="updater-progress-bar" style="width: 5%;"></div>
             </div>
             <div id="updater-console">
-                <p>Inicializando...</p>
+                <p>Initializing...</p>
             </div>
             <div id="updater-buttons">
-                 <!-- Los botones se añadirán aquí dinámicamente -->
+                 <!-- Buttons added dynamically -->
             </div>
         </div>
     </div>
@@ -468,11 +475,11 @@ HTML_CONTENT = f"""
         <!-- Gradiente Inferior -->
         <div id="bottom-gradient"></div>
 
-        <!-- Botón Jugar -->
-        <button id="play-btn">JUGAR</button>
+        <!-- Play Button -->
+        <button id="play-btn">PLAY</button>
 
-        <!-- Botón Menú Hamburguesa -->
-        <button id="menu-btn" title="Menú">
+        <!-- Hamburger Menu Button -->
+        <button id="menu-btn" title="Menu">
             <span class="menu-line"></span>
             <span class="menu-line"></span>
             <span class="menu-line"></span>
@@ -480,11 +487,11 @@ HTML_CONTENT = f"""
 
     </div>
 
-    <!-- Panel Lateral Deslizable -->
+    <!-- Slide-out Side Panel -->
     <div id="side-panel">
         <button class="panel-button" id="panel-settings-btn">
             <i class="fas fa-cog"></i>
-            <span>Configuración</span>
+            <span>Settings</span>
         </button>
         <button class="panel-button" id="panel-debug-btn">
             <i class="fas fa-bug"></i>
@@ -492,40 +499,50 @@ HTML_CONTENT = f"""
         </button>
         <button class="panel-button" id="panel-quit-btn">
             <i class="fas fa-sign-out-alt"></i>
-            <span>Salir del Launcher</span>
+            <span>Quit Launcher</span>
         </button>
     </div>
     <div id="panel-overlay"></div>
 
-    <!-- Pantalla de Progreso (Overlay) -->
+    <!-- Progress Screen (Overlay) -->
     <div class="screen" id="screen-progress">
         <div class="progress-content-wrapper">
-            <button id="minimize-progress-btn" title="Minimizar">
+            <button id="minimize-progress-btn" title="Minimize">
                 <i class="fas fa-minus"></i>
             </button>
-            <h2 id="progress-title">Actualizando...</h2>
+            <h2 id="progress-title">Updating...</h2>
+            <!-- Download Details Banner -->
+            <div id="download-details-banner" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(0,212,255,0.06); border:1px solid rgba(0,212,255,0.18); border-radius:8px; display:none; align-items:center; gap:12px; flex-wrap:wrap;">
+                <i class="fas fa-download" style="color:var(--color-accent); flex-shrink:0;"></i>
+                <span id="download-filename" style="font-weight:600; color:var(--color-text); flex-shrink:0; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
+                <span id="download-size-label" style="font-size:13px; color:var(--color-text-muted); flex-grow:1;"></span>
+                <span id="download-paused-badge" style="display:none; font-size:11px; font-weight:700; color:#ffb300; background:rgba(255,179,0,0.12); padding:3px 8px; border-radius:4px; border:1px solid rgba(255,179,0,0.3);">PAUSED</span>
+                <button id="pause-resume-btn" class="btn btn-secondary" style="padding:6px 14px; font-size:13px; min-width:90px;" onclick="togglePauseDownload()">
+                    <i class="fas fa-pause" id="pause-icon"></i> <span id="pause-label">Pause</span>
+                </button>
+            </div>
             <div class="progress-bar">
                  <div id="progress-fill"></div>
             </div>
-            <div id="progress-label">Iniciando...</div>
+            <div id="progress-label">Starting...</div>
             <div class="progress-columns">
                  <div id="console-container">
                       <div id="console"></div>
-                      <button id="scroll-bottom-btn">Ir al Fondo</button>
+                      <button id="scroll-bottom-btn">Scroll to Bottom</button>
                  </div>
                  <div id="changelog-container">
-                      <h3>Changelog de Mods</h3>
+                      <h3>Mod Changelog</h3>
                       <div id="changelog-content"></div>
                  </div>
             </div>
-            <button class="btn btn-danger" id="cancel-btn">Cancelar</button>
+            <button class="btn btn-danger" id="cancel-btn">Cancel</button>
         </div>
     </div>
 
-    <!-- Widget de Progreso Minimizado -->
+    <!-- Minimized Progress Widget -->
     <div id="minimized-progress-widget">
          <div class="minimized-progress-text">
-              <span id="minimized-progress-label">Cargando Modpack</span>
+              <span id="minimized-progress-label">Loading Modpack</span>
               <span id="minimized-progress-percent">0%</span>
          </div>
          <div class="minimized-progress-bar-container">
@@ -539,61 +556,61 @@ HTML_CONTENT = f"""
         <!-- (NUEVO) Asistente de Configuración Inicial -->
         <div class="screen" id="screen-initial-setup">
             
-            <!-- Paso 1: Comprobando... -->
+            <!-- Step 1: Checking... -->
             <div class="wizard-step active" data-step="start">
                 <div class="header">
-                    <h1>Bienvenido</h1>
-                    <p>Comprobando tu sistema...</p>
+                    <h1>Welcome</h1>
+                    <p>Checking your system...</p>
                 </div>
                 <div class="wizard-spinner"></div>
             </div>
 
-            <!-- Paso 2: Preguntar si tiene Prism -->
+            <!-- Step 2: Ask if Prism is installed -->
             <div class="wizard-step" data-step="ask-installed">
                 <div class="header">
                     <h1>Prism Launcher</h1>
-                    <p>No hemos detectado Prism Launcher en la ruta por defecto.</p>
+                    <p>Prism Launcher was not found at the default location.</p>
                 </div>
                 <div class="wizard-step-content">
-                    <p>¿Ya tienes Prism Launcher instalado en tu PC?</p>
+                    <p>Do you already have Prism Launcher installed?</p>
                     <div class="wizard-buttons-horizontal">
                         <button class="btn btn-primary" id="wizard-btn-ask-yes">
                             <i class="fas fa-check"></i>
-                            <span>Sí, lo tengo</span>
+                            <span>Yes, I have it</span>
                         </button>
                         <button class="btn btn-secondary" id="wizard-btn-ask-no">
                             <i class="fas fa-times"></i>
-                            <span>No, necesito instalarlo</span>
+                            <span>No, install it for me</span>
                         </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Paso 3a: Buscar Manualmente -->
+            <!-- Step 3a: Find Manually -->
             <div class="wizard-step" data-step="find-manual">
                 <div class="header">
-                    <h1>Buscar Prism Launcher</h1>
-                    <p>Por favor, localiza tu archivo `prismlauncher.exe`.</p>
+                    <h1>Locate Prism Launcher</h1>
+                    <p>Please find your <code>prismlauncher.exe</code> file.</p>
                 </div>
                 <div class="wizard-step-content">
                     <button class="btn btn-primary" id="wizard-btn-find-manual">
                         <i class="fas fa-search"></i>
-                        <span>Examinar...</span>
+                        <span>Browse...</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Paso 3b: Elegir dónde instalar -->
+            <!-- Step 3b: Choose install location -->
             <div class="wizard-step" data-step="install-location">
                 <div class="header">
-                    <h1>Instalar Prism Launcher</h1>
-                    <p>Selecciona una carpeta donde deseas instalar Prism Launcher.</p>
+                    <h1>Install Prism Launcher</h1>
+                    <p>Choose a folder where Prism Launcher will be installed.</p>
                 </div>
                 <div class="wizard-step-content">
-                     <p style="font-size: 13px; color: var(--color-text-muted);">Esto descargará la versión portable más reciente de Prism Launcher y la instalará en la carpeta que elijas.</p>
+                     <p style="font-size: 13px; color: var(--color-text-muted);">This will download the latest portable version of Prism Launcher (v10.0.5) and install it to the folder you choose.</p>
                     <button class="btn btn-primary" id="wizard-btn-install-location">
                         <i class="fas fa-folder-open"></i>
-                        <span>Elegir Carpeta de Instalación</span>
+                        <span>Choose Install Folder</span>
                     </button>
                 </div>
             </div>
@@ -601,47 +618,57 @@ HTML_CONTENT = f"""
             <!-- Paso 3c / 5a: Progreso de Instalación (Prism o Modpack) -->
             <div class="wizard-step" data-step="install-progress">
                 <div class="header">
-                    <h1 id="wizard-install-title">Instalando...</h1>
-                    <p id="wizard-install-subtitle">Esto puede tardar unos minutos.</p>
+                    <h1 id="wizard-install-title">Installing...</h1>
+                    <p id="wizard-install-subtitle">This may take a few minutes. Large files can be paused and resumed.</p>
                 </div>
                 <div class="wizard-step-content">
+                    <!-- Wizard Download Details -->
+                    <div id="wizard-download-details" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(0,212,255,0.06); border:1px solid rgba(0,212,255,0.18); border-radius:8px; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <i class="fas fa-download" style="color:var(--color-accent); flex-shrink:0;"></i>
+                        <span id="wizard-dl-filename" style="font-weight:600; color:var(--color-text); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0;"></span>
+                        <span id="wizard-dl-size" style="font-size:12px; color:var(--color-text-muted); flex-grow:1;"></span>
+                        <span id="wizard-paused-badge" style="display:none; font-size:11px; font-weight:700; color:#ffb300; background:rgba(255,179,0,0.12); padding:3px 8px; border-radius:4px; border:1px solid rgba(255,179,0,0.3);">PAUSED</span>
+                        <button id="wizard-pause-resume-btn" class="btn btn-secondary" style="padding:5px 12px; font-size:12px; min-width:80px;" onclick="togglePauseDownload()">
+                            <i class="fas fa-pause" id="wizard-pause-icon"></i> <span id="wizard-pause-label">Pause</span>
+                        </button>
+                    </div>
                     <div id="wizard-progress-container">
                         <div id="wizard-progress-bar-container">
                             <div id="wizard-progress-bar-fill" style="width: 0%;"></div>
                         </div>
-                        <div id="wizard-progress-label">Iniciando...</div>
+                        <div id="wizard-progress-label">Starting...</div>
                         <div id="wizard-console"></div>
                     </div>
-                    <button class="btn btn-danger" id="wizard-btn-cancel-install">Cancelar</button>
+                    <button class="btn btn-danger" id="wizard-btn-cancel-install">Cancel</button>
                 </div>
             </div>
 
-            <!-- Paso 4: Comprobando Modpack... -->
+            <!-- Step 4: Checking Modpack... -->
             <div class="wizard-step" data-step="check-modpack">
                 <div class="header">
-                    <h1>Instancia del Modpack</h1>
-                    <p>Buscando "Kewz's Vanilla+ True" en tus instancias...</p>
+                    <h1>Modpack Instance</h1>
+                    <p>Looking for "Kewz's Cobblemon" in your instances...</p>
                 </div>
                 <div class="wizard-spinner"></div>
             </div>
 
-            <!-- Paso 6: Iniciar Sesión -->
+            <!-- Step 6: Login -->
             <div class="wizard-step" data-step="login">
                 <div class="header">
-                    <h1>¡Casi Listo!</h1>
-                    <p>¡El modpack está instalado!</p>
+                    <h1>Almost Ready!</h1>
+                    <p>The modpack is installed!</p>
                 </div>
                 <div class="wizard-step-content">
-                    <p>El último paso es asegurarte de que has iniciado sesión con tu cuenta de Microsoft dentro de Prism Launcher.</p>
-                    <p style="font-size: 13px; color: var(--color-text-muted);">Si ya lo has hecho, puedes finalizar. Si no, haz clic en "Abrir Prism" para añadir tu cuenta.</p>
+                    <p>The last step is to make sure you're logged in with your Microsoft account inside Prism Launcher.</p>
+                    <p style="font-size: 13px; color: var(--color-text-muted);">If you've already done this, click Finish. Otherwise, click "Open Prism" to add your account.</p>
                     <div class="wizard-buttons-horizontal">
                         <button class="btn btn-secondary" id="wizard-btn-login-open">
                             <i class="fas fa-user-plus"></i>
-                            <span>Abrir Prism para Iniciar Sesión</span>
+                            <span>Open Prism to Sign In</span>
                         </button>
                         <button class="btn btn-primary" id="wizard-btn-login-finish">
                             <i class="fas fa-flag-checkered"></i>
-                            <span>Finalizar</span>
+                            <span>Finish</span>
                         </button>
                     </div>
                 </div>
@@ -649,46 +676,46 @@ HTML_CONTENT = f"""
 
         </div>
 
-        <!-- (RENOMBRADO) Pantalla de Ajustes (Post-Setup) -->
+        <!-- Settings Screen (Post-Setup) -->
         <div class="screen" id="screen-settings">
              <div class="header">
-                  <h1>Configuración</h1>
-                  <p>Aquí puedes cambiar las rutas de tus archivos.</p>
+                  <h1>Settings</h1>
+                  <p>Change your Prism Launcher and instance paths here.</p>
              </div>
-             <label class="setup-label">1. Ejecutable de Prism Launcher</label>
-             <div class="folder-display" id="settings-prism-exe-display" title="Arrastra tu 'prismlauncher.exe' o la carpeta que lo contiene aquí">
-                  <span id="settings-prism-exe-text" class="placeholder">Arrastra o selecciona tu 'prismlauncher.exe'...</span>
-             </div>
-             <div class="folder-buttons">
-                  <button class="btn btn-secondary" id="settings-browse-prism-btn">Examinar Ejecutable...</button>
-             </div>
-             <label class="setup-label">2. Carpeta de la Instancia ('minecraft')</label>
-             <div class="folder-display" id="settings-instance-folder-display" title="Arrastra la carpeta 'minecraft' de tu instancia, o la carpeta que la contiene">
-                  <span id="settings-instance-folder-text" class="placeholder">Arrastra o selecciona tu carpeta '.../minecraft'</span>
+             <label class="setup-label">1. Prism Launcher Executable</label>
+             <div class="folder-display" id="settings-prism-exe-display" title="Drag your 'prismlauncher.exe' or the folder containing it here">
+                  <span id="settings-prism-exe-text" class="placeholder">Drag or browse for 'prismlauncher.exe'...</span>
              </div>
              <div class="folder-buttons">
-                  <button class="btn btn-secondary" id="settings-browse-instance-btn">Examinar Carpeta...</button>
+                  <button class="btn btn-secondary" id="settings-browse-prism-btn">Browse Executable...</button>
              </div>
-             <button class="btn btn-primary" id="save-settings-btn" disabled>Guardar y Volver</button>
+             <label class="setup-label">2. Instance Folder ('minecraft')</label>
+             <div class="folder-display" id="settings-instance-folder-display" title="Drag the 'minecraft' folder of your instance, or its parent folder">
+                  <span id="settings-instance-folder-text" class="placeholder">Drag or browse for your '.../minecraft' folder</span>
+             </div>
+             <div class="folder-buttons">
+                  <button class="btn btn-secondary" id="settings-browse-instance-btn">Browse Folder...</button>
+             </div>
+             <button class="btn btn-primary" id="save-settings-btn" disabled>Save & Return</button>
         </div>
     </div>
 
-    <!-- Modal de Resultado -->
+    <!-- Result Modal -->
     <div id="result-modal">
         <div class="modal-content">
             <div id="result-icon"></div>
             <h2 id="result-title"></h2>
             <p id="result-details"></p>
-            <button class="btn btn-primary" id="close-modal-btn" style="width: 100px;">Cerrar</button>
+            <button class="btn btn-primary" id="close-modal-btn" style="width: 100px;">Close</button>
         </div>
     </div>
 
-    <!-- Panel de Depuración -->
+    <!-- Debug Panel -->
     <div id="debug-panel">
         <h3>Debug Triggers</h3>
         <div class="debug-trigger">
-            <span class="debug-trigger-name">Cerrar Launcher</span>
-            <span id="debug-close-status" class="debug-trigger-status pending">PENDIENTE</span>
+            <span class="debug-trigger-name">Close Launcher</span>
+            <span id="debug-close-status" class="debug-trigger-status pending">PENDING</span>
         </div>
     </div>
 
@@ -872,39 +899,39 @@ HTML_CONTENT = f"""
         }}
 
         function onUpdateCheckComplete(update_available, details_json) {{
-            console.log(`onUpdateCheckComplete: disponible=${{update_available}}`);
+            console.log(`onUpdateCheckComplete: available=${{update_available}}`);
 
             if (update_available) {{
                 const details = JSON.parse(details_json);
-                logToUpdaterConsole(`¡Nueva versión disponible: ${{details.version}}!`);
-                dom.updater.title.textContent = `Actualización Disponible`;
+                logToUpdaterConsole(`New version available: ${{details.version}}!`);
+                dom.updater.title.textContent = `Update Available`;
 
                 const notes = document.createElement('p');
-                notes.innerHTML = `<strong>Notas de la versión:</strong><br>${{details.notes || 'No disponibles.'}}`;
+                notes.innerHTML = `<strong>Release notes:</strong><br>${{details.notes || 'No notes available.'}}`;
                 dom.updater.console.appendChild(notes);
 
-                logToUpdaterConsole('La actualización es obligatoria y comenzará en 5 segundos...');
+                logToUpdaterConsole('This update is required and will start in 5 seconds...');
 
                 let countdown = 5;
                 const countdownInterval = setInterval(() => {{
                     countdown--;
                     if (countdown > 0) {{
-                        logToUpdaterConsole(`Comenzando en ${{countdown}}...`);
+                        logToUpdaterConsole(`Starting in ${{countdown}}...`);
                     }} else {{
                         clearInterval(countdownInterval);
-                        logToUpdaterConsole('Iniciando descarga...');
-                        dom.updater.title.textContent = 'Descargando Actualización...';
-                        dom.updater.buttons.innerHTML = ''; // Limpiar por si acaso
+                        logToUpdaterConsole('Starting download...');
+                        dom.updater.title.textContent = 'Downloading Update...';
+                        dom.updater.buttons.innerHTML = '';
                         try {{
                             pywebview.api.py_download_and_apply_update();
                         }} catch (e) {{
-                            onUpdateError("No se pudo iniciar la descarga: " + e.message);
+                            onUpdateError("Could not start download: " + e.message);
                         }}
                     }}
                 }}, 1000);
 
             }} else {{
-                logToUpdaterConsole("Estás al día. Iniciando launcher...");
+                logToUpdaterConsole("You're up to date. Starting launcher...");
                 updateUpdaterProgress(100);
                 startMainApp();
             }}
@@ -913,13 +940,13 @@ HTML_CONTENT = f"""
         function onUpdateError(error_message) {{
             console.error("onUpdateError:", error_message);
             logToUpdaterConsole(`Error: ${{error_message}}`);
-            dom.updater.title.textContent = 'Error de Actualización';
-            dom.updater.console.innerHTML += `<p>No se pudo comprobar si hay actualizaciones. Puedes continuar, pero es posible que algo no funcione correctamente.</p>`;
+            dom.updater.title.textContent = 'Update Error';
+            dom.updater.console.innerHTML += `<p>Could not check for updates. You can continue, but something may not work correctly.</p>`;
 
-            dom.updater.buttons.innerHTML = ''; // Limpiar botones
+            dom.updater.buttons.innerHTML = '';
 
             const skipButton = document.createElement('button');
-            skipButton.textContent = 'Continuar de todas formas';
+            skipButton.textContent = 'Continue Anyway';
             skipButton.className = 'btn btn-secondary';
             skipButton.onclick = () => {{
                 startMainApp();
@@ -959,9 +986,9 @@ HTML_CONTENT = f"""
             if (screenName === 'play') {{
                 // Determinar el estado del botón JUGAR/DESCARGAR
                 if (setupState.prismPath && setupState.instancePath) {{
-                    dom.playBtn.textContent = "JUGAR";
+                    dom.playBtn.textContent = "PLAY";
                 }} else {{
-                    dom.playBtn.textContent = "DESCARGAR";
+                    dom.playBtn.textContent = "DOWNLOAD";
                 }}
                 dom.playBtn.classList.remove('cancel-mode');
             }} else if (screenName === 'initial-setup') {{
@@ -980,7 +1007,7 @@ HTML_CONTENT = f"""
                     dom.screens.progress.classList.add('active');
                 }}
             }} else if (screenName !== 'updater') {{
-                console.warn("Intento de cambiar a pantalla desconocida:", screenName);
+                console.warn("Attempt to switch to unknown screen:", screenName);
             }}
         }}
 
@@ -993,19 +1020,19 @@ HTML_CONTENT = f"""
                     const isPrismValid = isPrismPathPresent; 
                     dom.settings.prismDisplay.classList.toggle('valid', isPrismValid); 
                     dom.settings.prismDisplay.classList.toggle('invalid', !isPrismValid && !!setupState.prismPath); 
-                    dom.settings.prismText.textContent = isPrismValid ? setupState.prismPath : "Arrastra o selecciona tu 'prismlauncher.exe'..."; 
-                    dom.settings.prismText.classList.toggle('placeholder', !isPrismValid); 
-                    dom.settings.instanceDisplay.classList.toggle('valid', isInstanceValid); 
-                    dom.settings.instanceDisplay.classList.toggle('invalid', !isInstanceValid && !!setupState.instancePath); 
+                    dom.settings.prismText.textContent = isPrismValid ? setupState.prismPath : "Drag or browse for 'prismlauncher.exe'...";
+                    dom.settings.prismText.classList.toggle('placeholder', !isPrismValid);
+                    dom.settings.instanceDisplay.classList.toggle('valid', isInstanceValid);
+                    dom.settings.instanceDisplay.classList.toggle('invalid', !isInstanceValid && !!setupState.instancePath);
                     if (isInstanceValid) {{
-                        dom.settings.instanceText.textContent = setupState.instancePath; 
-                        dom.settings.instanceText.classList.remove('placeholder'); 
+                        dom.settings.instanceText.textContent = setupState.instancePath;
+                        dom.settings.instanceText.classList.remove('placeholder');
                     }} else if (!setupState.instancePath) {{
-                        dom.settings.instanceText.textContent = "Arrastra o selecciona tu carpeta '.../minecraft'"; 
-                        dom.settings.instanceText.classList.add('placeholder'); 
+                        dom.settings.instanceText.textContent = "Drag or browse for your '.../minecraft' folder";
+                        dom.settings.instanceText.classList.add('placeholder');
                     }} else {{
-                        dom.settings.instanceText.textContent = setupState.instancePath + " (Inválido)"; 
-                        dom.settings.instanceText.classList.remove('placeholder'); 
+                        dom.settings.instanceText.textContent = setupState.instancePath + " (Invalid)";
+                        dom.settings.instanceText.classList.remove('placeholder');
                     }}
                     dom.settings.saveBtn.disabled = !(isPrismValid && isInstanceValid); 
                 }}).catch(err => {{ console.error("Error validación JS:", err); dom.settings.saveBtn.disabled = true; }});
@@ -1063,14 +1090,78 @@ HTML_CONTENT = f"""
             }} catch (e) {{ console.error("Error en updateProgress:", e); }}
         }}
         
+        // --- Download Manager UI ---
+        let downloadIsPaused = false;
+
+        function updateDownloadDetails(filename, pct, label, paused) {{
+            try {{
+                // Show the download details banner in the main progress screen
+                const banner = document.getElementById('download-details-banner');
+                if (banner) {{
+                    banner.style.display = 'flex';
+                    const fnEl = document.getElementById('download-filename');
+                    const sizeEl = document.getElementById('download-size-label');
+                    const pausedBadge = document.getElementById('download-paused-badge');
+                    const pauseIcon = document.getElementById('pause-icon');
+                    const pauseLabel = document.getElementById('pause-label');
+                    if (fnEl) fnEl.textContent = filename;
+                    if (sizeEl) sizeEl.textContent = label;
+                    if (pausedBadge) pausedBadge.style.display = paused ? 'inline-block' : 'none';
+                    if (pauseIcon) pauseIcon.className = paused ? 'fas fa-play' : 'fas fa-pause';
+                    if (pauseLabel) pauseLabel.textContent = paused ? 'Resume' : 'Pause';
+                    downloadIsPaused = paused;
+                }}
+                // Show wizard download details if in wizard
+                const wizardDetails = document.getElementById('wizard-download-details');
+                if (wizardDetails) {{
+                    wizardDetails.style.display = 'flex';
+                    const wFn = document.getElementById('wizard-dl-filename');
+                    const wSize = document.getElementById('wizard-dl-size');
+                    const wPausedBadge = document.getElementById('wizard-paused-badge');
+                    const wPauseIcon = document.getElementById('wizard-pause-icon');
+                    const wPauseLabel = document.getElementById('wizard-pause-label');
+                    if (wFn) wFn.textContent = filename;
+                    if (wSize) wSize.textContent = label;
+                    if (wPausedBadge) wPausedBadge.style.display = paused ? 'inline-block' : 'none';
+                    if (wPauseIcon) wPauseIcon.className = paused ? 'fas fa-play' : 'fas fa-pause';
+                    if (wPauseLabel) wPauseLabel.textContent = paused ? 'Resume' : 'Pause';
+                }}
+                // Update minimized widget with filename
+                if (dom.minimizedProgressLabel) {{
+                    dom.minimizedProgressLabel.textContent = filename || 'Downloading...';
+                }}
+            }} catch(e) {{ console.error("Error in updateDownloadDetails:", e); }}
+        }}
+
+        function togglePauseDownload() {{
+            try {{
+                if (downloadIsPaused) {{
+                    pywebview.api.py_resume_download();
+                    downloadIsPaused = false;
+                }} else {{
+                    pywebview.api.py_pause_download();
+                    downloadIsPaused = true;
+                }}
+            }} catch(e) {{ console.error("Error toggling pause:", e); }}
+        }}
+
+        function hideDownloadDetails() {{
+            const banner = document.getElementById('download-details-banner');
+            if (banner) banner.style.display = 'none';
+            const wizardDetails = document.getElementById('wizard-download-details');
+            if (wizardDetails) wizardDetails.style.display = 'none';
+            downloadIsPaused = false;
+        }}
+        // --- End Download Manager UI ---
+
         function setLoadScreen(title, progressLabel) {{
             try {{
-                dom.progressTitle.textContent = title || "Procesando..."; 
-                dom.progressLabel.textContent = progressLabel || "..."; 
+                dom.progressTitle.textContent = title || "Processing...";
+                dom.progressLabel.textContent = progressLabel || "...";
                 dom.minimizedProgressLabel.textContent = progressLabel || "...";
-                // (NUEVO) Restablecer el panel de depuración al iniciar una carga
-                updateDebugPanel("PENDIENTE");
-            }} catch(e) {{ console.error("Error en setLoadScreen:", e); }}
+                updateDebugPanel("PENDING");
+                hideDownloadDetails();
+            }} catch(e) {{ console.error("Error in setLoadScreen:", e); }}
         }}
         
         function startLoadingAnimation(durationSeconds) {{
@@ -1085,8 +1176,8 @@ HTML_CONTENT = f"""
             dom.progressBar.style.width = '0%';
             dom.minimizedProgressBarFill.style.transition = 'none';
             dom.minimizedProgressBarFill.style.width = '0%';
-            dom.progressLabel.textContent = "Cargando el Modpack...";
-            dom.minimizedProgressLabel.textContent = "Cargando el Modpack...";
+            dom.progressLabel.textContent = "Loading Modpack...";
+            dom.minimizedProgressLabel.textContent = "Loading Modpack...";
 
             function animateProgress(currentTime) {{
                 const elapsedTime = currentTime - startTime;
@@ -1116,7 +1207,7 @@ HTML_CONTENT = f"""
             loadingAnimationId = requestAnimationFrame(animateProgress);
         }}
 
-        function showResult(success, title, details) {{ try {{ lastUpdateWasSuccess = !!success; dom.modal.icon.innerHTML = success ? '<i class="fas fa-check-circle" style="color: var(--color-success);"></i>' : '<i class="fas fa-times-circle" style="color: var(--color-danger);"></i>'; dom.modal.title.textContent = title || (success ? 'Éxito' : 'Error'); dom.modal.details.innerHTML = details || (success ? "Proceso completado." : "Ocurrió un error."); dom.modal.element.style.display = 'flex'; }} catch (e) {{ console.error("Error en showResult:", e); }} }}
+        function showResult(success, title, details) {{ try {{ lastUpdateWasSuccess = !!success; dom.modal.icon.innerHTML = success ? '<i class="fas fa-check-circle" style="color: var(--color-success);"></i>' : '<i class="fas fa-times-circle" style="color: var(--color-danger);"></i>'; dom.modal.title.textContent = title || (success ? 'Success' : 'Error'); dom.modal.details.innerHTML = details || (success ? "Process completed." : "An error occurred."); dom.modal.element.style.display = 'flex'; }} catch (e) {{ console.error("Error in showResult:", e); }} }}
         
         function fadeLauncherOut() {{
             try {{
@@ -1152,15 +1243,15 @@ HTML_CONTENT = f"""
             isProgressMinimized = false;
 
             dom.cancelBtn.disabled = false; 
-            dom.cancelBtn.textContent = "Cancelar"; 
+            dom.cancelBtn.textContent = "Cancel";
             updateProgress(0, ""); 
-            dom.progressTitle.textContent = "Actualizando..."; 
+            dom.progressTitle.textContent = "Updating...";
             
-            // Texto dinámico basado en estado
+            // Dynamic button text based on state
             if (setupState.prismPath && setupState.instancePath) {{
-                dom.playBtn.textContent = "JUGAR";
+                dom.playBtn.textContent = "PLAY";
             }} else {{
-                dom.playBtn.textContent = "DESCARGAR";
+                dom.playBtn.textContent = "DOWNLOAD";
             }}
 
             dom.playBtn.classList.remove('cancel-mode');
@@ -1170,14 +1261,14 @@ HTML_CONTENT = f"""
         }}
         
         function cancelCurrentProcess() {{
-            console.log("Cancelación manual iniciada.");
+            console.log("Manual cancellation initiated.");
             dom.cancelBtn.disabled = true; 
-            dom.cancelBtn.textContent = "Cancelando..."; 
+            dom.cancelBtn.textContent = "Cancelling..."; 
             dom.playBtn.disabled = true; 
 
             // (NUEVO) Cancelar también el botón del asistente
             dom.wizard.btnCancelInstall.disabled = true;
-            dom.wizard.btnCancelInstall.textContent = "Cancelando...";
+            dom.wizard.btnCancelInstall.textContent = "Cancelling...";
 
             try {{
                 pywebview.api.py_cancel_update(); 
@@ -1190,7 +1281,7 @@ HTML_CONTENT = f"""
                 showWizardStep('ask-installed');
                 // Re-habilitar botones del asistente
                 dom.wizard.btnCancelInstall.disabled = false;
-                dom.wizard.btnCancelInstall.textContent = "Cancelar";
+                dom.wizard.btnCancelInstall.textContent = "Cancel";
             }} else {{
                 // Si estábamos en el juego, volver a la pantalla de juego
                 returnToPlayScreen();
@@ -1200,7 +1291,7 @@ HTML_CONTENT = f"""
             setTimeout(() => {{
                 dom.playBtn.disabled = false;
                 dom.playBtn.classList.remove('cancel-mode');
-                dom.playBtn.textContent = "JUGAR";
+                dom.playBtn.textContent = "PLAY";
             }}, 500);
         }}
 
@@ -1208,11 +1299,10 @@ HTML_CONTENT = f"""
         function openSidePanel() {{ dom.sidePanel.classList.add('panel-open'); dom.panelOverlay.classList.add('visible'); }}
         function closeSidePanel() {{ dom.sidePanel.classList.remove('panel-open'); dom.panelOverlay.classList.remove('visible'); }}
 
-        // --- (NUEVO) Lógica del Asistente de Configuración ---
+        // --- Setup Wizard Logic ---
 
-        // Muestra un paso específico del asistente
         function showWizardStep(stepName) {{
-            console.log("Mostrando paso del asistente:", stepName);
+            console.log("Showing wizard step:", stepName);
             dom.wizard.steps.forEach(step => {{
                 if (step.getAttribute('data-step') === stepName) {{
                     step.classList.add('active');
@@ -1224,68 +1314,63 @@ HTML_CONTENT = f"""
             if (stepName === 'install-progress') {{
                 dom.wizard.console.innerHTML = '';
                 dom.wizard.progressBar.style.width = '0%';
-                dom.wizard.progressLabel.textContent = 'Iniciando...';
+                dom.wizard.progressLabel.textContent = 'Starting...';
                 dom.wizard.btnCancelInstall.disabled = false;
-                dom.wizard.btnCancelInstall.textContent = "Cancelar";
+                dom.wizard.btnCancelInstall.textContent = "Cancel";
             }}
         }}
 
-        // Inicia el flujo del asistente
         function startInitialSetupWizard() {{
-            console.log("Iniciando Asistente de Configuración Inicial...");
+            console.log("Starting initial setup wizard...");
             switchScreen('initial-setup');
             showWizardStep('start');
             try {{
                 pywebview.api.py_setup_check_prism_default_path().then(result => {{
                     if (result.status === 'prism_detected') {{
-                        handlePrismPathFound(result.path); // Prism encontrado, comprobar modpack
+                        handlePrismPathFound(result.path);
                     }} else {{
-                        showWizardStep('ask-installed'); // No detectado, preguntar al usuario
+                        showWizardStep('ask-installed');
                     }}
                 }}).catch(err => {{
-                    console.error("Error en py_setup_check_prism_default_path:", err);
-                    showResult(false, "Error de Detección", "No se pudo comprobar la ruta por defecto: " + err);
-                    showWizardStep('ask-installed'); // Fallback a preguntar
+                    console.error("Error in py_setup_check_prism_default_path:", err);
+                    showResult(false, "Detection Error", "Could not check default path: " + err);
+                    showWizardStep('ask-installed');
                 }});
             }} catch (e) {{
-                showResult(false, "Error Fatal", "API Python no disponible: " + e);
+                showResult(false, "Fatal Error", "Python API not available: " + e);
             }}
         }}
 
-        // Llamado cuando se encuentra una ruta de Prism válida (detectada o manual)
         function handlePrismPathFound(prismPath) {{
-            console.log("Ruta de Prism válida encontrada:", prismPath);
+            console.log("Valid Prism path found:", prismPath);
             setupState.prismPath = prismPath;
             showWizardStep('check-modpack');
             try {{
                 pywebview.api.py_setup_check_modpack_installed(prismPath).then(result => {{
                     if (result.status === 'modpack_installed') {{
-                        console.log("Modpack ya instalado en:", result.instance_path);
+                        console.log("Modpack already installed at:", result.instance_path);
                         setupState.instancePath = result.instance_path;
-                        // Guardar rutas en config.json
                         pywebview.api.py_save_paths(result.prism_path, result.instance_path);
-                        showWizardStep('login'); // Avanzar al paso de login
+                        showWizardStep('login');
                     }} else if (result.status === 'modpack_not_installed') {{
-                        console.log("Modpack no instalado. Iniciando instalación...");
+                        console.log("Modpack not installed. Starting download...");
 
-                        // Validar datos antes de llamar al backend
                         if (!result.prism_path || !result.instance_base_path) {{
-                             throw new Error("Datos incompletos para instalar modpack: prism=" + result.prism_path + ", base=" + result.instance_base_path);
+                             throw new Error("Incomplete data for modpack install: prism=" + result.prism_path + ", base=" + result.instance_base_path);
                         }}
 
                         showWizardStep('install-progress');
-                        dom.wizard.installTitle.textContent = "Instalando Modpack";
-                        dom.wizard.installSubtitle.textContent = "Descargando y extrayendo archivos...";
+                        dom.wizard.installTitle.textContent = "Installing Kewz's Cobblemon";
+                        dom.wizard.installSubtitle.textContent = "Downloading modpack files (10GB+). You can pause this at any time.";
 
-                        // Enviar strings explícitos en lugar de objeto para evitar confusiones en pywebview
-                        console.log("Iniciando tarea 'install_modpack' con args:", result.prism_path, result.instance_base_path);
+                        console.log("Starting 'install_modpack' task with args:", result.prism_path, result.instance_base_path);
                         pywebview.api.py_start_threaded_task('install_modpack', result.prism_path, result.instance_base_path);
                     }} else {{
-                        throw new Error(result.error || "Respuesta desconocida al comprobar modpack.");
+                        throw new Error(result.error || "Unknown response when checking modpack.");
                     }}
                 }}).catch(err => {{
-                    console.error("Error en py_setup_check_modpack_installed:", err);
-                    showResult(false, "Error de Modpack", "No se pudo comprobar la instancia del modpack: " + err);
+                    console.error("Error in py_setup_check_modpack_installed:", err);
+                    showResult(false, "Modpack Error", "Could not check modpack instance: " + err);
                     showWizardStep('ask-installed'); // Volver al inicio del flujo
                 }});
             }} catch (e) {{
@@ -1293,64 +1378,61 @@ HTML_CONTENT = f"""
             }}
         }}
 
-        // --- (NUEVO) Callbacks Globales desde Python (Hilos) ---
-        
+        // --- Global Python Callbacks (from threads) ---
+
         function updateInstallStatus(message) {{
-            // Esta función es llamada por Python para CUALQUIER tarea en hilo
             try {{
                 const p = document.createElement('p');
                 p.appendChild(document.createTextNode(message));
                 dom.wizard.console.appendChild(p);
                 dom.wizard.console.scrollTop = dom.wizard.console.scrollHeight;
-                
-                // También actualizar la etiqueta de progreso
                 dom.wizard.progressLabel.textContent = message;
-            }} catch (e) {{ console.error("Error en updateInstallStatus:", e); }}
+            }} catch (e) {{ console.error("Error in updateInstallStatus:", e); }}
         }}
 
         function onPrismInstallComplete(success, path, error) {{
             if (success) {{
-                console.log("Instalación de Prism completada, ruta:", path);
-                handlePrismPathFound(path); // Continuar al siguiente paso
+                console.log("Prism install complete, path:", path);
+                handlePrismPathFound(path);
             }} else {{
-                console.error("Instalación de Prism fallida:", error);
-                showResult(false, "Error de Instalación", "No se pudo instalar Prism Launcher: " + error);
-                showWizardStep('ask-installed'); // Volver a preguntar
+                console.error("Prism install failed:", error);
+                showResult(false, "Installation Error", "Could not install Prism Launcher: " + error);
+                showWizardStep('ask-installed');
             }}
         }}
 
         function onModpackInstallComplete(success, prismPath, instancePath, error) {{
             if (success) {{
-                console.log("Instalación de Modpack completada, ruta:", instancePath);
+                console.log("Modpack install complete, path:", instancePath);
                 setupState.prismPath = prismPath;
                 setupState.instancePath = instancePath;
-                // Guardar rutas en config.json
+                hideDownloadDetails();
                 pywebview.api.py_save_paths(prismPath, instancePath);
-                showWizardStep('login'); // Avanzar al paso de login
+                showWizardStep('login');
             }} else {{
-                console.error("Instalación de Modpack fallida:", error);
-                showResult(false, "Error de Instalación", "No se pudo instalar el modpack: " + error);
-                showWizardStep('ask-installed'); // Volver al inicio del flujo
+                console.error("Modpack install failed:", error);
+                showResult(false, "Installation Error", "Could not install modpack: " + error);
+                showWizardStep('ask-installed');
             }}
         }}
-        
+
         function onTaskError(taskName, error) {{
-            console.error("Error en tarea '" + taskName + "':", error);
-            showResult(false, 'Error en ' + taskName, error);
-            showWizardStep('ask-installed'); // Volver al inicio
+            console.error("Error in task '" + taskName + "':", error);
+            showResult(false, 'Error: ' + taskName, error);
+            showWizardStep('ask-installed');
         }}
 
 
         // --- Event Listeners ---
         window.addEventListener('pywebviewready', () => {{
-            console.log("pywebviewready: La API de Python está lista.");
+            console.log("pywebviewready: Python API is ready.");
             window.pywebview.apiReady = true;
         }});
 
         document.addEventListener('DOMContentLoaded', () => {{
-            console.log("DOMContentLoaded: El DOM está completamente cargado.");
+            console.log("DOMContentLoaded: DOM fully loaded.");
 
-            // Asignar todas las constantes del DOM
+            // Cache all DOM elements
             domPlayer = {{
                 player: document.getElementById('music-player'), cover: document.getElementById('album-cover'), title: document.getElementById('track-title'), artist: document.getElementById('track-artist'), audio: document.getElementById('audio-element'), playPauseBtn: document.getElementById('play-pause-btn'), nextBtn: document.getElementById('next-btn'), progressContainer: document.getElementById('progress-container'), progressBar: document.getElementById('progress-bar'), volumeContainer: document.getElementById('volume-container'), volumeIcon: document.getElementById('volume-icon'), volumeSlider: document.getElementById('volume-slider')
             }};
@@ -1366,16 +1448,15 @@ HTML_CONTENT = f"""
                 debugPanel: document.getElementById('debug-panel'), debugCloseStatus: document.getElementById('debug-close-status'), launcherVersion: document.getElementById('launcher-version')
             }};
 
-            // (NUEVO) Función que inicia la app principal DESPUÉS del update check
+            // Main app startup (after update check)
             function startMainApp() {{
-                console.log("Iniciando la aplicación principal...");
+                console.log("Starting main application...");
                 pywebview.api.py_get_os_sep().then(sep => {{
                     osSep = sep || '/';
                     return pywebview.api.py_load_and_migrate_config();
                 }}).then(pathsAreValid => {{
-                    // (NUEVO) Obtener las rutas actuales para actualizar el estado de la UI
                     return pywebview.api.py_get_current_paths().then(paths => {{
-                        console.log("Rutas actuales obtenidas:", paths);
+                        console.log("Current paths loaded:", paths);
                         if (paths) {{
                             setupState.prismPath = paths.prism_path;
                             setupState.instancePath = paths.instance_path;
@@ -1383,18 +1464,16 @@ HTML_CONTENT = f"""
                         return pathsAreValid;
                     }});
                 }}).then(pathsAreValid => {{
-                    // Cargar música
+                    // Load music
                     pywebview.api.py_get_playlist().then(p => {{
                         if (p && p.length > 0) {{
                             playlist = p;
                             loadTrack(0);
-                            // (CORREGIDO) Llamar a playTrack() en lugar de .play() directamente
-                            // para asegurar que la UI se actualice correctamente.
                             playTrack();
                         }} else {{
-                             domPlayer.title.textContent = "Error al Cargar Playlist";
+                             domPlayer.title.textContent = "Playlist Error";
                         }}
-                    }}).catch(e => {{ domPlayer.title.textContent = "Error de API Playlist"; console.error(e); }});
+                    }}).catch(e => {{ domPlayer.title.textContent = "Playlist API Error"; console.error(e); }});
 
                     // Cargar volumen
                     pywebview.api.py_load_music_volume().then(vol => {{
@@ -1415,22 +1494,22 @@ HTML_CONTENT = f"""
                 }}).then(version => {{
                     if (version) dom.launcherVersion.textContent = `v${{version}}`;
                 }}).catch(e => {{
-                    showResult(false, "Error de Carga", `No se pudo cargar la configuración: ${{e}}`);
+                    showResult(false, "Load Error", `Could not load configuration: ${{e}}`);
                     startInitialSetupWizard();
                 }});
             }}
 
-            // (NUEVO) Punto de entrada principal
+            // Main entry point
             function initializeApp() {{
                 if (!window.pywebview || !window.pywebview.apiReady) {{
                     return setTimeout(initializeApp, 50);
                 }}
-                console.log("¡DOM y API listos! Iniciando chequeo de actualización...");
+                console.log("DOM and API ready! Starting update check...");
                 window.quitting = false;
-                window.startMainApp = startMainApp; // Exponer globalmente para Python
+                window.startMainApp = startMainApp; // Expose globally for Python
 
                 try {{ pywebview.api.py_start_update_check(); }}
-                catch(e) {{ onUpdateError(`La comunicación con el backend falló: ${{e}}`); }}
+                catch(e) {{ onUpdateError(`Backend communication failed: ${{e}}`); }}
             }}
 
             // Iniciar la aplicación
@@ -1453,39 +1532,38 @@ HTML_CONTENT = f"""
                         showWizardStep('install-progress');
                         dom.wizard.installTitle.textContent = "Instalando Prism Launcher";
                         dom.wizard.installSubtitle.textContent = "Descargando la versión portable...";
-                        // (CORREGIDO) Pasar el argumento como string directo, no objeto
-                        console.log("Iniciando tarea 'install_prism' con ruta:", result.path);
+                        console.log("Starting 'install_prism' task with path:", result.path);
                         pywebview.api.py_start_threaded_task('install_prism', result.path);
                     }}
-                }}).catch(err => showResult(false, "Error", "No se pudo abrir diálogo: " + err));
+                }}).catch(err => showResult(false, "Error", "Could not open dialog: " + err));
             }});
-            
+
             dom.wizard.btnCancelInstall.addEventListener('click', cancelCurrentProcess);
-            dom.wizard.btnLoginOpen.addEventListener('click', () => pywebview.api.py_setup_open_prism_for_login(setupState.prismPath).catch(e => showResult(false, "Error", "No se pudo abrir Prism: " + e)));
+            dom.wizard.btnLoginOpen.addEventListener('click', () => pywebview.api.py_setup_open_prism_for_login(setupState.prismPath).catch(e => showResult(false, "Error", "Could not open Prism: " + e)));
             dom.wizard.btnLoginFinish.addEventListener('click', () => pywebview.api.py_save_paths(setupState.prismPath, setupState.instancePath).then(() => switchScreen('play')));
 
             // Settings Screen Listeners
-            dom.settings.browsePrismBtn.addEventListener('click', () => pywebview.api.py_browse_for_prism_exe().then(data => {{ if (data && data.is_valid) {{ setupState.prismPath = data.prism_path; setupState.instancePath = data.instance_path; }} else {{ setupState.prismPath = null; setupState.instancePath = null; }} validateSettings(); }}).catch(err => showResult(false, "Error Examinar", "No se pudo abrir diálogo: " + err)));
-            dom.settings.browseInstanceBtn.addEventListener('click', () => pywebview.api.py_browse_for_instance_folder().then(path => {{ setupState.instancePath = path; validateSettings(); }}).catch(err => showResult(false, "Error Examinar", "No se pudo abrir diálogo: " + err)));
+            dom.settings.browsePrismBtn.addEventListener('click', () => pywebview.api.py_browse_for_prism_exe().then(data => {{ if (data && data.is_valid) {{ setupState.prismPath = data.prism_path; setupState.instancePath = data.instance_path; }} else {{ setupState.prismPath = null; setupState.instancePath = null; }} validateSettings(); }}).catch(err => showResult(false, "Browse Error", "Could not open dialog: " + err)));
+            dom.settings.browseInstanceBtn.addEventListener('click', () => pywebview.api.py_browse_for_instance_folder().then(path => {{ setupState.instancePath = path; validateSettings(); }}).catch(err => showResult(false, "Browse Error", "Could not open dialog: " + err)));
             [dom.settings.prismDisplay, dom.settings.instanceDisplay].forEach(el => {{
                 el.addEventListener('dragenter', (e) => {{ e.preventDefault(); e.stopPropagation(); el.classList.add('dragover'); }}, false);
                 el.addEventListener('dragover', (e) => {{ e.preventDefault(); e.stopPropagation(); el.classList.add('dragover'); }}, false);
                 el.addEventListener('dragleave', (e) => {{ e.preventDefault(); e.stopPropagation(); el.classList.remove('dragover'); }}, false);
                 el.addEventListener('drop', (e) => {{
-                    e.preventDefault(); e.stopPropagation(); el.classList.remove('dragover'); 
+                    e.preventDefault(); e.stopPropagation(); el.classList.remove('dragover');
                     if (e.dataTransfer.items && e.dataTransfer.items.length > 0 && e.dataTransfer.items[0].kind === 'file') {{
-                        const droppedPath = e.dataTransfer.files[0].path; if (!droppedPath) return; 
-                        if (el === dom.settings.prismDisplay) pywebview.api.py_process_prism_path_drop(droppedPath).then(data => {{ setupState.prismPath = data.prism_path; setupState.instancePath = data.instance_path; validateSettings(); }}).catch(err => console.error("Error Prism drop:", err));
-                        else pywebview.api.py_process_instance_path_drop(droppedPath).then(data => {{ setupState.instancePath = data.path; validateSettings(); }}).catch(err => console.error("Error Instance drop:", err));
+                        const droppedPath = e.dataTransfer.files[0].path; if (!droppedPath) return;
+                        if (el === dom.settings.prismDisplay) pywebview.api.py_process_prism_path_drop(droppedPath).then(data => {{ setupState.prismPath = data.prism_path; setupState.instancePath = data.instance_path; validateSettings(); }}).catch(err => console.error("Prism drop error:", err));
+                        else pywebview.api.py_process_instance_path_drop(droppedPath).then(data => {{ setupState.instancePath = data.path; validateSettings(); }}).catch(err => console.error("Instance drop error:", err));
                     }}
                 }}, false);
             }});
             dom.settings.saveBtn.addEventListener('click', () => {{
-                if (dom.settings.saveBtn.disabled) return; 
+                if (dom.settings.saveBtn.disabled) return;
                 pywebview.api.py_save_paths(setupState.prismPath, setupState.instancePath).then(didSave => {{
                     if (didSave) switchScreen('play');
-                    else showResult(false, "Error Guardar", "No se pudieron guardar rutas.");
-                }}).catch(err => showResult(false, "Error Inesperado", "No se pudo guardar config: " + err));
+                    else showResult(false, "Save Error", "Could not save paths.");
+                }}).catch(err => showResult(false, "Unexpected Error", "Could not save config: " + err));
             }});
 
             // Play Screen Listeners
@@ -1493,20 +1571,19 @@ HTML_CONTENT = f"""
                 if (dom.playBtn.classList.contains('cancel-mode')) {{
                     cancelCurrentProcess();
                 }} else {{
-                    // Chequear si estamos en modo "JUGAR" o "DESCARGAR"
                     if (!setupState.prismPath || !setupState.instancePath) {{
-                        console.log("Datos incompletos, iniciando asistente de descarga...");
+                        console.log("Paths not set, starting setup wizard...");
                         startInitialSetupWizard();
                     }} else {{
-                        dom.playBtn.textContent = "CANCELAR"; dom.playBtn.classList.add('cancel-mode');
+                        dom.playBtn.textContent = "CANCEL"; dom.playBtn.classList.add('cancel-mode');
                         switchScreen('progress');
                         dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';
-                        logToConsole("Iniciando proceso...");
-                        dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancelar";
-                        updateProgress(0, "Iniciando...");
-                        setLoadScreen("Actualizando...", "Comprobando versiones...");
+                        logToConsole("Starting process...");
+                        dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancel";
+                        updateProgress(0, "Starting...");
+                        setLoadScreen("Updating...", "Checking versions...");
                         try {{ pywebview.api.py_start_game(); }}
-                        catch(e) {{ showResult(false, "Error de API", "No se pudo llamar a py_start_game: " + e); returnToPlayScreen(); }}
+                        catch(e) {{ showResult(false, "API Error", "Could not call py_start_game: " + e); returnToPlayScreen(); }}
                     }}
                 }}
              }});
@@ -1543,7 +1620,7 @@ HTML_CONTENT = f"""
             domPlayer.playPauseBtn.addEventListener('click', () => {{ if (isPlaying) pauseTrack(); else playTrack(); }});
             domPlayer.nextBtn.addEventListener('click', nextTrack);
             domPlayer.audio.addEventListener('ended', nextTrack);
-            domPlayer.audio.addEventListener('error', (e) => {{ console.error("Audio error:", domPlayer.audio.error); domPlayer.title.textContent = "Error al cargar"; domPlayer.artist.textContent = playlist[currentTrackIndex]?.src || "URL inválida"; domPlayer.progressBar.style.width = '0%'; }});
+            domPlayer.audio.addEventListener('error', (e) => {{ console.error("Audio error:", domPlayer.audio.error); domPlayer.title.textContent = "Load Error"; domPlayer.artist.textContent = playlist[currentTrackIndex]?.src || "Invalid URL"; domPlayer.progressBar.style.width = '0%'; }});
             domPlayer.audio.addEventListener('timeupdate', updateProgressUI);
             domPlayer.progressContainer.addEventListener('click', setProgress);
             domPlayer.volumeSlider.addEventListener('input', setVolume);

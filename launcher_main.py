@@ -96,30 +96,30 @@ except ImportError:
 
 # --- Lógica de la Aplicación (Backend de Python) ---
 
-REPO_ZIP_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/archive/main/vanilla-plus-main.zip"
-GITLAB_RAW_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main" # (CORREGIDO) Restaurado a su valor original para el reproductor de música
-MUSIC_DATA_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main" # (NUEVO) URL dedicada para el reproductor
-VERSION_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/version.txt"
-# (NUEVO) URL para las opciones de resource packs y nombre del respaldo local
-RESOURCE_PACK_OPTIONS_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/resourcepacksoptions.txt"
+# --- Unified Repository (all assets in one place) ---
+UNIFIED_REPO_RAW_URL = "https://gitlab.com/Kewz4/kewz-cobblemon/-/raw/main"
+REPO_ZIP_URL = "https://gitlab.com/Kewz4/kewz-cobblemon/-/archive/main/kewz-cobblemon-main.zip"
+GITLAB_RAW_URL = UNIFIED_REPO_RAW_URL  # Used by music player
+MUSIC_DATA_URL = UNIFIED_REPO_RAW_URL  # Music library base URL
+VERSION_URL = f"{UNIFIED_REPO_RAW_URL}/version.txt"
+RESOURCE_PACK_OPTIONS_URL = f"{UNIFIED_REPO_RAW_URL}/resourcepacksoptions.txt"
 LOCAL_OPTIONS_BACKUP_FILENAME = "options_backup.txt"
 
-# (NUEVO) Constantes para el nuevo flujo de instalación
-# (CORREGIDO) Lista de rutas comunes a comprobar, incluyendo la tuya
+# --- Prism Launcher ---
 PRISM_DEFAULT_PATHS_WINDOWS = [
     os.path.expandvars(r"%LocalAppData%\Programs\PrismLauncher\prismlauncher.exe"),
     os.path.expandvars(r"%LocalAppData%\Programs\Prism Launcher\prismlauncher.exe"),
-    r"C:\Program Files\Prism Launcher\prismlauncher.exe", # Con espacio, p minúscula
-    r"C:\Program Files\Prism Launcher\PrismLauncher.exe", # Con espacio, P mayúscula
-    r"C:\Program Files\PrismLauncher\PrismLauncher.exe",  # Sin espacio, P mayúscula
-    r"C:\Program Files\PrismLauncher\prismlauncher.exe"   # Sin espacio, p minúscula
+    r"C:\Program Files\Prism Launcher\prismlauncher.exe",
+    r"C:\Program Files\Prism Launcher\PrismLauncher.exe",
+    r"C:\Program Files\PrismLauncher\PrismLauncher.exe",
+    r"C:\Program Files\PrismLauncher\prismlauncher.exe"
 ]
-MODPACK_INSTANCE_NAME = "Kewz's Vanilla+ True"
-# (NUEVO) URL del archivo de texto que contiene el enlace de descarga del modpack
-MODPACK_URL_SOURCE = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/modpack-url.txt"
-# (ACTUALIZADO) URL de respaldo por si falla la obtención dinámica
-MODPACK_INSTALL_ZIP_URL = "https://www.dropbox.com/scl/fi/dz03502lxgixelbml49y7/Kewz-s-Vanilla-True-Final-Final-2.zip?rlkey=c3j5zpme73l9n8g8nmx941lpz&st=2d3v518q&dl=1"
-PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/9.4/PrismLauncher-Windows-MinGW-w64-Portable-9.4.zip"
+MODPACK_INSTANCE_NAME = "Kewz's Cobblemon"
+# URL of the text file that contains the modpack download link (from GoFile)
+MODPACK_URL_SOURCE = f"{UNIFIED_REPO_RAW_URL}/modpack-url.txt"
+# Fallback URL if dynamic fetch fails
+MODPACK_INSTALL_ZIP_URL = ""  # Set via modpack-url.txt (GoFile link)
+PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/10.0.5/PrismLauncher-Windows-MinGW-w64-Portable-10.0.5.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
 def get_current_launcher_version(default_version="1.6"):
@@ -174,6 +174,7 @@ class ModpackLauncherAPI:
         self.window = None
         self.hwnd = None # Handle de la ventana (solo Windows)
         self.cancel_event = threading.Event()
+        self.pause_event = threading.Event()   # When SET, download is paused
         self.game_ready_event = threading.Event()
         self.on_top_thread = None
         self.prism_exe_path = None
@@ -199,7 +200,7 @@ class ModpackLauncherAPI:
 
         # (NUEVO) Atributos para el panel de depuración
         self.debug_mode = False # (MODIFICADO) Oculto por defecto
-        self.close_trigger_status = "PENDIENTE"
+        self.close_trigger_status = "PENDING"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
     def _update_updater_ui(self, message, progress=None):
@@ -956,6 +957,7 @@ class ModpackLauncherAPI:
                 self._log(f"Error esperando thread anterior: {e}")
 
         self.cancel_event.clear()
+        self.pause_event.clear()  # Ensure download is not paused at start of new task
 
         if task_name == 'install_prism':
             self.current_task_thread = threading.Thread(target=self._task_install_prism, args=args, daemon=True)
@@ -1082,7 +1084,7 @@ class ModpackLauncherAPI:
             final_instance_path = os.path.join(instance_base_path, MODPACK_INSTANCE_NAME)
             final_mc_path = os.path.join(final_instance_path, "minecraft")
 
-            tmp_dir = tempfile.mkdtemp(prefix="vplus_install_")
+            tmp_dir = tempfile.mkdtemp(prefix="cobblemon_install_")
             self._update_install_status(f"Directorio temporal creado: {os.path.basename(tmp_dir)}")
             zip_path = os.path.join(tmp_dir, "modpack.zip")
 
@@ -1234,10 +1236,11 @@ class ModpackLauncherAPI:
         thread.start()
 
     def py_cancel_update(self):
-        """Establece eventos de cancelación E inicia hilo para terminar procesos."""
-        self._log("Cancelación solicitada por el usuario...")
+        """Sets cancellation events and starts process termination thread."""
+        self._log("Cancellation requested by user...")
         self.cancel_event.set()
-        self.game_ready_event.set() # Detener bucle on_top si se cancela
+        self.pause_event.clear()  # Unblock any paused download so it can exit
+        self.game_ready_event.set()  # Stop on_top loop if cancelling
 
         self._log("Iniciando hilo de terminación de procesos...")
         kill_thread = threading.Thread(target=self._terminate_game_processes)
@@ -1544,8 +1547,8 @@ class ModpackLauncherAPI:
                 if self.window:
                     # (NUEVO) Mostrar y resetear el panel de depuración si está activo
                     if self.debug_mode:
-                        self.close_trigger_status = "PENDIENTE"
-                        self.window.evaluate_js(f'updateDebugPanel("PENDIENTE")')
+                        self.close_trigger_status = "PENDING"
+                        self.window.evaluate_js(f'updateDebugPanel("PENDING")')
                         self.window.evaluate_js(f'toggleDebugPanel(true)')
 
                     self.window.evaluate_js(f'setLoadScreen("Cargando el Modpack", "Iniciando Minecraft...")')
@@ -1985,65 +1988,199 @@ class ModpackLauncherAPI:
         else:
             self._log("--- Reversión completada con éxito ---")
 
-    # --- (NUEVO) Función de Descarga genérica ---
+    # --- Download Manager (Resumable, Pausable) ---
 
-    def _download_file(self, url, destination_path, progress_context="update"):
+    def py_pause_download(self):
+        """Pauses an active download. Call py_resume_download() to continue."""
+        self.pause_event.set()
+        self._log("Download paused by user.")
+
+    def py_resume_download(self):
+        """Resumes a paused download."""
+        self.pause_event.clear()
+        self._log("Download resumed by user.")
+
+    @staticmethod
+    def _format_eta(seconds):
+        """Formats seconds into a human-readable ETA string."""
+        if seconds <= 0 or seconds >= 36000:
+            return "--:--"
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        if h > 0:
+            return f"{h}h {m:02d}m {s:02d}s"
+        elif m > 0:
+            return f"{m}m {s:02d}s"
+        else:
+            return f"{s}s"
+
+    @staticmethod
+    def _format_size(bytes_val):
+        """Formats bytes into a human-readable size string."""
+        if bytes_val >= 1024 * 1024 * 1024:
+            return f"{bytes_val / (1024**3):.2f} GB"
+        elif bytes_val >= 1024 * 1024:
+            return f"{bytes_val / (1024**2):.1f} MB"
+        elif bytes_val >= 1024:
+            return f"{bytes_val / 1024:.1f} KB"
+        return f"{bytes_val} B"
+
+    def _send_download_progress(self, context, pct, filename, downloaded, total, speed_bps, eta_str, paused=False):
+        """Sends rich download progress info to the UI."""
+        dl_size = self._format_size(downloaded)
+        total_size = self._format_size(total) if total > 0 else "?"
+        speed_mb = speed_bps / (1024 * 1024) if speed_bps > 0 else 0
+
+        if paused:
+            label = f"PAUSED  {dl_size} / {total_size}"
+        elif total > 0:
+            label = f"{dl_size} / {total_size}  •  {speed_mb:.1f} MB/s  •  ETA: {eta_str}"
+        else:
+            label = f"{dl_size}  •  {speed_mb:.1f} MB/s"
+
+        # Send to UI via JS
+        if self.window:
+            safe_filename = json.dumps(filename)
+            safe_label = json.dumps(label)
+            paused_js = "true" if paused else "false"
+            try:
+                self.window.evaluate_js(
+                    f'updateDownloadDetails({safe_filename}, {pct}, {safe_label}, {paused_js})'
+                )
+            except Exception:
+                pass
+
+        if context == "wizard_install":
+            self._update_install_status(f"{'[PAUSED] ' if paused else ''}{label}")
+            if self.window:
+                try:
+                    self.window.evaluate_js(f'updateProgress({pct}, {json.dumps(label)})')
+                except Exception:
+                    pass
+        else:
+            self._update_progress(pct * 0.4, label)
+
+    def _download_file(self, url, destination_path, progress_context="update", filename_hint=None):
         """
-        Descarga un archivo desde 'url' a 'destination_path' y actualiza la GUI.
-        :param url: URL de descarga
-        :param destination_path: Ruta local donde guardar el archivo
-        :param progress_context: 'update' (para _update_progress) o 'wizard_install' (para _update_install_status)
+        Downloads a file with:
+        - Resume support via HTTP Range headers (.part file)
+        - Pause/resume via self.pause_event
+        - Rich progress: filename, downloaded/total size, speed (MB/s), ETA
+        :param url: Download URL
+        :param destination_path: Local path to save the file
+        :param progress_context: 'update' or 'wizard_install'
+        :param filename_hint: Display name for the file (defaults to basename)
         """
-        self._log(f"Iniciando descarga: {url} -> {destination_path}")
+        filename = filename_hint or os.path.basename(destination_path) or "file"
+        part_path = destination_path + ".part"
+        self._log(f"Download starting: {filename}")
+        self._log(f"  URL: {url}")
+        self._log(f"  Destination: {destination_path}")
+
+        # Check for existing partial download to resume
+        existing_size = 0
+        if os.path.exists(part_path):
+            existing_size = os.path.getsize(part_path)
+            if existing_size > 0:
+                self._log(f"  Found partial file ({self._format_size(existing_size)}). Attempting resume...")
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept-Encoding': 'identity',  # Prevent compression so we get raw bytes
+        }
+        if existing_size > 0:
+            headers['Range'] = f'bytes={existing_size}-'
+
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'} # Agente de usuario genérico
             with requests.get(url, stream=True, timeout=60, headers=headers, allow_redirects=True) as resp:
-                resp.raise_for_status()
-                total_bytes = int(resp.headers.get('content-length', 0))
-                chunk_size = 8192
-                downloaded = 0
-                start_time = time.time()
+                # Handle resume (206) vs fresh download (200)
+                if resp.status_code == 206:
+                    content_range = resp.headers.get('Content-Range', '')
+                    # Content-Range: bytes 1024-9999/10000 -> total = 10000
+                    total_match = re.search(r'/(\d+)$', content_range)
+                    total_bytes = int(total_match.group(1)) if total_match else int(resp.headers.get('content-length', 0)) + existing_size
+                    downloaded = existing_size
+                    file_mode = 'ab'
+                    self._log(f"  Server supports resume. Resuming from {self._format_size(existing_size)}, total: {self._format_size(total_bytes)}")
+                elif resp.status_code == 200:
+                    total_bytes = int(resp.headers.get('content-length', 0))
+                    downloaded = 0
+                    existing_size = 0
+                    file_mode = 'wb'
+                    if existing_size > 0:
+                        self._log("  Server doesn't support resume. Starting fresh.")
+                else:
+                    resp.raise_for_status()
+                    return
 
-                with open(destination_path, 'wb') as f:
-                    last_update_time = time.time()
+                chunk_size = 65536  # 64KB chunks
+                start_time = time.time()
+                last_update_time = time.time()
+
+                with open(part_path, file_mode) as f:
                     for chunk in resp.iter_content(chunk_size=chunk_size):
+                        # --- Cancel check ---
                         if self.cancel_event.is_set():
-                            raise InterruptedError("Descarga cancelada.")
+                            self._log("Download cancelled. Partial file kept for resume.")
+                            raise InterruptedError("Download cancelled.")
+
+                        # --- Pause support ---
+                        if self.pause_event.is_set():
+                            self._log("Download paused. Waiting for resume...")
+                            # Send paused status to UI
+                            self._send_download_progress(
+                                progress_context, downloaded / total_bytes if total_bytes > 0 else 0,
+                                filename, downloaded, total_bytes, 0, "--:--", paused=True
+                            )
+                            while self.pause_event.is_set():
+                                if self.cancel_event.is_set():
+                                    raise InterruptedError("Download cancelled during pause.")
+                                time.sleep(0.15)
+                            self._log("Download resumed.")
+                            start_time = time.time() - (downloaded - existing_size) / max(1, downloaded - existing_size)  # Reset speed calc
+                            start_time = time.time()
+
                         if chunk:
                             f.write(chunk)
                             downloaded += len(chunk)
 
                         now = time.time()
-                        # Actualizar GUI no más de 5 veces por segundo
-                        if now - last_update_time > 0.2 or (total_bytes > 0 and downloaded == total_bytes):
-                            pct = downloaded / total_bytes if total_bytes > 0 else 0
+                        # Update UI at most 5x per second
+                        if now - last_update_time > 0.2 or (total_bytes > 0 and downloaded >= total_bytes):
                             elapsed = now - start_time
-                            speed_bps = downloaded / elapsed if elapsed > 0.01 else 0
-                            speed_mbps = (speed_bps * 8) / (1024*1024) if speed_bps > 0 else 0
-                            eta_s = (total_bytes - downloaded) / speed_bps if speed_bps > 0.1 else 0
-                            eta_str = time.strftime('%M:%S', time.gmtime(eta_s)) if 0 < eta_s < 36000 else "--:--"
+                            net_downloaded = downloaded - existing_size
+                            speed_bps = net_downloaded / elapsed if elapsed > 0.01 else 0
+                            eta_s = (total_bytes - downloaded) / speed_bps if speed_bps > 0.1 and total_bytes > downloaded else 0
+                            eta_str = self._format_eta(eta_s)
+                            pct = downloaded / total_bytes if total_bytes > 0 else 0
 
-                            label = f"Descargando... {speed_mbps:.1f} Mbps (ETA: {eta_str})" if total_bytes > 0 else f"Descargando... {downloaded / (1024*1024):.1f} MB"
-
-                            if progress_context == "wizard_install":
-                                self._update_install_status(f"{label} ({int(pct*100)}%)")
-                                if self.window: self.window.evaluate_js(f'updateProgress({pct}, "{label}")')
-                            else: # "modpack_update"
-                                self._update_progress(pct * 0.4, label)
-
+                            self._send_download_progress(
+                                progress_context, pct, filename,
+                                downloaded, total_bytes, speed_bps, eta_str
+                            )
                             last_update_time = now
 
-        except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Error de red: {e}")
-        except Exception as e:
-            raise IOError(f"Error escribiendo archivo descargado: {e}")
+            # Rename .part to final destination
+            if os.path.exists(destination_path):
+                os.remove(destination_path)
+            os.rename(part_path, destination_path)
 
-        self._log(f"Descarga completa ({downloaded / (1024*1024):.2f} MB).")
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Network error: {e}")
+        except InterruptedError:
+            raise  # Re-raise cancellation
+        except Exception as e:
+            raise IOError(f"Error writing downloaded file: {e}")
+
+        final_size = self._format_size(downloaded)
+        self._log(f"Download complete: {filename} ({final_size})")
+        # Final progress update
+        self._send_download_progress(progress_context, 1.0, filename, downloaded, downloaded, 0, "")
         if progress_context == "wizard_install":
-            self._update_install_status("Descarga completa.")
-            if self.window: self.window.evaluate_js(f'updateProgress(1.0, "Descarga completa")')
+            self._update_install_status(f"Download complete: {filename} ({final_size})")
         else:
-            self._update_progress(0.4, "Descarga completa")
+            self._update_progress(0.4, f"Download complete: {final_size}")
 
     # --- Lógica de Actualización (MODIFICADA para usar _download_file) ---
 
