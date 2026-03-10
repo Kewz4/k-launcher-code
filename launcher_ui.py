@@ -1827,6 +1827,21 @@ HTML_CONTENT = f"""
                 }}
             }}
 
+            // Called by Python if yt-dlp/ffmpeg is missing or download fails for first video
+            function onBgVideoError(msg) {{
+                console.warn("Background video error:", msg);
+                // Don't leave the user stuck — unblock the gate and show a warning
+                if (!_firstVideoReady) {{
+                    _firstVideoReady = true;
+                    if (_updateCheckDone) {{
+                        if (dom.updater) {{
+                            logToUpdaterConsole("Warning: Could not download background video: " + msg);
+                        }}
+                    }}
+                    tryAdvanceToMain();
+                }}
+            }}
+
             function _loadBgVideo(index) {{
                 const vid = dom.bgVideo;
                 if (!vid || bgVideoList.length === 0) return;

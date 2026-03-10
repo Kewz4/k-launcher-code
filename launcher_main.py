@@ -332,6 +332,27 @@ class ModpackLauncherAPI:
         os.makedirs(VIDEO_DIR, exist_ok=True)
         port = self._start_video_server()
 
+        # Resolve yt-dlp and ffmpeg — check next to the exe first (for frozen builds),
+        # then fall back to whatever is on PATH.
+        def _find_tool(name):
+            candidates = []
+            if getattr(sys, 'frozen', False):
+                exe_dir = os.path.dirname(sys.executable)
+                candidates += [
+                    os.path.join(exe_dir, name + ".exe"),
+                    os.path.join(exe_dir, name),
+                ]
+            found = shutil.which(name)
+            if found:
+                candidates.append(found)
+            for c in candidates:
+                if os.path.isfile(c):
+                    return c
+            return None
+
+        ytdlp = _find_tool("yt-dlp")
+        ffmpeg = _find_tool("ffmpeg")
+
         def _task():
             for vdef in VIDEO_DEFINITIONS:
                 out_path = os.path.join(VIDEO_DIR, vdef["filename"])
@@ -343,12 +364,23 @@ class ModpackLauncherAPI:
                         self.window.evaluate_js(f'onBgVideoReady({json.dumps(url)})')
                     continue
 
+                if not ytdlp:
+                    self._log("yt-dlp not found. Place yt-dlp.exe next to the launcher or install it.")
+                    if self.window:
+                        self.window.evaluate_js('onBgVideoError("yt-dlp not found. Place yt-dlp.exe next to the launcher.")')
+                    return
+                if not ffmpeg:
+                    self._log("ffmpeg not found. Place ffmpeg.exe next to the launcher or install it.")
+                    if self.window:
+                        self.window.evaluate_js('onBgVideoError("ffmpeg not found. Place ffmpeg.exe next to the launcher.")')
+                    return
+
                 # Download with yt-dlp
                 tmp_path = out_path + ".tmp_raw.mp4"
                 try:
                     self._log(f"Downloading background video: {vdef['filename']}")
                     yt_cmd = [
-                        "yt-dlp",
+                        ytdlp,
                         "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
                         "--merge-output-format", "mp4",
                         "-o", tmp_path,
@@ -360,7 +392,7 @@ class ModpackLauncherAPI:
                         raise RuntimeError(f"yt-dlp failed: {result.stderr[-300:]}")
 
                     # Trim with ffmpeg
-                    ffmpeg_cmd = ["ffmpeg", "-y"]
+                    ffmpeg_cmd = [ffmpeg, "-y"]
                     if vdef.get("ss"):
                         ffmpeg_cmd += ["-ss", vdef["ss"]]
                     ffmpeg_cmd += ["-i", tmp_path, "-t", vdef["t"], "-c", "copy", out_path]
@@ -374,6 +406,8 @@ class ModpackLauncherAPI:
 
                 except Exception as e:
                     self._log(f"Error downloading {vdef['filename']}: {e}")
+                    if self.window:
+                        self.window.evaluate_js(f'onBgVideoError({json.dumps(str(e))})')
                 finally:
                     if os.path.exists(tmp_path):
                         try:
