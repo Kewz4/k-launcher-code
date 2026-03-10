@@ -15,7 +15,7 @@ VIMEO_EMBED_SRC = "https://player.vimeo.com/video/1131522974?badge=0&autopause=0
 # Todas las llaves literales de CSS/JS deben escaparse con {{ y }}.
 HTML_CONTENT = f"""
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -123,7 +123,7 @@ HTML_CONTENT = f"""
 
         /* --- Contenedor Principal (Setup / Settings) --- */
         .container {{ width: 100%; max-width: 650px; background-color: var(--color-bg-light); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 24px 32px; border: 1px solid var(--color-bg-lighter); transition: opacity 0.3s ease; position: relative; z-index: 101; display: none; }}
-        .container.visible {{ display: block; }}
+        .container.visible {{ display: block; animation: fadeIn 0.25s ease; }}
         .header {{ text-align: center; margin-bottom: 24px; }}
         .header h1 {{ font-size: 28px; font-weight: 700; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; margin-bottom: 4px; }}
         .header p {{ font-size: 14px; color: var(--color-text-muted); }}
@@ -294,7 +294,7 @@ HTML_CONTENT = f"""
         }}
 
         /* --- Panel Lateral --- */
-        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid rgba(0,207,170,0.12); box-shadow: 5px 0 30px rgba(0,207,170,0.06); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding-top: 80px; display: flex; flex-direction: column; gap: 10px; padding-left: 15px; padding-right: 15px; }}
+        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid rgba(0,207,170,0.12); box-shadow: 5px 0 30px rgba(0,207,170,0.06); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding: 24px 15px 24px 15px; display: flex; flex-direction: column; gap: 10px; }}
         #side-panel.panel-open {{ transform: translateX(0); }}
         .panel-button {{ display: flex; align-items: center; gap: 15px; padding: 15px; background-color: var(--color-bg-lighter); color: var(--color-text); border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; text-align: left; font-size: 16px; border: 1px solid transparent; }}
         .panel-button:hover {{ background-color: rgba(0, 207, 170, 0.07); border-color: rgba(0, 207, 170, 0.2); color: var(--color-accent); }}
@@ -353,21 +353,20 @@ HTML_CONTENT = f"""
         #console p {{ margin-bottom: 4px; word-break: break-all; user-select: text; }}
         #console p:last-child {{ margin-bottom: 0; }}
         #console p.highlight {{ color: var(--color-accent); font-weight: 500; background-color: rgba(0, 207, 170, 0.08); border-radius: 4px; padding: 2px 4px; }}
-        #scroll-bottom-btn {{ display: none; position: absolute; bottom: 20px; right: 20px; z-index: 10; background-color: var(--color-accent); color: #000; border: none; border-radius: 50px; padding: 8px 16px; font-size: 12px; font-weight: 700; cursor: pointer; opacity: 0.85; transition: all 0.2s ease; }}
-        #scroll-bottom-btn:hover {{ opacity: 1; transform: scale(1.05); }}
-        #scroll-bottom-btn.visible {{ display: block; }}
 
         /* --- Widget de Progreso Minimizado --- */
         #minimized-progress-widget {{
             display: none; flex-direction: column; gap: 5px;
             position: fixed; bottom: 20px; right: 20px;
-            width: 250px; background-color: transparent;
-            border: 1px solid var(--color-bg-lighter); border-radius: var(--radius-md);
+            width: 250px;
+            background-color: rgba(10, 14, 20, 0.94);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(0,207,170,0.18); border-radius: var(--radius-md);
             padding: 12px; box-shadow: var(--shadow);
             z-index: 101; animation: fadeIn 0.3s ease;
             cursor: pointer; transition: background-color 0.2s ease;
         }}
-        #minimized-progress-widget:hover {{ background-color: rgba(42, 42, 42, 0.5); }}
+        #minimized-progress-widget:hover {{ background-color: rgba(20, 28, 38, 0.97); }}
         .minimized-progress-text {{ display: flex; justify-content: space-between; align-items: center; width: 100%; }}
         #minimized-progress-label {{ font-size: 13px; font-weight: 500; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }}
         #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; text-shadow: 0 0 8px rgba(0, 207, 170, 0.4); }}
@@ -436,16 +435,122 @@ HTML_CONTENT = f"""
         .btn-secondary:not(:disabled):hover {{ background-color: rgba(0,207,170,0.08); border-color: rgba(0,207,170,0.3); color: var(--color-accent); }}
         .btn-danger {{ background: linear-gradient(90deg, var(--color-danger-dark), var(--color-danger)); color: white; width: 100%; }}
 
-        /* --- Download Manager Banner --- */
-        #download-details-banner {{ animation: fadeIn 0.3s ease; }}
-        #wizard-download-details {{ animation: fadeIn 0.3s ease; }}
-
         /* --- Modal de Resultado --- */
         #result-modal {{ display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0, 0, 0, 0.7); backdrop-filter: blur(3px); align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }}
         .modal-content {{ background-color: var(--color-bg-light); margin: auto; padding: 32px; border: 1px solid var(--color-bg-lighter); width: 90%; max-width: 450px; border-radius: var(--radius-lg); box-shadow: var(--shadow); text-align: center; animation: modalSlideIn 0.4s ease-out; z-index: 1001; }}
         #result-icon {{ font-size: 48px; margin-bottom: 16px; }}
         #result-title {{ font-size: 24px; font-weight: 700; margin-bottom: 8px; color: var(--color-text); }}
         #result-details {{ font-size: 14px; color: var(--color-text-muted); margin-bottom: 24px; max-height: 150px; overflow-y: auto; text-align: left; background: var(--color-bg); padding: 10px; border-radius: var(--radius-md); white-space: pre-wrap; word-wrap: break-word; border: 1px solid var(--color-bg-lighter); user-select: text; cursor: text; }}
+        #close-modal-btn {{ width: auto; min-width: 120px; margin: 0 auto; }}
+
+        /* --- Updater Screen Logo --- */
+        #updater-logo {{
+            max-width: 360px; width: 85%; height: auto;
+            margin-bottom: 32px; opacity: 0.92;
+        }}
+
+        /* --- Top Gradient (play screen) --- */
+        #top-gradient {{
+            position: absolute; top: 0; left: 0; width: 100%; height: 140px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
+            z-index: 0; pointer-events: none;
+        }}
+
+        /* --- Container: animate on show --- */
+        /* --- Side Panel Header --- */
+        #panel-header {{
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 2px 16px 2px;
+            border-bottom: 1px solid rgba(0,207,170,0.12);
+            margin-bottom: 8px;
+        }}
+        #panel-title {{
+            font-size: 13px; font-weight: 700;
+            color: var(--color-accent);
+            letter-spacing: 0.5px; text-transform: uppercase;
+        }}
+        #panel-close-btn {{
+            background: none; border: none;
+            color: var(--color-text-muted); cursor: pointer;
+            font-size: 16px; padding: 4px 6px;
+            border-radius: var(--radius-md);
+            transition: color 0.2s ease, background 0.2s ease;
+            line-height: 1;
+        }}
+        #panel-close-btn:hover {{ color: var(--color-text); background: var(--color-bg-lighter); }}
+
+        /* Push Quit to bottom, style it as a soft-danger action */
+        .panel-spacer {{ flex-grow: 1; min-height: 16px; }}
+        #panel-quit-btn {{ color: #d45e5e; border-color: transparent; }}
+        #panel-quit-btn i {{ color: #d45e5e; }}
+        #panel-quit-btn:hover {{ background-color: rgba(229, 57, 53, 0.08); border-color: rgba(229, 57, 53, 0.25); color: #e57373; }}
+        #panel-quit-btn:hover i {{ color: #e57373; }}
+
+        /* --- Settings folder display improvements --- */
+        #screen-settings .folder-display .folder-type-icon {{
+            font-size: 15px; color: var(--color-text-muted);
+            margin-right: 10px; flex-shrink: 0; transition: color 0.2s ease;
+        }}
+        #screen-settings .folder-display.valid .folder-type-icon {{ color: var(--color-success-dark); }}
+        #screen-settings .folder-display.invalid .folder-type-icon {{ color: var(--color-danger); }}
+        #screen-settings .folder-display .folder-browse-arrow {{
+            font-size: 11px; color: var(--color-text-muted); opacity: 0.45;
+            flex-shrink: 0; margin-left: 8px;
+        }}
+        #screen-settings .setup-label {{
+            font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+            color: var(--color-text-muted); text-transform: uppercase;
+            margin-bottom: 8px; margin-top: 20px; display: block;
+        }}
+
+        /* --- Changelog status icon pills --- */
+        .changelog-item h4 .status {{
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 20px; height: 20px; border-radius: 50%;
+            font-size: 9px; margin-right: 6px; vertical-align: middle;
+            flex-shrink: 0;
+        }}
+        .changelog-item h4 .status-updated {{
+            color: var(--color-success); background-color: rgba(0, 230, 118, 0.12);
+        }}
+        .changelog-item h4 .status-removed {{
+            color: var(--color-danger); background-color: rgba(229, 57, 53, 0.12);
+        }}
+
+        /* --- Scroll-to-bottom button (icon only) --- */
+        #scroll-bottom-btn {{
+            display: none; position: absolute; bottom: 12px; right: 12px; z-index: 10;
+            background-color: rgba(0,207,170,0.85); color: #000; border: none;
+            border-radius: 50%; width: 32px; height: 32px;
+            font-size: 13px; font-weight: 700; cursor: pointer;
+            opacity: 0.9; transition: all 0.2s ease;
+            align-items: center; justify-content: center;
+        }}
+        #scroll-bottom-btn:hover {{ opacity: 1; transform: scale(1.1); }}
+        #scroll-bottom-btn.visible {{ display: flex; }}
+
+        /* --- Download banner (replaces inline styles) --- */
+        .download-banner {{
+            display: none; margin-bottom: 10px; padding: 10px 14px;
+            background: rgba(0,207,170,0.06); border: 1px solid rgba(0,207,170,0.18);
+            border-radius: var(--radius-md); align-items: center; gap: 12px; flex-wrap: wrap;
+            animation: fadeIn 0.3s ease;
+        }}
+        .download-banner.visible {{ display: flex; }}
+        .download-banner-icon {{ color: var(--color-accent); flex-shrink: 0; }}
+        .download-banner-name {{
+            font-weight: 600; color: var(--color-text); flex-shrink: 0;
+            max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }}
+        .download-banner-name.narrow {{ max-width: 200px; }}
+        .download-banner-size {{ font-size: 13px; color: var(--color-text-muted); flex-grow: 1; }}
+        .download-banner-size.narrow {{ font-size: 12px; }}
+        .paused-badge {{
+            display: none; font-size: 11px; font-weight: 700;
+            color: #ffb300; background: rgba(255,179,0,0.12);
+            padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255,179,0,0.3);
+        }}
+        .paused-badge.visible {{ display: inline-block; }}
 
     </style>
 </head>
@@ -453,6 +558,7 @@ HTML_CONTENT = f"""
     <!-- Auto-Update Screen -->
     <div id="screen-updater">
         <div id="updater-container">
+            <img src="{LOGO_URL}" alt="Kewz's Cobblemon" id="updater-logo">
             <h1 id="updater-title">Checking for Updates...</h1>
             <div id="updater-progress-bar-container">
                 <div id="updater-progress-bar" style="width: 5%;"></div>
@@ -476,11 +582,12 @@ HTML_CONTENT = f"""
         <!-- Video Overlay (Para Fade In) -->
         <div id="video-overlay"></div>
 
-        <!-- Logo Minecraft -->
-        <img src="{LOGO_URL}" alt="Minecraft Logo" id="minecraft-logo">
-
-        <!-- Gradiente Inferior -->
+        <!-- Top & Bottom Gradients -->
+        <div id="top-gradient"></div>
         <div id="bottom-gradient"></div>
+
+        <!-- Logo -->
+        <img src="{LOGO_URL}" alt="Kewz's Cobblemon" id="minecraft-logo">
 
         <!-- Play Button -->
         <button id="play-btn">PLAY</button>
@@ -496,6 +603,10 @@ HTML_CONTENT = f"""
 
     <!-- Slide-out Side Panel -->
     <div id="side-panel">
+        <div id="panel-header">
+            <span id="panel-title">Kewz's Cobblemon</span>
+            <button id="panel-close-btn" title="Close menu"><i class="fas fa-times"></i></button>
+        </div>
         <button class="panel-button" id="panel-settings-btn">
             <i class="fas fa-cog"></i>
             <span>Settings</span>
@@ -504,6 +615,7 @@ HTML_CONTENT = f"""
             <i class="fas fa-bug"></i>
             <span>Debug</span>
         </button>
+        <div class="panel-spacer"></div>
         <button class="panel-button" id="panel-quit-btn">
             <i class="fas fa-sign-out-alt"></i>
             <span>Quit Launcher</span>
@@ -519,11 +631,11 @@ HTML_CONTENT = f"""
             </button>
             <h2 id="progress-title">Updating...</h2>
             <!-- Download Details Banner -->
-            <div id="download-details-banner" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(0,207,170,0.06); border:1px solid rgba(0,207,170,0.18); border-radius:8px; align-items:center; gap:12px; flex-wrap:wrap;">
-                <i class="fas fa-download" style="color:var(--color-accent); flex-shrink:0;"></i>
-                <span id="download-filename" style="font-weight:600; color:var(--color-text); flex-shrink:0; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
-                <span id="download-size-label" style="font-size:13px; color:var(--color-text-muted); flex-grow:1;"></span>
-                <span id="download-paused-badge" style="display:none; font-size:11px; font-weight:700; color:#ffb300; background:rgba(255,179,0,0.12); padding:3px 8px; border-radius:4px; border:1px solid rgba(255,179,0,0.3);">PAUSED</span>
+            <div id="download-details-banner" class="download-banner">
+                <i class="fas fa-download download-banner-icon"></i>
+                <span id="download-filename" class="download-banner-name"></span>
+                <span id="download-size-label" class="download-banner-size"></span>
+                <span id="download-paused-badge" class="paused-badge">PAUSED</span>
                 <button id="pause-resume-btn" class="btn btn-secondary" style="padding:6px 14px; font-size:13px; min-width:90px;" onclick="togglePauseDownload()">
                     <i class="fas fa-pause" id="pause-icon"></i> <span id="pause-label">Pause</span>
                 </button>
@@ -535,7 +647,7 @@ HTML_CONTENT = f"""
             <div class="progress-columns">
                  <div id="console-container">
                       <div id="console"></div>
-                      <button id="scroll-bottom-btn">Scroll to Bottom</button>
+                      <button id="scroll-bottom-btn" title="Scroll to bottom"><i class="fas fa-arrow-down"></i></button>
                  </div>
                  <div id="changelog-container">
                       <h3>Mod Changelog</h3>
@@ -634,11 +746,11 @@ HTML_CONTENT = f"""
                 </div>
                 <div class="wizard-step-content">
                     <!-- Wizard Download Details -->
-                    <div id="wizard-download-details" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(0,207,170,0.06); border:1px solid rgba(0,207,170,0.18); border-radius:8px; align-items:center; gap:10px; flex-wrap:wrap;">
-                        <i class="fas fa-download" style="color:var(--color-accent); flex-shrink:0;"></i>
-                        <span id="wizard-dl-filename" style="font-weight:600; color:var(--color-text); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0;"></span>
-                        <span id="wizard-dl-size" style="font-size:12px; color:var(--color-text-muted); flex-grow:1;"></span>
-                        <span id="wizard-paused-badge" style="display:none; font-size:11px; font-weight:700; color:#ffb300; background:rgba(255,179,0,0.12); padding:3px 8px; border-radius:4px; border:1px solid rgba(255,179,0,0.3);">PAUSED</span>
+                    <div id="wizard-download-details" class="download-banner">
+                        <i class="fas fa-download download-banner-icon"></i>
+                        <span id="wizard-dl-filename" class="download-banner-name narrow"></span>
+                        <span id="wizard-dl-size" class="download-banner-size narrow"></span>
+                        <span id="wizard-paused-badge" class="paused-badge">PAUSED</span>
                         <button id="wizard-pause-resume-btn" class="btn btn-secondary" style="padding:5px 12px; font-size:12px; min-width:80px;" onclick="togglePauseDownload()">
                             <i class="fas fa-pause" id="wizard-pause-icon"></i> <span id="wizard-pause-label">Pause</span>
                         </button>
@@ -691,21 +803,25 @@ HTML_CONTENT = f"""
         <div class="screen" id="screen-settings">
              <div class="header">
                   <h1>Settings</h1>
-                  <p>Change your Prism Launcher and instance paths here.</p>
+                  <p>Update your Prism Launcher and modpack paths.</p>
              </div>
-             <label class="setup-label">1. Prism Launcher Executable</label>
-             <div class="folder-display" id="settings-prism-exe-display" title="Drag your 'prismlauncher.exe' or the folder containing it here">
+             <label class="setup-label">Prism Launcher</label>
+             <div class="folder-display" id="settings-prism-exe-display" title="Drag your 'prismlauncher.exe' here, or click Browse">
+                  <i class="fas fa-rocket folder-type-icon"></i>
                   <span id="settings-prism-exe-text" class="placeholder">Drag or browse for 'prismlauncher.exe'...</span>
+                  <i class="fas fa-chevron-right folder-browse-arrow"></i>
              </div>
              <div class="folder-buttons">
-                  <button class="btn btn-secondary" id="settings-browse-prism-btn">Browse Executable...</button>
+                  <button class="btn btn-secondary" id="settings-browse-prism-btn"><i class="fas fa-search"></i> Browse Executable...</button>
              </div>
-             <label class="setup-label">2. Instance Folder ('minecraft')</label>
-             <div class="folder-display" id="settings-instance-folder-display" title="Drag the 'minecraft' folder of your instance, or its parent folder">
+             <label class="setup-label">Modpack Folder</label>
+             <div class="folder-display" id="settings-instance-folder-display" title="Drag the 'minecraft' folder of your Kewz's Cobblemon instance here">
+                  <i class="fas fa-folder-open folder-type-icon"></i>
                   <span id="settings-instance-folder-text" class="placeholder">Drag or browse for your '.../minecraft' folder</span>
+                  <i class="fas fa-chevron-right folder-browse-arrow"></i>
              </div>
              <div class="folder-buttons">
-                  <button class="btn btn-secondary" id="settings-browse-instance-btn">Browse Folder...</button>
+                  <button class="btn btn-secondary" id="settings-browse-instance-btn"><i class="fas fa-folder-open"></i> Browse Folder...</button>
              </div>
              <button class="btn btn-primary" id="save-settings-btn" disabled>Save & Return</button>
         </div>
@@ -1108,40 +1224,36 @@ HTML_CONTENT = f"""
         // --- Download Manager UI ---
         let downloadIsPaused = false;
 
+        function _applyBannerState(ids, filename, label, paused) {{
+            const {{ banner, name, size, badge, icon, lbl }} = ids;
+            if (!banner) return;
+            banner.classList.add('visible');
+            if (name) name.textContent = filename;
+            if (size) size.textContent = label;
+            if (badge) badge.classList.toggle('visible', !!paused);
+            if (icon) icon.className = paused ? 'fas fa-play' : 'fas fa-pause';
+            if (lbl) lbl.textContent = paused ? 'Resume' : 'Pause';
+        }}
+
         function updateDownloadDetails(filename, pct, label, paused) {{
             try {{
-                // Show the download details banner in the main progress screen
-                const banner = document.getElementById('download-details-banner');
-                if (banner) {{
-                    banner.style.display = 'flex';
-                    const fnEl = document.getElementById('download-filename');
-                    const sizeEl = document.getElementById('download-size-label');
-                    const pausedBadge = document.getElementById('download-paused-badge');
-                    const pauseIcon = document.getElementById('pause-icon');
-                    const pauseLabel = document.getElementById('pause-label');
-                    if (fnEl) fnEl.textContent = filename;
-                    if (sizeEl) sizeEl.textContent = label;
-                    if (pausedBadge) pausedBadge.style.display = paused ? 'inline-block' : 'none';
-                    if (pauseIcon) pauseIcon.className = paused ? 'fas fa-play' : 'fas fa-pause';
-                    if (pauseLabel) pauseLabel.textContent = paused ? 'Resume' : 'Pause';
-                    downloadIsPaused = paused;
-                }}
-                // Show wizard download details if in wizard
-                const wizardDetails = document.getElementById('wizard-download-details');
-                if (wizardDetails) {{
-                    wizardDetails.style.display = 'flex';
-                    const wFn = document.getElementById('wizard-dl-filename');
-                    const wSize = document.getElementById('wizard-dl-size');
-                    const wPausedBadge = document.getElementById('wizard-paused-badge');
-                    const wPauseIcon = document.getElementById('wizard-pause-icon');
-                    const wPauseLabel = document.getElementById('wizard-pause-label');
-                    if (wFn) wFn.textContent = filename;
-                    if (wSize) wSize.textContent = label;
-                    if (wPausedBadge) wPausedBadge.style.display = paused ? 'inline-block' : 'none';
-                    if (wPauseIcon) wPauseIcon.className = paused ? 'fas fa-play' : 'fas fa-pause';
-                    if (wPauseLabel) wPauseLabel.textContent = paused ? 'Resume' : 'Pause';
-                }}
-                // Update minimized widget with filename
+                downloadIsPaused = !!paused;
+                _applyBannerState({{
+                    banner: document.getElementById('download-details-banner'),
+                    name: document.getElementById('download-filename'),
+                    size: document.getElementById('download-size-label'),
+                    badge: document.getElementById('download-paused-badge'),
+                    icon: document.getElementById('pause-icon'),
+                    lbl: document.getElementById('pause-label')
+                }}, filename, label, paused);
+                _applyBannerState({{
+                    banner: document.getElementById('wizard-download-details'),
+                    name: document.getElementById('wizard-dl-filename'),
+                    size: document.getElementById('wizard-dl-size'),
+                    badge: document.getElementById('wizard-paused-badge'),
+                    icon: document.getElementById('wizard-pause-icon'),
+                    lbl: document.getElementById('wizard-pause-label')
+                }}, filename, label, paused);
                 if (dom.minimizedProgressLabel) {{
                     dom.minimizedProgressLabel.textContent = filename || 'Downloading...';
                 }}
@@ -1162,9 +1274,9 @@ HTML_CONTENT = f"""
 
         function hideDownloadDetails() {{
             const banner = document.getElementById('download-details-banner');
-            if (banner) banner.style.display = 'none';
+            if (banner) banner.classList.remove('visible');
             const wizardDetails = document.getElementById('wizard-download-details');
-            if (wizardDetails) wizardDetails.style.display = 'none';
+            if (wizardDetails) wizardDetails.classList.remove('visible');
             downloadIsPaused = false;
         }}
         // --- End Download Manager UI ---
@@ -1310,7 +1422,54 @@ HTML_CONTENT = f"""
             }}, 500);
         }}
 
-        function addChangelogItem(title, description, icon_url, url, status) {{ try {{ const item = document.createElement('div'); item.className = 'changelog-item'; const img = document.createElement('img'); img.src = (icon_url && status !== 'Removed') ? icon_url : 'https://placehold.co/32x32/2a2a2a/888?text=?'; img.alt = title + ' icon'; img.onerror = () => {{ img.src = 'https://placehold.co/32x32/2a2a2a/888?text=?'; }}; const textDiv = document.createElement('div'); const titleHeader = document.createElement('h4'); const statusSpan = document.createElement('span'); statusSpan.classList.add('status'); if (status === 'Updated') {{ statusSpan.textContent = '[UPD]'; statusSpan.classList.add('status-updated'); }} else if (status === 'Removed') {{ statusSpan.textContent = '[REM]'; statusSpan.classList.add('status-removed'); }} titleHeader.appendChild(statusSpan); if (status !== 'Removed' && url) {{ const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = title || 'Mod desconocido'; titleHeader.appendChild(link); }} else {{ const nameSpan = document.createElement('span'); nameSpan.classList.add('no-link'); nameSpan.textContent = title || 'Mod desconocido'; titleHeader.appendChild(nameSpan); }} const descP = document.createElement('p'); descP.textContent = (status !== 'Removed' && description) ? description : (status === 'Removed' ? 'Eliminado' : 'Actualizado/Añadido'); textDiv.appendChild(titleHeader); textDiv.appendChild(descP); item.appendChild(img); item.appendChild(textDiv); dom.changelogContent.appendChild(item); }} catch(e) {{ console.error("Error adding changelog item:", e); }} }}
+        function addChangelogItem(title, description, icon_url, url, status) {{
+            try {{
+                const item = document.createElement('div');
+                item.className = 'changelog-item';
+
+                const img = document.createElement('img');
+                img.src = (icon_url && status !== 'Removed') ? icon_url : 'https://placehold.co/32x32/2a2a2a/888?text=?';
+                img.alt = title + ' icon';
+                img.onerror = () => {{ img.src = 'https://placehold.co/32x32/2a2a2a/888?text=?'; }};
+
+                const textDiv = document.createElement('div');
+                const titleHeader = document.createElement('h4');
+
+                const statusSpan = document.createElement('span');
+                statusSpan.classList.add('status');
+                if (status === 'Updated') {{
+                    statusSpan.innerHTML = '<i class="fas fa-arrow-up"></i>';
+                    statusSpan.classList.add('status-updated');
+                    statusSpan.title = 'Updated';
+                }} else if (status === 'Removed') {{
+                    statusSpan.innerHTML = '<i class="fas fa-trash"></i>';
+                    statusSpan.classList.add('status-removed');
+                    statusSpan.title = 'Removed';
+                }}
+                titleHeader.appendChild(statusSpan);
+
+                if (status !== 'Removed' && url) {{
+                    const link = document.createElement('a');
+                    link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+                    link.textContent = title || 'Unknown mod';
+                    titleHeader.appendChild(link);
+                }} else {{
+                    const nameSpan = document.createElement('span');
+                    nameSpan.classList.add('no-link');
+                    nameSpan.textContent = title || 'Unknown mod';
+                    titleHeader.appendChild(nameSpan);
+                }}
+
+                const descP = document.createElement('p');
+                descP.textContent = (status !== 'Removed' && description) ? description : (status === 'Removed' ? 'Removed from modpack' : 'Updated / Added');
+
+                textDiv.appendChild(titleHeader);
+                textDiv.appendChild(descP);
+                item.appendChild(img);
+                item.appendChild(textDiv);
+                dom.changelogContent.appendChild(item);
+            }} catch(e) {{ console.error("Error adding changelog item:", e); }}
+        }}
         function openSidePanel() {{ dom.sidePanel.classList.add('panel-open'); dom.panelOverlay.classList.add('visible'); }}
         function closeSidePanel() {{ dom.sidePanel.classList.remove('panel-open'); dom.panelOverlay.classList.remove('visible'); }}
 
@@ -1459,7 +1618,7 @@ HTML_CONTENT = f"""
                 screens: {{ initialSetup: document.getElementById('screen-initial-setup'), settings: document.getElementById('screen-settings'), play: document.getElementById('screen-play'), progress: document.getElementById('screen-progress') }},
                 wizard: {{ steps: document.querySelectorAll('#screen-initial-setup .wizard-step'), btnAskYes: document.getElementById('wizard-btn-ask-yes'), btnAskNo: document.getElementById('wizard-btn-ask-no'), btnFindManual: document.getElementById('wizard-btn-find-manual'), btnInstallLocation: document.getElementById('wizard-btn-install-location'), btnCancelInstall: document.getElementById('wizard-btn-cancel-install'), btnLoginOpen: document.getElementById('wizard-btn-login-open'), btnLoginFinish: document.getElementById('wizard-btn-login-finish'), installTitle: document.getElementById('wizard-install-title'), installSubtitle: document.getElementById('wizard-install-subtitle'), progressBar: document.getElementById('wizard-progress-bar-fill'), progressLabel: document.getElementById('wizard-progress-label'), console: document.getElementById('wizard-console') }},
                 settings: {{ prismDisplay: document.getElementById('settings-prism-exe-display'), prismText: document.getElementById('settings-prism-exe-text'), browsePrismBtn: document.getElementById('settings-browse-prism-btn'), instanceDisplay: document.getElementById('settings-instance-folder-display'), instanceText: document.getElementById('settings-instance-folder-text'), browseInstanceBtn: document.getElementById('settings-browse-instance-btn'), saveBtn: document.getElementById('save-settings-btn') }},
-                playBtn: document.getElementById('play-btn'), menuBtn: document.getElementById('menu-btn'), sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'), panelSettingsBtn: document.getElementById('panel-settings-btn'), panelDebugBtn: document.getElementById('panel-debug-btn'), panelQuitBtn: document.getElementById('panel-quit-btn'), cancelBtn: document.getElementById('cancel-btn'), progressTitle: document.getElementById('progress-title'), progressBar: document.getElementById('progress-fill'), progressLabel: document.getElementById('progress-label'), console: document.getElementById('console'), scrollBottomBtn: document.getElementById('scroll-bottom-btn'), changelogContent: document.getElementById('changelog-content'),
+                playBtn: document.getElementById('play-btn'), menuBtn: document.getElementById('menu-btn'), sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'), panelCloseBtn: document.getElementById('panel-close-btn'), panelSettingsBtn: document.getElementById('panel-settings-btn'), panelDebugBtn: document.getElementById('panel-debug-btn'), panelQuitBtn: document.getElementById('panel-quit-btn'), cancelBtn: document.getElementById('cancel-btn'), progressTitle: document.getElementById('progress-title'), progressBar: document.getElementById('progress-fill'), progressLabel: document.getElementById('progress-label'), console: document.getElementById('console'), scrollBottomBtn: document.getElementById('scroll-bottom-btn'), changelogContent: document.getElementById('changelog-content'),
                 modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
                 minimizeProgressBtn: document.getElementById('minimize-progress-btn'), minimizedWidget: document.getElementById('minimized-progress-widget'), minimizedProgressLabel: document.getElementById('minimized-progress-label'), minimizedProgressPercent: document.getElementById('minimized-progress-percent'), minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill'),
                 settingsCloseBtn: document.getElementById('settings-close-btn'), wizardMinimizeBtn: document.getElementById('wizard-minimize-btn'),
@@ -1614,6 +1773,7 @@ HTML_CONTENT = f"""
 
             // Side Panel Listeners
             dom.panelOverlay.addEventListener('click', closeSidePanel);
+            dom.panelCloseBtn.addEventListener('click', closeSidePanel);
             dom.panelSettingsBtn.addEventListener('click', () => {{ closeSidePanel(); switchScreen('settings'); validateSettings(); }});
             dom.panelDebugBtn.addEventListener('click', () => {{ const isVisible = dom.debugPanel.style.display === 'block'; toggleDebugPanel(!isVisible); closeSidePanel(); }});
             dom.panelQuitBtn.addEventListener('click', () => {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} }});
