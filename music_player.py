@@ -224,16 +224,16 @@ class MusicLibrary:
     NO reproduce música, solo genera la lista de reproducción.
     """
     
-    def __init__(self, gitlab_raw_url):
+    def __init__(self, github_raw_url):
         """
         Inicializa la biblioteca de música.
-        
-        :param gitlab_raw_url: La URL base "raw" de tu proyecto.
-                               Ej: "https://gitlab.com/Kewz4/kewz-cobblemon/-/raw/main"
+
+        :param github_raw_url: La URL base "raw" de tu proyecto.
+                               Ej: "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
         """
-        self.base_raw_url = gitlab_raw_url
+        self.base_raw_url = github_raw_url
         self.playlist = [] # Aquí se guardará la lista de diccionarios de canciones
-        print("MusicLibrary (GitLab) inicializada con lista estática.")
+        print("MusicLibrary (GitHub) inicializada con lista estática.")
         
         self._build_playlist_from_list()
         self.shuffle_playlist() # Mezclamos la lista al inicio
@@ -314,13 +314,13 @@ class MusicLibrary:
 # Este código solo se ejecuta si corres "python music_player.py" directamente.
 if __name__ == "__main__":
     
-    print("--- Iniciando prueba de MusicLibrary (GitLab) ---")
-    
+    print("--- Iniciando prueba de MusicLibrary (GitHub) ---")
+
     # URL base de tu repo (la misma para todos)
-    REPO_RAW_URL = "https://gitlab.com/Kewz4/kewz-cobblemon/-/raw/main"
-    
+    REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
+
     # Simplemente inicializar la clase ahora construye todo
-    library = MusicLibrary(gitlab_raw_url=REPO_RAW_URL)
+    library = MusicLibrary(github_raw_url=REPO_RAW_URL)
     
     playlist = library.get_playlist()
     

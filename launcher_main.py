@@ -97,9 +97,9 @@ except ImportError:
 # --- Lógica de la Aplicación (Backend de Python) ---
 
 # --- Unified Repository (all assets in one place) ---
-UNIFIED_REPO_RAW_URL = "https://gitlab.com/Kewz4/kewz-cobblemon/-/raw/main"
-REPO_ZIP_URL = "https://gitlab.com/Kewz4/kewz-cobblemon/-/archive/main/kewz-cobblemon-main.zip"
-GITLAB_RAW_URL = UNIFIED_REPO_RAW_URL  # Used by music player
+UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
+REPO_ZIP_URL = "https://github.com/Kewz4/kewz-cobblemon/archive/refs/heads/main.zip"
+GITHUB_RAW_URL = UNIFIED_REPO_RAW_URL  # Used by music player
 MUSIC_DATA_URL = UNIFIED_REPO_RAW_URL  # Music library base URL
 VERSION_URL = f"{UNIFIED_REPO_RAW_URL}/version.txt"
 RESOURCE_PACK_OPTIONS_URL = f"{UNIFIED_REPO_RAW_URL}/resourcepacksoptions.txt"
@@ -661,7 +661,7 @@ class ModpackLauncherAPI:
         if self.music_library is None:
             self._log("Inicializando MusicLibrary...")
             try:
-                self.music_library = MusicLibrary(gitlab_raw_url=GITLAB_RAW_URL)
+                self.music_library = MusicLibrary(github_raw_url=GITHUB_RAW_URL)
             except Exception as e:
                 self._log(f"ERROR CRÍTICO: No se pudo inicializar MusicLibrary: {e}")
                 return []
