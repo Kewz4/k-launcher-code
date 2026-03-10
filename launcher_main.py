@@ -375,75 +375,84 @@ class ModpackLauncherAPI:
                 self._log(f"Compression error: {e}")
                 return False
 
-        def _task():
-            for video_idx, vdef in enumerate(VIDEO_DEFINITIONS, start=1):
-                out_path = os.path.join(VIDEO_DIR, vdef["filename"])
-                serve_url = f"http://127.0.0.1:{port}/{vdef['filename']}"
+        def _process_video(video_idx, vdef):
+            """Download + optionally compress one video, then fire onBgVideoReady."""
+            out_path = os.path.join(VIDEO_DIR, vdef["filename"])
+            serve_url = f"http://127.0.0.1:{port}/{vdef['filename']}"
 
-                # Already cached — notify immediately and move on
-                if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-                    _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
-                    continue
+            # Already cached — notify immediately
+            if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+                _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
+                return
 
-                src_url = vdef["url"]
-                if src_url.startswith("PLACEHOLDER"):
-                    self._log(f"Skipping {vdef['filename']}: URL not configured")
-                    _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps("URL not configured for " + vdef["filename"])})')
-                    continue
+            src_url = vdef["url"]
+            if src_url.startswith("PLACEHOLDER"):
+                self._log(f"Skipping {vdef['filename']}: URL not configured")
+                _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps("URL not configured for " + vdef["filename"])})')
+                return
 
-                tmp_path = out_path + ".tmp"
-                try:
-                    self._log(f"Downloading background video: {vdef['filename']}")
-                    req = urllib.request.Request(src_url, headers={"User-Agent": "KewzLauncher/1.0"})
-                    with urllib.request.urlopen(req, timeout=120) as resp:
-                        total_b = int(resp.headers.get("Content-Length") or 0)
-                        downloaded = 0
-                        last_pct = -1
-                        with open(tmp_path, "wb") as f:
-                            while True:
-                                chunk = resp.read(CHUNK)
-                                if not chunk:
-                                    break
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if total_b > 0:
-                                    pct = int(downloaded / total_b * 100)
-                                    if pct - last_pct >= 5:
-                                        last_pct = pct
-                                        _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
+            tmp_path = out_path + ".tmp"
+            try:
+                self._log(f"Downloading background video: {vdef['filename']}")
+                req = urllib.request.Request(src_url, headers={"User-Agent": "KewzLauncher/1.0"})
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    total_b = int(resp.headers.get("Content-Length") or 0)
+                    downloaded = 0
+                    last_pct = -1
+                    with open(tmp_path, "wb") as f:
+                        while True:
+                            chunk = resp.read(CHUNK)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total_b > 0:
+                                pct = int(downloaded / total_b * 100)
+                                if pct - last_pct >= 5:
+                                    last_pct = pct
+                                    _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
 
-                    if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
-                        raise RuntimeError("Download produced an empty file")
+                if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
+                    raise RuntimeError("Download produced an empty file")
 
-                    # Compress using bundled ffmpeg; fall back to raw file if unavailable
-                    if ffmpeg_exe:
-                        self._log(f"Compressing {vdef['filename']}...")
-                        comp_tmp = out_path + ".comp.tmp"
-                        if _compress(tmp_path, comp_tmp):
-                            before_mb = os.path.getsize(tmp_path) / 1024 / 1024
-                            after_mb  = os.path.getsize(comp_tmp)  / 1024 / 1024
-                            self._log(f"Compressed {vdef['filename']}: {before_mb:.0f}MB -> {after_mb:.0f}MB")
-                            os.remove(tmp_path)
-                            os.replace(comp_tmp, out_path)
-                        else:
-                            if os.path.exists(comp_tmp):
-                                os.remove(comp_tmp)
-                            os.replace(tmp_path, out_path)
+                # Compress using bundled ffmpeg; fall back to raw file if unavailable
+                if ffmpeg_exe:
+                    self._log(f"Compressing {vdef['filename']}...")
+                    comp_tmp = out_path + ".comp.tmp"
+                    if _compress(tmp_path, comp_tmp):
+                        before_mb = os.path.getsize(tmp_path) / 1024 / 1024
+                        after_mb  = os.path.getsize(comp_tmp)  / 1024 / 1024
+                        self._log(f"Compressed {vdef['filename']}: {before_mb:.0f}MB -> {after_mb:.0f}MB")
+                        os.remove(tmp_path)
+                        os.replace(comp_tmp, out_path)
                     else:
+                        if os.path.exists(comp_tmp):
+                            os.remove(comp_tmp)
                         os.replace(tmp_path, out_path)
+                else:
+                    os.replace(tmp_path, out_path)
 
-                    self._log(f"Background video ready: {vdef['filename']}")
-                    _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
+                self._log(f"Background video ready: {vdef['filename']}")
+                _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
 
-                except Exception as e:
-                    self._log(f"Error downloading {vdef['filename']}: {e}")
-                    _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps(str(e))})')
-                    for p in (tmp_path, out_path + ".comp.tmp"):
-                        if os.path.exists(p):
-                            try:
-                                os.remove(p)
-                            except Exception:
-                                pass
+            except Exception as e:
+                self._log(f"Error downloading {vdef['filename']}: {e}")
+                _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps(str(e))})')
+                for p in (tmp_path, out_path + ".comp.tmp"):
+                    if os.path.exists(p):
+                        try:
+                            os.remove(p)
+                        except Exception:
+                            pass
+
+        def _task():
+            if not VIDEO_DEFINITIONS:
+                return
+            # Process the first video synchronously so the main screen can show ASAP
+            _process_video(1, VIDEO_DEFINITIONS[0])
+            # Stream remaining videos in the background while the first one plays
+            for video_idx, vdef in enumerate(VIDEO_DEFINITIONS[1:], start=2):
+                _process_video(video_idx, vdef)
 
         t = threading.Thread(target=_task, daemon=True)
         t.start()
@@ -458,23 +467,29 @@ class ModpackLauncherAPI:
             return
 
         def check_thread_task():
-            self._update_updater_ui("Buscando actualizaciones del launcher...", 5)
-            result = self.updater.check_for_updates()
+            try:
+                self._update_updater_ui("Buscando actualizaciones del launcher...", 5)
+                result = self.updater.check_for_updates()
 
-            if 'error' in result:
-                error_message = f"Error comprobando actualizaciones: {result['error']}"
-                self._update_updater_ui(error_message)
+                if 'error' in result:
+                    error_message = f"Error comprobando actualizaciones: {result['error']}"
+                    self._update_updater_ui(error_message)
+                    if self.window:
+                        self.window.evaluate_js(f'onUpdateError({json.dumps(error_message)})')
+                elif result.get('update_available'):
+                    self.latest_release_data = result['release_data']
+                    details = {"version": result['version'], "notes": result['notes']}
+                    if self.window:
+                        self.window.evaluate_js(f'onUpdateCheckComplete(true, {json.dumps(json.dumps(details))})')
+                else:
+                    self._update_updater_ui("El launcher ya está actualizado.", 100)
+                    if self.window:
+                        self.window.evaluate_js("onUpdateCheckComplete(false, null);")
+            except Exception as e:
+                self._log(f"Update check crashed: {e}")
+                error_message = f"Update check failed: {e}"
                 if self.window:
                     self.window.evaluate_js(f'onUpdateError({json.dumps(error_message)})')
-            elif result.get('update_available'):
-                self.latest_release_data = result['release_data']
-                details = {"version": result['version'], "notes": result['notes']}
-                if self.window:
-                    self.window.evaluate_js(f'onUpdateCheckComplete(true, {json.dumps(json.dumps(details))})')
-            else:
-                self._update_updater_ui("El launcher ya está actualizado.", 100)
-                if self.window:
-                    self.window.evaluate_js("onUpdateCheckComplete(false, null);")
 
         update_thread = threading.Thread(target=check_thread_task, daemon=True)
         update_thread.start()
