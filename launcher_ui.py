@@ -988,7 +988,7 @@ HTML_CONTENT = f"""
         let isProgressMinimized = false;
         
         // (ACTUALIZADO) setupState ahora se usa para ambos flujos
-        let setupState = {{ prismPath: null, instancePath: null }};
+        let setupState = {{ prismPath: null, instancePath: null, modpackInstalled: false }};
         
         // (CORREGIDO) Declarar variables aquí, pero asignarlas dentro de DOMContentLoaded
         let domPlayer;
@@ -1341,12 +1341,8 @@ HTML_CONTENT = f"""
             dom.wizardMinimizeBtn.style.display = 'none';
 
             if (screenName === 'play') {{
-                // Determinar el estado del botón JUGAR/DESCARGAR
-                if (setupState.prismPath && setupState.instancePath) {{
-                    dom.playBtn.textContent = "PLAY";
-                }} else {{
-                    dom.playBtn.textContent = "DOWNLOAD";
-                }}
+                // Determinar el estado del botón JUGAR/DESCARGAR/INSTALAR
+                refreshPlayBtnLabel();
                 dom.playBtn.classList.remove('cancel-mode');
             }} else if (screenName === 'initial-setup') {{
                 dom.mainContainer.classList.add('visible');
@@ -1580,7 +1576,21 @@ HTML_CONTENT = f"""
         function forceShowSetupScreen() {{
             openSettingsDrawer();
         }}
-        
+
+        // Refresh play button label from Python (async, updates when resolved)
+        function refreshPlayBtnLabel() {{
+            if (!setupState.prismPath || !setupState.instancePath) {{
+                dom.playBtn.textContent = "DOWNLOAD";
+                return;
+            }}
+            pywebview.api.py_is_modpack_installed().then(installed => {{
+                setupState.modpackInstalled = installed;
+                dom.playBtn.textContent = installed ? "PLAY" : "INSTALL";
+            }}).catch(() => {{
+                dom.playBtn.textContent = setupState.modpackInstalled ? "PLAY" : "INSTALL";
+            }});
+        }}
+
         function returnToPlayScreen() {{
             console.log("Returning to play screen (hiding progress/modal)."); 
             dom.modal.element.style.display = 'none'; 
@@ -1595,15 +1605,9 @@ HTML_CONTENT = f"""
             updateProgress(0, ""); 
             dom.progressTitle.textContent = "Updating...";
             
-            // Dynamic button text based on state
-            if (setupState.prismPath && setupState.instancePath) {{
-                dom.playBtn.textContent = "PLAY";
-            }} else {{
-                dom.playBtn.textContent = "DOWNLOAD";
-            }}
-
             dom.playBtn.classList.remove('cancel-mode');
             dom.playBtn.disabled = false;
+            refreshPlayBtnLabel();
 
             switchScreen('play'); 
         }}
@@ -1915,7 +1919,11 @@ HTML_CONTENT = f"""
                             setupState.prismPath = paths.prism_path;
                             setupState.instancePath = paths.instance_path;
                         }}
-                        return pathsAreValid;
+                        // Check if the actual mod files are present
+                        return pywebview.api.py_is_modpack_installed().then(installed => {{
+                            setupState.modpackInstalled = installed;
+                            return pathsAreValid;
+                        }}).catch(() => pathsAreValid);
                     }});
                 }}).then(pathsAreValid => {{
                     // Load music
@@ -2074,9 +2082,11 @@ HTML_CONTENT = f"""
                         logToConsole("Starting process...");
                         dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancel";
                         updateProgress(0, "Starting...");
-                        setLoadScreen("Updating...", "Checking versions...");
-                        try {{ pywebview.api.py_start_game(); }}
-                        catch(e) {{ showResult(false, "API Error", "Could not call py_start_game: " + e); returnToPlayScreen(); }}
+                        setLoadScreen(setupState.modpackInstalled ? "Updating..." : "Installing...", "Checking versions...");
+                        pywebview.api.py_start_game().catch(e => {{
+                            showResult(false, "API Error", "Could not start game: " + e);
+                            returnToPlayScreen();
+                        }});
                     }}
                 }}
              }});

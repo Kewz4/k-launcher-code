@@ -827,6 +827,18 @@ class ModpackLauncherAPI:
             "instance_path": self.instance_mc_path
         }
 
+    def py_is_modpack_installed(self):
+        """Returns True if the modpack instance has actual .jar mod files installed."""
+        if not self.instance_mc_path or not os.path.isdir(self.instance_mc_path):
+            return False
+        mods_path = os.path.join(self.instance_mc_path, 'mods')
+        if not os.path.isdir(mods_path):
+            return False
+        try:
+            return any(f.lower().endswith('.jar') for f in os.listdir(mods_path))
+        except OSError:
+            return False
+
     # --- Funciones de Utilidad de la GUI ---
 
     def _log(self, message):
@@ -1620,7 +1632,7 @@ class ModpackLauncherAPI:
         self._log("Botón JUGAR presionado.")
         if not self.prism_exe_path or not self.instance_mc_path:
             self._log("Rutas no encontradas, recargando desde config...")
-            if not self.py_load_saved_paths():
+            if not self._migrate_and_load_config():
                 self._log("Error Crítico: Faltan las rutas. Volviendo a configuración.")
                 self._show_result(False, "Error de Configuración", "Las rutas guardadas no son válidas. Por favor, configúralas de nuevo.")
                 if self.window:
