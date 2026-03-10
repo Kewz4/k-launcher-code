@@ -125,6 +125,15 @@ PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/do
 STABLE_DOWNLOAD_DIR = os.path.join(os.getcwd(), ".launcher_downloads")
 DOWNLOAD_STATE_FILE = os.path.join(os.getcwd(), ".download_state.json")
 
+# --- Background video definitions (downloaded locally via yt-dlp + ffmpeg) ---
+VIDEO_DIR = os.path.join(os.getcwd(), "videos")
+VIDEO_DEFINITIONS = [
+    # ss = fast seek before -i, t = output duration
+    {"url": "https://www.youtube.com/watch?v=qUKABOyNocM", "filename": "bg_video1.mp4", "ss": "00:00:06", "t": "00:02:39"},
+    {"url": "https://www.youtube.com/watch?v=2tsCcWbiYgA", "filename": "bg_video2.mp4", "ss": None,        "t": "00:03:54"},
+    {"url": "https://www.youtube.com/watch?v=HUD1ltMD2AM", "filename": "bg_video3.mp4", "ss": None,        "t": "00:02:59"},
+]
+
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
 def get_current_launcher_version(default_version="1.0"):
     """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
@@ -285,6 +294,113 @@ class ModpackLauncherAPI:
         except Exception as e:
             self._log(f"Error discarding download: {e}")
             return False
+
+    # --- Background Video Server ---
+
+    def _start_video_server(self):
+        """Start a simple HTTP server to serve VIDEO_DIR on a random localhost port."""
+        if getattr(self, '_video_server_port', None):
+            return self._video_server_port
+        import http.server
+        import socketserver
+
+        os.makedirs(VIDEO_DIR, exist_ok=True)
+
+        class _Handler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=VIDEO_DIR, **kwargs)
+            def log_message(self, format, *args):
+                pass  # Silence access logs
+
+        # Bind to port 0 to get a free port
+        server = socketserver.TCPServer(("127.0.0.1", 0), _Handler)
+        port = server.server_address[1]
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        self._video_server = server
+        self._video_server_port = port
+        self._log(f"Video HTTP server started on port {port}")
+        return port
+
+    def py_get_background_video_urls(self):
+        """Return localhost URLs for any already-downloaded background videos."""
+        port = self._start_video_server()
+        urls = []
+        for vdef in VIDEO_DEFINITIONS:
+            fpath = os.path.join(VIDEO_DIR, vdef["filename"])
+            if os.path.exists(fpath) and os.path.getsize(fpath) > 0:
+                urls.append(f"http://127.0.0.1:{port}/{vdef['filename']}")
+        return urls
+
+    def py_download_background_videos(self):
+        """Download & trim all background videos using yt-dlp + ffmpeg. Reports progress via JS callbacks."""
+        os.makedirs(VIDEO_DIR, exist_ok=True)
+
+        def _task():
+            total = len(VIDEO_DEFINITIONS)
+            for i, vdef in enumerate(VIDEO_DEFINITIONS):
+                out_path = os.path.join(VIDEO_DIR, vdef["filename"])
+                if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+                    pct = int((i + 1) / total * 100)
+                    if self.window:
+                        self.window.evaluate_js(f'onVideoDownloadProgress({pct}, "{vdef["filename"]} (already exists)")')
+                    continue
+
+                tmp_path = out_path + ".tmp_raw.mp4"
+                try:
+                    # Step 1: Download best video+audio up to 1080p with yt-dlp
+                    if self.window:
+                        self.window.evaluate_js(f'onVideoDownloadProgress({int(i / total * 100)}, "Downloading {vdef[\'filename\']}...")')
+
+                    yt_cmd = [
+                        "yt-dlp",
+                        "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
+                        "--merge-output-format", "mp4",
+                        "-o", tmp_path,
+                        "--no-playlist",
+                        vdef["url"]
+                    ]
+                    result = subprocess.run(yt_cmd, capture_output=True, text=True, timeout=600)
+                    if result.returncode != 0:
+                        raise RuntimeError(f"yt-dlp failed: {result.stderr[-300:]}")
+
+                    # Step 2: Trim with ffmpeg
+                    if self.window:
+                        self.window.evaluate_js(f'onVideoDownloadProgress({int((i + 0.6) / total * 100)}, "Trimming {vdef[\'filename\']}...")')
+
+                    ffmpeg_cmd = ["ffmpeg", "-y"]
+                    if vdef.get("ss"):
+                        ffmpeg_cmd += ["-ss", vdef["ss"]]
+                    ffmpeg_cmd += ["-i", tmp_path, "-t", vdef["t"], "-c", "copy", out_path]
+                    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=120)
+                    if result.returncode != 0:
+                        raise RuntimeError(f"ffmpeg failed: {result.stderr[-300:]}")
+
+                except Exception as e:
+                    self._log(f"Error downloading {vdef['filename']}: {e}")
+                    if self.window:
+                        self.window.evaluate_js(f'onVideoDownloadError("{vdef["filename"]}", {json.dumps(str(e))})')
+                finally:
+                    if os.path.exists(tmp_path):
+                        try:
+                            os.remove(tmp_path)
+                        except Exception:
+                            pass
+
+                pct = int((i + 1) / total * 100)
+                if self.window:
+                    self.window.evaluate_js(f'onVideoDownloadProgress({pct}, "{vdef["filename"]} done")')
+
+            if self.window:
+                port = self._start_video_server()
+                urls = [f"http://127.0.0.1:{port}/{v['filename']}" for v in VIDEO_DEFINITIONS
+                        if os.path.exists(os.path.join(VIDEO_DIR, v['filename'])) and os.path.getsize(os.path.join(VIDEO_DIR, v['filename'])) > 0]
+                urls_json = json.dumps(urls)
+                self.window.evaluate_js(f'onVideoDownloadComplete({urls_json})')
+
+        t = threading.Thread(target=_task, daemon=True)
+        t.start()
+        return True
 
     def py_start_update_check(self):
         """(REFACTORIZADO) Inicia la comprobación de actualizaciones usando el módulo Updater."""
