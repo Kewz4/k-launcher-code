@@ -994,6 +994,89 @@ HTML_CONTENT = f"""
         let domPlayer;
         let dom;
 
+        // --- Background Video Slideshow (outer scope so Python evaluate_js can reach these) ---
+        let bgVideoList = [];
+        let bgVideoIndex = 0;
+        let bgVideoPlaying = false;
+
+        function _randomNextIndex() {{
+            if (bgVideoList.length <= 1) return 0;
+            let next;
+            do {{ next = Math.floor(Math.random() * bgVideoList.length); }}
+            while (next === bgVideoIndex);
+            return next;
+        }}
+
+        function _loadBgVideo(index) {{
+            const vid = dom && dom.bgVideo;
+            if (!vid || bgVideoList.length === 0) return;
+            vid.src = bgVideoList[index];
+            vid.load();
+            vid.play().catch(() => {{}});
+        }}
+
+        // --- Gate: both update-check AND first video must be ready before advancing ---
+        let _updateCheckDone = false;
+        let _firstVideoReady = false;
+        let _pendingStartMainApp = null;
+
+        function tryAdvanceToMain() {{
+            if (_updateCheckDone && _firstVideoReady && _pendingStartMainApp) {{
+                const fn = _pendingStartMainApp;
+                _pendingStartMainApp = null;
+                fn();
+            }}
+        }}
+
+        // Called by Python during a video download — updates progress bar + status line.
+        function onBgVideoProgress(videoIdx, totalVideos, pct) {{
+            if (dom && dom.updater.title) {{
+                dom.updater.title.textContent = `Downloading Launcher Assets (${{videoIdx}}/${{totalVideos}})...`;
+            }}
+            const overall = Math.round(((videoIdx - 1) / totalVideos + pct / 100 / totalVideos) * 100);
+            updateUpdaterProgress(overall);
+        }}
+
+        // Called by Python at each LFS resolution step with a stage label and detail string.
+        function onBgVideoStatus(videoIdx, totalVideos, stage, detail) {{
+            if (dom && dom.updater.title) {{
+                dom.updater.title.textContent = `${{stage}} (${{videoIdx}}/${{totalVideos}})...`;
+            }}
+            if (dom && dom.updater.console) {{
+                let line = dom.updater.console.querySelector('p[data-bg-progress]');
+                if (!line) {{
+                    line = document.createElement('p');
+                    line.setAttribute('data-bg-progress', '1');
+                    dom.updater.console.appendChild(line);
+                }}
+                line.textContent = detail ? `${{stage}}: ${{detail}}` : stage;
+                dom.updater.console.scrollTop = dom.updater.console.scrollHeight;
+            }}
+        }}
+
+        // Called by Python each time a video becomes ready (downloaded or already cached).
+        function onBgVideoReady(url) {{
+            bgVideoList.push(url);
+            if (!_firstVideoReady) {{
+                _firstVideoReady = true;
+                bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
+                _loadBgVideo(bgVideoIndex);
+                tryAdvanceToMain();
+            }}
+        }}
+
+        // Called by Python if the download fails for the first video.
+        function onBgVideoError(msg) {{
+            console.warn("Background video error:", msg);
+            if (!_firstVideoReady) {{
+                _firstVideoReady = true;
+                if (_updateCheckDone && dom && dom.updater) {{
+                    logToUpdaterConsole("Warning: Could not download background video: " + msg);
+                }}
+                tryAdvanceToMain();
+            }}
+        }}
+
         // --- Lógica del Panel de Depuración ---
         function toggleDebugPanel(visible) {{
             if (dom && dom.debugPanel) {{
@@ -1790,93 +1873,7 @@ HTML_CONTENT = f"""
                 bgVideo: document.getElementById('bg-video')
             }};
 
-            // --- Background Video Slideshow ---
-            let bgVideoList = [];
-            let bgVideoIndex = 0;
-            let bgVideoPlaying = false;
-
-            function _randomNextIndex() {{
-                if (bgVideoList.length <= 1) return 0;
-                let next;
-                do {{ next = Math.floor(Math.random() * bgVideoList.length); }}
-                while (next === bgVideoIndex);
-                return next;
-            }}
-
-            // Gate: both update check AND first video must be ready before advancing
-            let _updateCheckDone = false;
-            let _firstVideoReady = false;
-            let _pendingStartMainApp = null; // stores the bound startMainApp call
-
-            function tryAdvanceToMain() {{
-                if (_updateCheckDone && _firstVideoReady && _pendingStartMainApp) {{
-                    const fn = _pendingStartMainApp;
-                    _pendingStartMainApp = null;
-                    fn();
-                }}
-            }}
-
-            // Called by Python during a video download — updates progress bar only.
-            // Console detail is handled by onBgVideoStatus.
-            function onBgVideoProgress(videoIdx, totalVideos, pct) {{
-                if (dom && dom.updater.title) {{
-                    dom.updater.title.textContent = `Downloading Launcher Assets (${{videoIdx}}/${{totalVideos}})...`;
-                }}
-                const overall = Math.round(((videoIdx - 1) / totalVideos + pct / 100 / totalVideos) * 100);
-                updateUpdaterProgress(overall);
-            }}
-
-            // Called by Python at each LFS resolution step with a stage label and detail string
-            function onBgVideoStatus(videoIdx, totalVideos, stage, detail) {{
-                if (dom && dom.updater.title) {{
-                    dom.updater.title.textContent = `${{stage}} (${{videoIdx}}/${{totalVideos}})...`;
-                }}
-                if (dom && dom.updater.console) {{
-                    let line = dom.updater.console.querySelector('p[data-bg-progress]');
-                    if (!line) {{
-                        line = document.createElement('p');
-                        line.setAttribute('data-bg-progress', '1');
-                        dom.updater.console.appendChild(line);
-                    }}
-                    line.textContent = detail ? `${{stage}}: ${{detail}}` : stage;
-                    dom.updater.console.scrollTop = dom.updater.console.scrollHeight;
-                }}
-            }}
-
-            // Called by Python each time a video becomes ready (downloaded or already cached)
-            function onBgVideoReady(url) {{
-                bgVideoList.push(url);
-                if (!_firstVideoReady) {{
-                    _firstVideoReady = true;
-                    // Pick a random starting video and begin playback immediately
-                    bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
-                    _loadBgVideo(bgVideoIndex);
-                    tryAdvanceToMain();
-                }}
-            }}
-
-            // Called by Python if yt-dlp/ffmpeg is missing or download fails for first video
-            function onBgVideoError(msg) {{
-                console.warn("Background video error:", msg);
-                // Don't leave the user stuck — unblock the gate and show a warning
-                if (!_firstVideoReady) {{
-                    _firstVideoReady = true;
-                    if (_updateCheckDone) {{
-                        if (dom.updater) {{
-                            logToUpdaterConsole("Warning: Could not download background video: " + msg);
-                        }}
-                    }}
-                    tryAdvanceToMain();
-                }}
-            }}
-
-            function _loadBgVideo(index) {{
-                const vid = dom.bgVideo;
-                if (!vid || bgVideoList.length === 0) return;
-                vid.src = bgVideoList[index];
-                vid.load();
-                vid.play().catch(() => {{}});
-            }}
+            // --- Background Video event listeners (video list + gate managed at outer scope) ---
 
             if (dom.bgVideo) {{
                 dom.bgVideo.addEventListener('ended', () => {{
