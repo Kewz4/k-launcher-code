@@ -1828,6 +1828,8 @@ HTML_CONTENT = f"""
                             const mb = (info.bytes_downloaded / 1048576).toFixed(1);
                             document.getElementById('resume-modal-details').textContent =
                                 `"${{info.filename}}" — ${{mb}} MB already downloaded. Resume where you left off?`;
+                            // MUST dismiss updater screen first before showing resume modal
+                            switchScreen(pathsAreValid ? 'play' : 'initial-setup');
                             dom.resumeModal.classList.add('visible');
                             // Stash info for buttons
                             dom.resumeModal._interruptedInfo = info;
