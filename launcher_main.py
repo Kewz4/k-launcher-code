@@ -328,14 +328,21 @@ class ModpackLauncherAPI:
         """
         Called on startup. For each video:
           - If already cached, immediately fires onBgVideoReady(url) in JS.
-          - Otherwise downloads it and fires onBgVideoReady(url).
+          - Otherwise: downloads the source file, compresses it to 1080p H.264 CRF 28
+            using the ffmpeg binary bundled inside imageio-ffmpeg (no install needed),
+            caches the small result, then fires onBgVideoReady(url).
         All runs in a background thread so it never blocks the UI.
-
-        Videos are pre-compressed by the CI workflow and served from GitHub Releases.
         All evaluate_js calls are guarded with typeof checks so they are safe to call
         before the JS page has fully initialised.
         """
         import urllib.request
+        import subprocess
+
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            ffmpeg_exe = None
 
         os.makedirs(VIDEO_DIR, exist_ok=True)
         port = self._start_video_server()
@@ -349,6 +356,24 @@ class ModpackLauncherAPI:
                     self.window.evaluate_js(expr)
             except Exception:
                 pass
+
+        def _compress(src, dst):
+            """Re-encode to 1080p H.264 CRF 28, no audio. Returns True on success."""
+            try:
+                result = subprocess.run(
+                    [
+                        ffmpeg_exe, "-y", "-i", src,
+                        "-c:v", "libx264", "-crf", "28", "-preset", "fast",
+                        "-vf", "scale='min(1920,iw)':-2",
+                        "-movflags", "+faststart", "-an",
+                        dst,
+                    ],
+                    capture_output=True, timeout=600,
+                )
+                return result.returncode == 0 and os.path.getsize(dst) > 0
+            except Exception as e:
+                self._log(f"Compression error: {e}")
+                return False
 
         def _task():
             for video_idx, vdef in enumerate(VIDEO_DEFINITIONS, start=1):
@@ -390,18 +415,35 @@ class ModpackLauncherAPI:
                     if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
                         raise RuntimeError("Download produced an empty file")
 
-                    os.replace(tmp_path, out_path)
+                    # Compress using bundled ffmpeg; fall back to raw file if unavailable
+                    if ffmpeg_exe:
+                        self._log(f"Compressing {vdef['filename']}...")
+                        comp_tmp = out_path + ".comp.tmp"
+                        if _compress(tmp_path, comp_tmp):
+                            before_mb = os.path.getsize(tmp_path) / 1024 / 1024
+                            after_mb  = os.path.getsize(comp_tmp)  / 1024 / 1024
+                            self._log(f"Compressed {vdef['filename']}: {before_mb:.0f}MB -> {after_mb:.0f}MB")
+                            os.remove(tmp_path)
+                            os.replace(comp_tmp, out_path)
+                        else:
+                            if os.path.exists(comp_tmp):
+                                os.remove(comp_tmp)
+                            os.replace(tmp_path, out_path)
+                    else:
+                        os.replace(tmp_path, out_path)
+
                     self._log(f"Background video ready: {vdef['filename']}")
                     _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
 
                 except Exception as e:
                     self._log(f"Error downloading {vdef['filename']}: {e}")
                     _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps(str(e))})')
-                    if os.path.exists(tmp_path):
-                        try:
-                            os.remove(tmp_path)
-                        except Exception:
-                            pass
+                    for p in (tmp_path, out_path + ".comp.tmp"):
+                        if os.path.exists(p):
+                            try:
+                                os.remove(p)
+                            except Exception:
+                                pass
 
         t = threading.Thread(target=_task, daemon=True)
         t.start()

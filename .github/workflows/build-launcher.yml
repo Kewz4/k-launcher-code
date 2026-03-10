@@ -27,9 +27,11 @@ jobs:
 
     - name: Build the application
       run: |
+        python -c "import imageio_ffmpeg, os, shutil; src=imageio_ffmpeg.get_ffmpeg_exe(); shutil.copy(src, 'ffmpeg.exe')"
         pyinstaller --onefile --windowed --name "Kewz Launcher" --icon "Kewz Launcher.ico" `
           --add-data "launcher_ui.py;." `
           --add-data "music_player.py;." `
+          --add-binary "ffmpeg.exe;imageio_ffmpeg/binaries/" `
           --hidden-import="webview.platforms.winforms" `
           --hidden-import="webview.platforms.edgechromium" `
           --hidden-import="win32gui" `
@@ -37,6 +39,7 @@ jobs:
           --hidden-import="psutil" `
           --hidden-import="comtypes" `
           --hidden-import="requests" `
+          --hidden-import="imageio_ffmpeg" `
           launcher_main.py
 
     - name: Upload Artifact
