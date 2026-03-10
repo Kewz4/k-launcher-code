@@ -3,3 +3,5 @@ psutil
 requests
 pywin32
 Pillow
+yt-dlp
+imageio-ffmpeg

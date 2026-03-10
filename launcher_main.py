@@ -326,32 +326,17 @@ class ModpackLauncherAPI:
         """
         Called on startup. For each video:
           - If already downloaded, immediately fires onBgVideoReady(url) in JS.
-          - Otherwise downloads + trims it, then fires onBgVideoReady(url).
+          - Otherwise downloads + trims it using the bundled yt-dlp and
+            imageio-ffmpeg libraries (no external executables required),
+            then fires onBgVideoReady(url).
         All runs in a background thread so it never blocks the UI.
         """
+        import yt_dlp
+        import imageio_ffmpeg
+
         os.makedirs(VIDEO_DIR, exist_ok=True)
         port = self._start_video_server()
-
-        # Resolve yt-dlp and ffmpeg — check next to the exe first (for frozen builds),
-        # then fall back to whatever is on PATH.
-        def _find_tool(name):
-            candidates = []
-            if getattr(sys, 'frozen', False):
-                exe_dir = os.path.dirname(sys.executable)
-                candidates += [
-                    os.path.join(exe_dir, name + ".exe"),
-                    os.path.join(exe_dir, name),
-                ]
-            found = shutil.which(name)
-            if found:
-                candidates.append(found)
-            for c in candidates:
-                if os.path.isfile(c):
-                    return c
-            return None
-
-        ytdlp = _find_tool("yt-dlp")
-        ffmpeg = _find_tool("ffmpeg")
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
         def _task():
             for vdef in VIDEO_DEFINITIONS:
@@ -364,35 +349,28 @@ class ModpackLauncherAPI:
                         self.window.evaluate_js(f'onBgVideoReady({json.dumps(url)})')
                     continue
 
-                if not ytdlp:
-                    self._log("yt-dlp not found. Place yt-dlp.exe next to the launcher or install it.")
-                    if self.window:
-                        self.window.evaluate_js('onBgVideoError("yt-dlp not found. Place yt-dlp.exe next to the launcher.")')
-                    return
-                if not ffmpeg:
-                    self._log("ffmpeg not found. Place ffmpeg.exe next to the launcher or install it.")
-                    if self.window:
-                        self.window.evaluate_js('onBgVideoError("ffmpeg not found. Place ffmpeg.exe next to the launcher.")')
-                    return
-
-                # Download with yt-dlp
                 tmp_path = out_path + ".tmp_raw.mp4"
                 try:
                     self._log(f"Downloading background video: {vdef['filename']}")
-                    yt_cmd = [
-                        ytdlp,
-                        "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
-                        "--merge-output-format", "mp4",
-                        "-o", tmp_path,
-                        "--no-playlist",
-                        vdef["url"]
-                    ]
-                    result = subprocess.run(yt_cmd, capture_output=True, text=True, timeout=600)
-                    if result.returncode != 0:
-                        raise RuntimeError(f"yt-dlp failed: {result.stderr[-300:]}")
 
-                    # Trim with ffmpeg
-                    ffmpeg_cmd = [ffmpeg, "-y"]
+                    # Download with the yt-dlp Python API (no external exe needed)
+                    ydl_opts = {
+                        'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
+                        'merge_output_format': 'mp4',
+                        'outtmpl': tmp_path,
+                        'noplaylist': True,
+                        'quiet': True,
+                        'no_warnings': True,
+                        'ffmpeg_location': os.path.dirname(ffmpeg_exe),
+                    }
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([vdef["url"]])
+
+                    if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
+                        raise RuntimeError("yt-dlp produced no output file")
+
+                    # Trim with the bundled ffmpeg from imageio-ffmpeg
+                    ffmpeg_cmd = [ffmpeg_exe, "-y"]
                     if vdef.get("ss"):
                         ffmpeg_cmd += ["-ss", vdef["ss"]]
                     ffmpeg_cmd += ["-i", tmp_path, "-t", vdef["t"], "-c", "copy", out_path]
