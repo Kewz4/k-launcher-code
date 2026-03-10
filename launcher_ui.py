@@ -1251,6 +1251,7 @@ HTML_CONTENT = f"""
             const showPlayAsMainScreen = (screenName !== 'initial-setup');
             dom.screens.play.style.display = 'flex';
             dom.screens.play.classList.toggle('active', showPlayAsMainScreen);
+            resumeBgVideoIfReady();
 
             // wizardMinimizeBtn shown/hidden by showWizardStep
             dom.wizardMinimizeBtn.style.display = 'none';
@@ -1825,6 +1826,15 @@ HTML_CONTENT = f"""
                 }});
             }}
 
+            // Retry bg video play when the play screen becomes visible
+            // (video may have been loaded while screen was display:none)
+            function resumeBgVideoIfReady() {{
+                const vid = dom.bgVideo;
+                if (vid && bgVideoList.length > 0 && vid.paused && vid.readyState >= 2) {{
+                    vid.play().catch(() => {{}});
+                }}
+            }}
+
             // Main app startup (after update check)
             function startMainApp() {{
                 console.log("Starting main application...");
@@ -1841,9 +1851,6 @@ HTML_CONTENT = f"""
                         return pathsAreValid;
                     }});
                 }}).then(pathsAreValid => {{
-                    // Start background video pipeline (downloads if needed, plays as soon as first is ready)
-                    pywebview.api.py_ensure_background_videos().catch(() => {{}});
-
                     // Load music
                     pywebview.api.py_get_playlist().then(p => {{
                         if (p && p.length > 0) {{
@@ -1910,6 +1917,11 @@ HTML_CONTENT = f"""
                 console.log("DOM and API ready! Starting update check...");
                 window.quitting = false;
                 window.startMainApp = startMainApp; // Expose globally for Python
+
+                // Kick off video downloads immediately in parallel with the update check
+                // so the first video is ready (or nearly ready) by the time the main screen loads
+                try {{ pywebview.api.py_ensure_background_videos().catch(() => {{}}); }}
+                catch(e) {{ console.warn("Could not start background video download:", e); }}
 
                 try {{ pywebview.api.py_start_update_check(); }}
                 catch(e) {{ onUpdateError(`Backend communication failed: ${{e}}`); }}
