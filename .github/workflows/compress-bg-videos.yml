@@ -30,7 +30,7 @@ jobs:
               "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg${i}_cob.mp4" \
               -o "bg-source/video_bg${i}_cob.mp4"
             SIZE=$(du -sh "bg-source/video_bg${i}_cob.mp4" | cut -f1)
-            echo "  → Downloaded ${SIZE}"
+            echo "  -> Downloaded ${SIZE}"
           done
 
       - name: Compress videos (1080p H.264 CRF 28, no audio)
@@ -51,12 +51,12 @@ jobs:
               "$OUTPUT"
             BEFORE=$(du -sh "$INPUT"  | cut -f1)
             AFTER=$(du -sh "$OUTPUT" | cut -f1)
-            echo "  → ${BEFORE} → ${AFTER}"
+            echo "  -> ${BEFORE} -> ${AFTER}"
           done
 
       - name: Upload compressed videos to GitHub Release (tag: bg-videos)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
         run: |
           # Delete the old release/tag if it exists so we can recreate it fresh
           gh release delete bg-videos --yes 2>/dev/null || true
