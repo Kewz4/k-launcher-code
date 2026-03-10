@@ -1805,6 +1805,14 @@ HTML_CONTENT = f"""
             let bgVideoIndex = 0;
             let bgVideoPlaying = false;
 
+            function _randomNextIndex() {{
+                if (bgVideoList.length <= 1) return 0;
+                let next;
+                do {{ next = Math.floor(Math.random() * bgVideoList.length); }}
+                while (next === bgVideoIndex);
+                return next;
+            }}
+
             // Gate: both update check AND first video must be ready before advancing
             let _updateCheckDone = false;
             let _firstVideoReady = false;
@@ -1844,6 +1852,9 @@ HTML_CONTENT = f"""
                 bgVideoList.push(url);
                 if (!_firstVideoReady) {{
                     _firstVideoReady = true;
+                    // Pick a random starting video and begin playback immediately
+                    bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
+                    _loadBgVideo(bgVideoIndex);
                     tryAdvanceToMain();
                 }}
             }}
@@ -1874,12 +1885,12 @@ HTML_CONTENT = f"""
             if (dom.bgVideo) {{
                 dom.bgVideo.addEventListener('ended', () => {{
                     if (bgVideoList.length === 0) return;
-                    bgVideoIndex = (bgVideoIndex + 1) % bgVideoList.length;
+                    bgVideoIndex = _randomNextIndex();
                     _loadBgVideo(bgVideoIndex);
                 }});
                 dom.bgVideo.addEventListener('error', () => {{
                     if (bgVideoList.length === 0) return;
-                    bgVideoIndex = (bgVideoIndex + 1) % bgVideoList.length;
+                    bgVideoIndex = _randomNextIndex();
                     setTimeout(() => _loadBgVideo(bgVideoIndex), 500);
                 }});
             }}
@@ -1888,7 +1899,12 @@ HTML_CONTENT = f"""
             // (video may have been loaded while screen was display:none)
             function resumeBgVideoIfReady() {{
                 const vid = dom.bgVideo;
-                if (vid && bgVideoList.length > 0 && vid.paused && vid.readyState >= 2) {{
+                if (!vid || bgVideoList.length === 0) return;
+                if (!vid.src || vid.src === window.location.href) {{
+                    // No video loaded yet — pick a random one and start it
+                    bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
+                    _loadBgVideo(bgVideoIndex);
+                }} else if (vid.paused && vid.readyState >= 2) {{
                     vid.play().catch(() => {{}});
                 }}
             }}

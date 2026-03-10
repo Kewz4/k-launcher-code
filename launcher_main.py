@@ -131,9 +131,9 @@ DOWNLOAD_STATE_FILE = os.path.join(os.getcwd(), ".download_state.json")
 # (GitHub Release assets, R2, S3, etc. all work fine).
 VIDEO_DIR = os.path.join(os.getcwd(), "videos")
 VIDEO_DEFINITIONS = [
-    {"url": "PLACEHOLDER_URL_bg_video1", "filename": "bg_video1.mp4"},
-    {"url": "PLACEHOLDER_URL_bg_video2", "filename": "bg_video2.mp4"},
-    {"url": "PLACEHOLDER_URL_bg_video3", "filename": "bg_video3.mp4"},
+    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg1_cob.mp4", "filename": "video_bg1_cob.mp4"},
+    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg2_cob.mp4", "filename": "video_bg2_cob.mp4"},
+    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg3_cob.mp4", "filename": "video_bg3_cob.mp4"},
 ]
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
@@ -327,20 +327,58 @@ class ModpackLauncherAPI:
     def py_ensure_background_videos(self):
         """
         Called on startup. For each video:
-          - If already downloaded, immediately fires onBgVideoReady(url) in JS.
-          - Otherwise downloads it via a plain HTTP request (no yt-dlp/ffmpeg)
-            and then fires onBgVideoReady(url).
+          - If already downloaded/compressed, immediately fires onBgVideoReady(url) in JS.
+          - Otherwise downloads it via a plain HTTP request, then compresses it
+            with ffmpeg (if available) to reduce storage size, then fires onBgVideoReady(url).
         All runs in a background thread so it never blocks the UI.
 
-        Videos must be pre-trimmed .mp4 files hosted at direct download URLs
-        (e.g. GitHub Release assets).  Update VIDEO_DEFINITIONS with the URLs.
+        Videos are hosted as raw .mp4 files on GitHub. After the first download they
+        are stored locally as compressed copies (~15-30 MB each instead of 150 MB+).
         """
         import urllib.request
+        import shutil
 
         os.makedirs(VIDEO_DIR, exist_ok=True)
         port = self._start_video_server()
         video_total = len(VIDEO_DEFINITIONS)
         CHUNK = 1024 * 256  # 256 KB read chunks
+
+        # Detect ffmpeg once for all videos
+        ffmpeg_exe = shutil.which("ffmpeg")
+        if ffmpeg_exe:
+            self._log("ffmpeg found — videos will be compressed after download")
+        else:
+            self._log("ffmpeg not found — videos will be stored as-is")
+
+        def _compress_video(src_path, dst_path):
+            """Re-encode to H.264 720p at CRF 28. Returns True on success."""
+            try:
+                import subprocess
+                cmd = [
+                    ffmpeg_exe, "-y",
+                    "-i", src_path,
+                    "-vf", "scale=1280:-2",       # 720p, keep aspect ratio
+                    "-c:v", "libx264",
+                    "-crf", "28",                  # quality (higher = smaller, less quality)
+                    "-preset", "fast",
+                    "-an",                          # strip audio (background videos are silent)
+                    dst_path
+                ]
+                result = subprocess.run(cmd, capture_output=True, timeout=300)
+                if result.returncode == 0 and os.path.getsize(dst_path) > 0:
+                    original_mb = os.path.getsize(src_path) / 1024 / 1024
+                    compressed_mb = os.path.getsize(dst_path) / 1024 / 1024
+                    self._log(
+                        f"Compressed {os.path.basename(src_path)}: "
+                        f"{original_mb:.1f} MB → {compressed_mb:.1f} MB"
+                    )
+                    return True
+                else:
+                    self._log(f"ffmpeg compression failed (rc={result.returncode}), using original")
+                    return False
+            except Exception as e:
+                self._log(f"ffmpeg error: {e}, using original")
+                return False
 
         def _task():
             for video_idx, vdef in enumerate(VIDEO_DEFINITIONS, start=1):
@@ -366,7 +404,7 @@ class ModpackLauncherAPI:
                 try:
                     self._log(f"Downloading background video: {vdef['filename']}")
                     req = urllib.request.Request(src_url, headers={"User-Agent": "KewzLauncher/1.0"})
-                    with urllib.request.urlopen(req, timeout=60) as resp:
+                    with urllib.request.urlopen(req, timeout=120) as resp:
                         total_b = int(resp.headers.get("Content-Length") or 0)
                         downloaded = 0
                         last_pct = -1
@@ -388,7 +426,20 @@ class ModpackLauncherAPI:
                     if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
                         raise RuntimeError("Download produced an empty file")
 
-                    os.replace(tmp_path, out_path)
+                    # Compress with ffmpeg if available, otherwise use the raw download
+                    if ffmpeg_exe:
+                        compressed_tmp = out_path + ".compressed.tmp"
+                        if _compress_video(tmp_path, compressed_tmp):
+                            os.remove(tmp_path)
+                            os.replace(compressed_tmp, out_path)
+                        else:
+                            # Compression failed — fall back to raw download
+                            if os.path.exists(compressed_tmp):
+                                os.remove(compressed_tmp)
+                            os.replace(tmp_path, out_path)
+                    else:
+                        os.replace(tmp_path, out_path)
+
                     self._log(f"Background video ready: {vdef['filename']}")
                     if self.window:
                         self.window.evaluate_js(f'onBgVideoReady({json.dumps(serve_url)})')
@@ -397,11 +448,12 @@ class ModpackLauncherAPI:
                     self._log(f"Error downloading {vdef['filename']}: {e}")
                     if self.window:
                         self.window.evaluate_js(f'onBgVideoError({json.dumps(str(e))})')
-                    if os.path.exists(tmp_path):
-                        try:
-                            os.remove(tmp_path)
-                        except Exception:
-                            pass
+                    for p in (tmp_path, out_path + ".compressed.tmp"):
+                        if os.path.exists(p):
+                            try:
+                                os.remove(p)
+                            except Exception:
+                                pass
 
         t = threading.Thread(target=_task, daemon=True)
         t.start()
