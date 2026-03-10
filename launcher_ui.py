@@ -308,15 +308,22 @@ HTML_CONTENT = f"""
         #screen-progress.active {{ display: flex; flex-direction: column; }}
         .progress-content-wrapper {{ position: relative; width: 100%; max-width: 900px; background-color: var(--color-bg-light); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 24px 32px; border: 1px solid var(--color-bg-lighter); }}
         
-        #minimize-progress-btn {{
-            position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
-            background-color: var(--color-bg-lighter); border: none; border-radius: 50%;
-            color: var(--color-text-muted); font-size: 16px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.2s ease; z-index: 10;
-        }}
+        #minimize-progress-btn {{ position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; background-color: var(--color-bg-lighter); border: none; border-radius: 50%; color: var(--color-text-muted); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; z-index: 10; }}
         #minimize-progress-btn:hover {{ background-color: #3a3a3a; color: var(--color-text); transform: scale(1.1); }}
         #minimize-progress-btn i {{ font-weight: 900; }}
+
+        /* --- Buttons overlaid on main container (settings close, wizard minimize) --- */
+        #settings-close-btn,
+        #wizard-minimize-btn {{
+            position: absolute; top: 12px; right: 12px;
+            width: 32px; height: 32px;
+            background-color: var(--color-bg-lighter); border: none; border-radius: 50%;
+            color: var(--color-text-muted); font-size: 14px; cursor: pointer;
+            display: none; align-items: center; justify-content: center;
+            transition: all 0.2s ease; z-index: 10;
+        }}
+        #settings-close-btn:hover,
+        #wizard-minimize-btn:hover {{ background-color: #3a3a3a; color: var(--color-text); transform: scale(1.1); }}
 
         #progress-title {{ text-align: center; font-weight: 500; font-size: 20px; margin-bottom: 15px; color: var(--color-text); }}
         .progress-columns {{ display: flex; gap: 16px; margin-top: 16px; }}
@@ -552,6 +559,10 @@ HTML_CONTENT = f"""
 
     <!-- Contenedor para Setup / Settings -->
     <div class="container" id="main-container">
+
+        <!-- Overlay buttons (shown conditionally) -->
+        <button id="settings-close-btn" title="Close"><i class="fas fa-times"></i></button>
+        <button id="wizard-minimize-btn" title="Minimize"><i class="fas fa-minus"></i></button>
 
         <!-- (NUEVO) Asistente de Configuración Inicial -->
         <div class="screen" id="screen-initial-setup">
@@ -983,6 +994,10 @@ HTML_CONTENT = f"""
             dom.screens.play.style.display = 'flex';
             dom.screens.play.classList.toggle('active', showPlayAsMainScreen);
 
+            // Toggle overlay container buttons
+            dom.settingsCloseBtn.style.display = (screenName === 'settings') ? 'flex' : 'none';
+            dom.wizardMinimizeBtn.style.display = 'none'; // showWizardStep controls this
+
             if (screenName === 'play') {{
                 // Determinar el estado del botón JUGAR/DESCARGAR
                 if (setupState.prismPath && setupState.instancePath) {{
@@ -1310,6 +1325,8 @@ HTML_CONTENT = f"""
                     step.classList.remove('active');
                 }}
             }});
+            // Show minimize button only during active download/install
+            dom.wizardMinimizeBtn.style.display = (stepName === 'install-progress') ? 'flex' : 'none';
             // Resetear consola y progreso al mostrar un paso de instalación
             if (stepName === 'install-progress') {{
                 dom.wizard.console.innerHTML = '';
@@ -1445,6 +1462,7 @@ HTML_CONTENT = f"""
                 playBtn: document.getElementById('play-btn'), menuBtn: document.getElementById('menu-btn'), sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'), panelSettingsBtn: document.getElementById('panel-settings-btn'), panelDebugBtn: document.getElementById('panel-debug-btn'), panelQuitBtn: document.getElementById('panel-quit-btn'), cancelBtn: document.getElementById('cancel-btn'), progressTitle: document.getElementById('progress-title'), progressBar: document.getElementById('progress-fill'), progressLabel: document.getElementById('progress-label'), console: document.getElementById('console'), scrollBottomBtn: document.getElementById('scroll-bottom-btn'), changelogContent: document.getElementById('changelog-content'),
                 modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
                 minimizeProgressBtn: document.getElementById('minimize-progress-btn'), minimizedWidget: document.getElementById('minimized-progress-widget'), minimizedProgressLabel: document.getElementById('minimized-progress-label'), minimizedProgressPercent: document.getElementById('minimized-progress-percent'), minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill'),
+                settingsCloseBtn: document.getElementById('settings-close-btn'), wizardMinimizeBtn: document.getElementById('wizard-minimize-btn'),
                 debugPanel: document.getElementById('debug-panel'), debugCloseStatus: document.getElementById('debug-close-status'), launcherVersion: document.getElementById('launcher-version')
             }};
 
@@ -1617,8 +1635,26 @@ HTML_CONTENT = f"""
              dom.minimizedWidget.addEventListener('click', () => {{
                  isProgressMinimized = false;
                  dom.minimizedWidget.style.display = 'none';
-                 dom.screens.progress.style.display = 'flex';
+                 if (dom.screens.initialSetup.classList.contains('active')) {{
+                     dom.mainContainer.classList.add('visible');
+                 }} else {{
+                     dom.screens.progress.style.display = 'flex';
+                 }}
              }});
+
+            // Settings close button
+            dom.settingsCloseBtn.addEventListener('click', () => switchScreen('play'));
+
+            // Wizard minimize button
+            dom.wizardMinimizeBtn.addEventListener('click', () => {{
+                isProgressMinimized = true;
+                const currentWidth = dom.wizard.progressBar.style.width;
+                dom.minimizedProgressBarFill.style.transition = 'none';
+                dom.minimizedProgressBarFill.style.width = currentWidth || '0%';
+                setTimeout(() => {{ dom.minimizedProgressBarFill.style.transition = 'width 0.3s ease'; }}, 50);
+                dom.mainContainer.classList.remove('visible');
+                dom.minimizedWidget.style.display = 'flex';
+            }});
 
             // Modal & Music Player Listeners
             dom.modal.closeBtn.addEventListener('click', returnToPlayScreen);
