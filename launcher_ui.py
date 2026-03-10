@@ -1816,7 +1816,7 @@ HTML_CONTENT = f"""
                 }}
             }}
 
-            // Called by Python during a video download with live progress (throttled to ~5% steps)
+            // Called by Python during a video download with live progress
             function onBgVideoProgress(videoIdx, totalVideos, pct) {{
                 if (dom && dom.updater.title) {{
                     dom.updater.title.textContent = `Downloading Launcher Assets (${{videoIdx}}/${{totalVideos}})...`;
@@ -1824,7 +1824,6 @@ HTML_CONTENT = f"""
                 // Map this video's progress onto its share of the 0-100 bar
                 const overall = Math.round(((videoIdx - 1) / totalVideos + pct / 100 / totalVideos) * 100);
                 updateUpdaterProgress(overall);
-                // Keep a single updating line in the console rather than spamming new ones
                 if (dom && dom.updater.console) {{
                     let line = dom.updater.console.querySelector('p[data-bg-progress]');
                     if (!line) {{
@@ -1833,6 +1832,23 @@ HTML_CONTENT = f"""
                         dom.updater.console.appendChild(line);
                     }}
                     line.textContent = `Downloading video ${{videoIdx}}/${{totalVideos}}: ${{pct}}%`;
+                    dom.updater.console.scrollTop = dom.updater.console.scrollHeight;
+                }}
+            }}
+
+            // Called by Python at each LFS resolution step with a stage label and detail string
+            function onBgVideoStatus(videoIdx, totalVideos, stage, detail) {{
+                if (dom && dom.updater.title) {{
+                    dom.updater.title.textContent = `${{stage}} (${{videoIdx}}/${{totalVideos}})...`;
+                }}
+                if (dom && dom.updater.console) {{
+                    let line = dom.updater.console.querySelector('p[data-bg-progress]');
+                    if (!line) {{
+                        line = document.createElement('p');
+                        line.setAttribute('data-bg-progress', '1');
+                        dom.updater.console.appendChild(line);
+                    }}
+                    line.textContent = detail ? `${{stage}}: ${{detail}}` : stage;
                     dom.updater.console.scrollTop = dom.updater.console.scrollHeight;
                 }}
             }}

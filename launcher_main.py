@@ -485,15 +485,28 @@ class ModpackLauncherAPI:
                         header = _f.read(256)
                     if header.lstrip().startswith(LFS_POINTER_PREFIX):
                         # Transparently resolve the LFS pointer → real CDN URL and re-download
-                        self._log(f"{vdef['filename']} is a Git LFS pointer — resolving via LFS batch API...")
+                        def _lfs_status(stage, detail=""):
+                            self._log(f"[LFS] {stage}{': ' + detail if detail else ''}")
+                            _js(
+                                f'typeof onBgVideoStatus==="function"&&'
+                                f'onBgVideoStatus({video_idx},{video_total},'
+                                f'{json.dumps(stage)},{json.dumps(detail)})'
+                            )
+
+                        _lfs_status("Detected Git LFS pointer", vdef['filename'])
                         with open(tmp_path, 'rb') as _pf:
                             pointer_bytes = _pf.read()
                         os.remove(tmp_path)
+
+                        _lfs_status("Contacting LFS batch API", "getting real download URL...")
                         lfs_url = _resolve_lfs_url(pointer_bytes, src_url)
-                        self._log(f"LFS resolved, downloading actual content...")
+                        _lfs_status("LFS URL resolved", "starting download")
+
                         lfs_req = urllib.request.Request(lfs_url, headers={"User-Agent": "KewzLauncher/1.0"})
                         with urllib.request.urlopen(lfs_req, timeout=300) as lfs_resp:
                             total_b = int(lfs_resp.headers.get("Content-Length") or 0)
+                            total_mb = f"{total_b / 1024 / 1024:.1f} MB" if total_b else "unknown size"
+                            _lfs_status("Downloading LFS content", total_mb)
                             downloaded = 0
                             last_pct = -1
                             with open(tmp_path, "wb") as f:
@@ -503,14 +516,17 @@ class ModpackLauncherAPI:
                                         break
                                     f.write(chunk)
                                     downloaded += len(chunk)
-                                    if total_b > 0:
-                                        pct = int(downloaded / total_b * 100)
-                                        if pct - last_pct >= 5:
-                                            last_pct = pct
-                                            _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
+                                    pct = int(downloaded / total_b * 100) if total_b > 0 else 0
+                                    if pct - last_pct >= 2:
+                                        last_pct = pct
+                                        done_mb = downloaded / 1024 / 1024
+                                        detail = f"{done_mb:.1f} / {total_mb} ({pct}%)" if total_b else f"{done_mb:.1f} MB"
+                                        _lfs_status("Downloading LFS content", detail)
+                                        _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
                         dl_size = os.path.getsize(tmp_path)
                         if dl_size < MIN_VIDEO_SIZE:
                             raise RuntimeError(f"LFS download also too small ({dl_size} bytes)")
+                        _lfs_status("LFS download complete", f"{dl_size / 1024 / 1024:.1f} MB received")
                     else:
                         raise RuntimeError(f"Download too small ({dl_size} bytes) — expected a real video file")
 
