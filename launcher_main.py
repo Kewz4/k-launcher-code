@@ -121,6 +121,10 @@ MODPACK_URL_SOURCE = f"{UNIFIED_REPO_RAW_URL}/modpack-url.txt"
 MODPACK_INSTALL_ZIP_URL = ""  # Set via modpack-url.txt (GoFile link)
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/10.0.5/PrismLauncher-Windows-MinGW-w64-Portable-10.0.5.zip"
 
+# --- Stable download directory for crash-resumable downloads ---
+STABLE_DOWNLOAD_DIR = os.path.join(os.getcwd(), ".launcher_downloads")
+DOWNLOAD_STATE_FILE = os.path.join(os.getcwd(), ".download_state.json")
+
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
 def get_current_launcher_version(default_version="1.0"):
     """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
@@ -211,6 +215,76 @@ class ModpackLauncherAPI:
             if progress is not None:
                 js_code += f" updateUpdaterProgress({progress});"
             self.window.evaluate_js(js_code)
+
+    def _save_download_state(self, url, dest_path, task_type, extra=None):
+        """Save download state to allow crash-recovery on next launch."""
+        state = {
+            "url": url,
+            "dest_path": dest_path,
+            "task_type": task_type,
+            "extra": extra or {},
+            "saved_at": time.time()
+        }
+        try:
+            with open(DOWNLOAD_STATE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(state, f)
+        except Exception as e:
+            self._log(f"Warn: Could not save download state: {e}")
+
+    def _clear_download_state(self):
+        """Remove the download state file on successful completion."""
+        try:
+            if os.path.exists(DOWNLOAD_STATE_FILE):
+                os.remove(DOWNLOAD_STATE_FILE)
+        except Exception as e:
+            self._log(f"Warn: Could not clear download state: {e}")
+
+    def py_check_interrupted_download(self):
+        """Check if a previous download was interrupted and can be resumed."""
+        if not os.path.exists(DOWNLOAD_STATE_FILE):
+            return {"found": False}
+        try:
+            with open(DOWNLOAD_STATE_FILE, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+            dest_path = state.get("dest_path", "")
+            part_path = dest_path + ".part"
+            bytes_downloaded = os.path.getsize(part_path) if os.path.exists(part_path) else (
+                os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+            )
+            if bytes_downloaded == 0:
+                # Nothing to resume
+                self._clear_download_state()
+                return {"found": False}
+            return {
+                "found": True,
+                "task_type": state.get("task_type", "unknown"),
+                "filename": os.path.basename(dest_path),
+                "bytes_downloaded": bytes_downloaded,
+                "url": state.get("url", ""),
+                "dest_path": dest_path,
+                "extra": state.get("extra", {})
+            }
+        except Exception as e:
+            self._log(f"Warn: Could not read download state: {e}")
+            return {"found": False}
+
+    def py_discard_interrupted_download(self):
+        """Discard a previously interrupted download (delete .part file and state)."""
+        try:
+            if os.path.exists(DOWNLOAD_STATE_FILE):
+                with open(DOWNLOAD_STATE_FILE, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+                part_path = state.get("dest_path", "") + ".part"
+                if os.path.exists(part_path):
+                    os.remove(part_path)
+                full_path = state.get("dest_path", "")
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+            self._clear_download_state()
+            return True
+        except Exception as e:
+            self._log(f"Error discarding download: {e}")
+            return False
 
     def py_start_update_check(self):
         """(REFACTORIZADO) Inicia la comprobación de actualizaciones usando el módulo Updater."""
@@ -1084,9 +1158,12 @@ class ModpackLauncherAPI:
             final_instance_path = os.path.join(instance_base_path, MODPACK_INSTANCE_NAME)
             final_mc_path = os.path.join(final_instance_path, "minecraft")
 
-            tmp_dir = tempfile.mkdtemp(prefix="cobblemon_install_")
-            self._update_install_status(f"Directorio temporal creado: {os.path.basename(tmp_dir)}")
-            zip_path = os.path.join(tmp_dir, "modpack.zip")
+            # Use stable download directory so the .part file survives a crash
+            os.makedirs(STABLE_DOWNLOAD_DIR, exist_ok=True)
+            zip_path = os.path.join(STABLE_DOWNLOAD_DIR, "modpack.zip")
+            self._update_install_status(f"Directorio de descarga: {STABLE_DOWNLOAD_DIR}")
+            # Temp dir only used for extraction (can be recreated if crashed)
+            tmp_dir = tempfile.mkdtemp(prefix="cobblemon_extract_")
 
             # 1. Obtener URL y Descargar
             modpack_url = None
@@ -1112,8 +1189,17 @@ class ModpackLauncherAPI:
                 raise RuntimeError(err_msg)
 
             self._update_install_status(f"Descargando Modpack desde: {modpack_url}")
-            # (NOTA) Esta URL debe apuntar a un .ZIP, no a un .RAR
-            self._download_file(modpack_url, zip_path, "wizard_install")
+            # Save state before download so we can resume if the launcher crashes
+            self._save_download_state(modpack_url, zip_path, "install_modpack", {
+                "prism_exe_path": prism_exe_path,
+                "instance_base_path": instance_base_path
+            })
+            # Skip download if zip already fully downloaded (previous crash after extract)
+            if os.path.exists(zip_path):
+                self._update_install_status("Archivo ZIP ya descargado, omitiendo descarga.")
+            else:
+                # (NOTA) Esta URL debe apuntar a un .ZIP, no a un .RAR
+                self._download_file(modpack_url, zip_path, "wizard_install")
 
             if self.cancel_event.is_set(): raise InterruptedError("Descarga cancelada.")
 
@@ -1188,6 +1274,13 @@ class ModpackLauncherAPI:
             self._update_install_status("Verificación final de la instancia...")
             if self._validate_instance_path(final_mc_path):
                 self._update_install_status("¡Modpack instalado con éxito!")
+                # Clear crash-recovery state and downloaded zip on success
+                self._clear_download_state()
+                try:
+                    if os.path.exists(zip_path):
+                        os.remove(zip_path)
+                except Exception:
+                    pass
                 if self.window: self.window.evaluate_js(f'onModpackInstallComplete(true, {json.dumps(prism_exe_path)}, {json.dumps(final_mc_path)}, null)')
             else:
                 raise FileNotFoundError("La instancia se movió pero no es válida.")
@@ -1201,12 +1294,13 @@ class ModpackLauncherAPI:
 
         finally:
             self.current_task_thread = None # Liberar referencia al hilo
+            # Only clean up the extraction tmpdir; .launcher_downloads is kept for resume.
             if tmp_dir and os.path.exists(tmp_dir):
                 try:
                     shutil.rmtree(tmp_dir)
-                    self._log(f"Temporal de instalación '{os.path.basename(tmp_dir)}' eliminado.")
+                    self._log(f"Temporal de extracción '{os.path.basename(tmp_dir)}' eliminado.")
                 except Exception as e:
-                    self._log(f"Warn: Fallo eliminando temporal de instalación: {e}")
+                    self._log(f"Warn: Fallo eliminando temporal de extracción: {e}")
 
     # --- Lógica de Inicio (Actualizar y Lanzar) ---
 

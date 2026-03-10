@@ -312,8 +312,7 @@ HTML_CONTENT = f"""
         #minimize-progress-btn:hover {{ background-color: #3a3a3a; color: var(--color-text); transform: scale(1.1); }}
         #minimize-progress-btn i {{ font-weight: 900; }}
 
-        /* --- Buttons overlaid on main container (settings close, wizard minimize) --- */
-        #settings-close-btn,
+        /* --- Wizard minimize button (overlaid on main container) --- */
         #wizard-minimize-btn {{
             position: absolute; top: 12px; right: 12px;
             width: 32px; height: 32px;
@@ -322,7 +321,6 @@ HTML_CONTENT = f"""
             display: none; align-items: center; justify-content: center;
             transition: all 0.2s ease; z-index: 10;
         }}
-        #settings-close-btn:hover,
         #wizard-minimize-btn:hover {{ background-color: #3a3a3a; color: var(--color-text); transform: scale(1.1); }}
 
         #progress-title {{ text-align: center; font-weight: 500; font-size: 20px; margin-bottom: 15px; color: var(--color-text); }}
@@ -552,6 +550,121 @@ HTML_CONTENT = f"""
         }}
         .paused-badge.visible {{ display: inline-block; }}
 
+        /* --- Settings Drawer (right-side slide-in) --- */
+        #settings-drawer-overlay {{
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55); z-index: 599;
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.35s ease, visibility 0s 0.35s linear;
+        }}
+        #settings-drawer-overlay.visible {{
+            opacity: 1; visibility: visible;
+            transition: opacity 0.35s ease;
+        }}
+        #settings-drawer {{
+            position: fixed; top: 0; right: 0;
+            width: 400px; height: 100%;
+            background-color: var(--panel-bg);
+            border-left: 1px solid rgba(0,207,170,0.15);
+            box-shadow: -8px 0 40px rgba(0,207,170,0.1);
+            transform: translateX(100%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 600; display: flex; flex-direction: column;
+            overflow: hidden;
+        }}
+        #settings-drawer.open {{ transform: translateX(0); }}
+        #settings-drawer-header {{
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 20px 24px 16px; flex-shrink: 0;
+            border-bottom: 1px solid rgba(0,207,170,0.12);
+        }}
+        #settings-drawer-title {{
+            font-size: 17px; font-weight: 700;
+            background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent));
+            -webkit-background-clip: text; background-clip: text;
+            color: transparent; -webkit-text-fill-color: transparent;
+        }}
+        #settings-drawer-close-btn {{
+            background: none; border: none; color: var(--color-text-muted);
+            cursor: pointer; font-size: 18px; padding: 6px 8px;
+            border-radius: var(--radius-md); line-height: 1;
+            transition: color 0.2s ease, background 0.2s ease;
+        }}
+        #settings-drawer-close-btn:hover {{ color: var(--color-text); background: var(--color-bg-lighter); }}
+        #settings-drawer-body {{
+            padding: 4px 24px 24px; flex-grow: 1; overflow-y: auto;
+        }}
+
+        /* --- Resume Modal --- */
+        #resume-modal {{
+            display: none; position: fixed; z-index: 1001; left: 0; top: 0;
+            width: 100%; height: 100%; background-color: rgba(0,0,0,0.75);
+            backdrop-filter: blur(4px); align-items: center; justify-content: center;
+        }}
+        #resume-modal.visible {{ display: flex; animation: fadeIn 0.3s ease; }}
+        #resume-modal-content {{
+            background-color: var(--color-bg-light); margin: auto; padding: 32px;
+            border: 1px solid rgba(0,207,170,0.2); width: 90%; max-width: 460px;
+            border-radius: var(--radius-lg); box-shadow: 0 8px 40px rgba(0,207,170,0.15);
+            text-align: center; animation: modalSlideIn 0.4s ease-out;
+        }}
+        #resume-modal-icon {{ font-size: 42px; margin-bottom: 14px; color: var(--color-accent); }}
+        #resume-modal-title {{ font-size: 22px; font-weight: 700; margin-bottom: 8px; }}
+        #resume-modal-details {{ font-size: 14px; color: var(--color-text-muted); margin-bottom: 24px; line-height: 1.6; }}
+        #resume-modal-buttons {{ display: flex; gap: 12px; }}
+        #resume-modal-buttons .btn {{ flex: 1; }}
+
+        /* --- New Animations --- */
+        /* Shimmer: background-size 200% so the highlight sweeps left→right */
+        @keyframes shimmer {{
+            0% {{ background-position: 100% center; }}
+            100% {{ background-position: 0% center; }}
+        }}
+        @keyframes floatUpDown {{
+            0%, 100% {{ transform: translateY(0px); }}
+            50% {{ transform: translateY(-14px); }}
+        }}
+        @keyframes slideInFromRight {{
+            from {{ opacity: 0; transform: translateX(30px); }}
+            to {{ opacity: 1; transform: translateX(0); }}
+        }}
+        @keyframes pulseGlow {{
+            0%, 100% {{ box-shadow: 0 5px 25px rgba(0,207,170,0.3); }}
+            50% {{ box-shadow: 0 8px 45px rgba(0,207,170,0.65); }}
+        }}
+        @keyframes staggerFadeIn {{
+            from {{ opacity: 0; transform: translateY(12px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+
+        /* Apply shimmer to all progress bars */
+        #progress-fill, #wizard-progress-bar-fill, #minimized-progress-bar-fill {{
+            background: linear-gradient(90deg,
+                var(--color-accent-dark) 0%,
+                var(--color-accent) 40%,
+                rgba(180,255,240,0.45) 50%,
+                var(--color-accent) 60%,
+                var(--color-accent-dark) 100%);
+            background-size: 200% 100%;
+            animation: shimmer 2s linear infinite;
+        }}
+
+        /* Float animation on logo */
+        #minecraft-logo {{ animation: floatUpDown 6s ease-in-out infinite; }}
+
+        /* Pulse glow on play button (only when not in cancel mode) */
+        #play-btn:not(.cancel-mode) {{ animation: pulseGlow 3s ease-in-out infinite; }}
+        #play-btn:hover, #play-btn:active {{ animation: none !important; }}
+
+        /* Slide-in for wizard steps */
+        #screen-initial-setup .wizard-step.active {{
+            animation: slideInFromRight 0.3s ease-out;
+        }}
+
+        /* Staggered entrance for wizard horizontal buttons */
+        .wizard-buttons-horizontal .btn:nth-child(1) {{ animation: staggerFadeIn 0.3s ease-out 0.05s both; }}
+        .wizard-buttons-horizontal .btn:nth-child(2) {{ animation: staggerFadeIn 0.3s ease-out 0.15s both; }}
+
     </style>
 </head>
 <body>
@@ -669,11 +782,10 @@ HTML_CONTENT = f"""
          </div>
     </div>
 
-    <!-- Contenedor para Setup / Settings -->
+    <!-- Contenedor para Setup Wizard -->
     <div class="container" id="main-container">
 
         <!-- Overlay buttons (shown conditionally) -->
-        <button id="settings-close-btn" title="Close"><i class="fas fa-times"></i></button>
         <button id="wizard-minimize-btn" title="Minimize"><i class="fas fa-minus"></i></button>
 
         <!-- (NUEVO) Asistente de Configuración Inicial -->
@@ -799,32 +911,6 @@ HTML_CONTENT = f"""
 
         </div>
 
-        <!-- Settings Screen (Post-Setup) -->
-        <div class="screen" id="screen-settings">
-             <div class="header">
-                  <h1>Settings</h1>
-                  <p>Update your Prism Launcher and modpack paths.</p>
-             </div>
-             <label class="setup-label">Prism Launcher</label>
-             <div class="folder-display" id="settings-prism-exe-display" title="Drag your 'prismlauncher.exe' here, or click Browse">
-                  <i class="fas fa-rocket folder-type-icon"></i>
-                  <span id="settings-prism-exe-text" class="placeholder">Drag or browse for 'prismlauncher.exe'...</span>
-                  <i class="fas fa-chevron-right folder-browse-arrow"></i>
-             </div>
-             <div class="folder-buttons">
-                  <button class="btn btn-secondary" id="settings-browse-prism-btn"><i class="fas fa-search"></i> Browse Executable...</button>
-             </div>
-             <label class="setup-label">Modpack Folder</label>
-             <div class="folder-display" id="settings-instance-folder-display" title="Drag the 'minecraft' folder of your Kewz's Cobblemon instance here">
-                  <i class="fas fa-folder-open folder-type-icon"></i>
-                  <span id="settings-instance-folder-text" class="placeholder">Drag or browse for your '.../minecraft' folder</span>
-                  <i class="fas fa-chevron-right folder-browse-arrow"></i>
-             </div>
-             <div class="folder-buttons">
-                  <button class="btn btn-secondary" id="settings-browse-instance-btn"><i class="fas fa-folder-open"></i> Browse Folder...</button>
-             </div>
-             <button class="btn btn-primary" id="save-settings-btn" disabled>Save & Return</button>
-        </div>
     </div>
 
     <!-- Result Modal -->
@@ -834,6 +920,51 @@ HTML_CONTENT = f"""
             <h2 id="result-title"></h2>
             <p id="result-details"></p>
             <button class="btn btn-primary" id="close-modal-btn" style="width: 100px;">Close</button>
+        </div>
+    </div>
+
+    <!-- Resume Interrupted Download Modal -->
+    <div id="resume-modal">
+        <div id="resume-modal-content">
+            <div id="resume-modal-icon"><i class="fas fa-download"></i></div>
+            <h2 id="resume-modal-title">Download Interrupted</h2>
+            <p id="resume-modal-details">A previous modpack download was interrupted.</p>
+            <div id="resume-modal-buttons">
+                <button class="btn btn-secondary" id="resume-discard-btn"><i class="fas fa-trash"></i> Discard</button>
+                <button class="btn btn-primary" id="resume-continue-btn"><i class="fas fa-play"></i> Resume</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Drawer -->
+    <div id="settings-drawer-overlay"></div>
+    <div id="settings-drawer">
+        <div id="settings-drawer-header">
+            <span id="settings-drawer-title">Settings</span>
+            <button id="settings-drawer-close-btn" title="Close settings"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="settings-drawer-body">
+            <div id="screen-settings">
+                <label class="setup-label">Prism Launcher</label>
+                <div class="folder-display" id="settings-prism-exe-display" title="Drag your 'prismlauncher.exe' here, or click Browse">
+                    <i class="fas fa-rocket folder-type-icon"></i>
+                    <span id="settings-prism-exe-text" class="placeholder">Drag or browse for 'prismlauncher.exe'...</span>
+                    <i class="fas fa-chevron-right folder-browse-arrow"></i>
+                </div>
+                <div class="folder-buttons">
+                    <button class="btn btn-secondary" id="settings-browse-prism-btn"><i class="fas fa-search"></i> Browse Executable...</button>
+                </div>
+                <label class="setup-label">Modpack Folder</label>
+                <div class="folder-display" id="settings-instance-folder-display" title="Drag the 'minecraft' folder of your Kewz's Cobblemon instance here">
+                    <i class="fas fa-folder-open folder-type-icon"></i>
+                    <span id="settings-instance-folder-text" class="placeholder">Drag or browse for your '.../minecraft' folder</span>
+                    <i class="fas fa-chevron-right folder-browse-arrow"></i>
+                </div>
+                <div class="folder-buttons">
+                    <button class="btn btn-secondary" id="settings-browse-instance-btn"><i class="fas fa-folder-open"></i> Browse Folder...</button>
+                </div>
+                <button class="btn btn-primary" id="save-settings-btn" style="margin-top: 24px;" disabled>Save & Close</button>
+            </div>
         </div>
     </div>
 
@@ -1083,6 +1214,17 @@ HTML_CONTENT = f"""
 
         // --- Funciones UI ---
         
+        // --- Settings Drawer ---
+        function openSettingsDrawer() {{
+            validateSettings();
+            dom.settingsDrawer.classList.add('open');
+            dom.settingsDrawerOverlay.classList.add('visible');
+        }}
+        function closeSettingsDrawer() {{
+            dom.settingsDrawer.classList.remove('open');
+            dom.settingsDrawerOverlay.classList.remove('visible');
+        }}
+
         // (ACTUALIZADO) switchScreen para manejar todas las pantallas
         function switchScreen(screenName) {{
             console.log("Switching screen to:", screenName);
@@ -1092,7 +1234,6 @@ HTML_CONTENT = f"""
             dom.screens.progress.classList.remove('active');
             dom.mainContainer.classList.remove('visible');
             dom.screens.initialSetup.classList.remove('active');
-            dom.screens.settings.classList.remove('active');
             dom.screens.play.classList.remove('active');
             dom.minimizedWidget.style.display = 'none';
             isProgressMinimized = false;
@@ -1104,15 +1245,13 @@ HTML_CONTENT = f"""
             domPlayer.player.classList.add('visible');
 
             // Mostrar la pantalla de juego (fondo) en la mayoría de los casos
-            // (CORREGIDO) #screen-play siempre debe estar visible (display: flex) para actuar como fondo.
-            // Su z-index se controla con la clase 'active', que lo pone por encima de otros elementos si es la pantalla principal.
-            const showPlayAsMainScreen = (screenName !== 'initial-setup' && screenName !== 'settings');
+            // #screen-play siempre actúa como fondo; su z-index se controla con la clase 'active'.
+            const showPlayAsMainScreen = (screenName !== 'initial-setup');
             dom.screens.play.style.display = 'flex';
             dom.screens.play.classList.toggle('active', showPlayAsMainScreen);
 
-            // Toggle overlay container buttons
-            dom.settingsCloseBtn.style.display = (screenName === 'settings') ? 'flex' : 'none';
-            dom.wizardMinimizeBtn.style.display = 'none'; // showWizardStep controls this
+            // wizardMinimizeBtn shown/hidden by showWizardStep
+            dom.wizardMinimizeBtn.style.display = 'none';
 
             if (screenName === 'play') {{
                 // Determinar el estado del botón JUGAR/DESCARGAR
@@ -1126,10 +1265,6 @@ HTML_CONTENT = f"""
                 dom.mainContainer.classList.add('visible');
                 dom.screens.initialSetup.style.display = 'block';
                 dom.screens.initialSetup.classList.add('active');
-            }} else if (screenName === 'settings') {{
-                dom.mainContainer.classList.add('visible');
-                dom.screens.settings.style.display = 'block';
-                dom.screens.settings.classList.add('active');
             }} else if (screenName === 'progress') {{
                 if (isProgressMinimized) {{
                     dom.minimizedWidget.style.display = 'flex';
@@ -1354,10 +1489,9 @@ HTML_CONTENT = f"""
             }} catch (e) {{ console.error("Error en fadeLauncherOut:", e); }}
         }}
 
-        // (ACTUALIZADO) forceShowSetupScreen ahora muestra la pantalla de AJUSTES
+        // (ACTUALIZADO) forceShowSetupScreen ahora abre el settings drawer
         function forceShowSetupScreen() {{
-            validateSettings(); // Cargar datos actuales en la pantalla de ajustes
-            switchScreen('settings'); 
+            openSettingsDrawer();
         }}
         
         function returnToPlayScreen() {{
@@ -1621,7 +1755,13 @@ HTML_CONTENT = f"""
                 playBtn: document.getElementById('play-btn'), menuBtn: document.getElementById('menu-btn'), sidePanel: document.getElementById('side-panel'), panelOverlay: document.getElementById('panel-overlay'), panelCloseBtn: document.getElementById('panel-close-btn'), panelSettingsBtn: document.getElementById('panel-settings-btn'), panelDebugBtn: document.getElementById('panel-debug-btn'), panelQuitBtn: document.getElementById('panel-quit-btn'), cancelBtn: document.getElementById('cancel-btn'), progressTitle: document.getElementById('progress-title'), progressBar: document.getElementById('progress-fill'), progressLabel: document.getElementById('progress-label'), console: document.getElementById('console'), scrollBottomBtn: document.getElementById('scroll-bottom-btn'), changelogContent: document.getElementById('changelog-content'),
                 modal: {{ element: document.getElementById('result-modal'), icon: document.getElementById('result-icon'), title: document.getElementById('result-title'), details: document.getElementById('result-details'), closeBtn: document.getElementById('close-modal-btn') }},
                 minimizeProgressBtn: document.getElementById('minimize-progress-btn'), minimizedWidget: document.getElementById('minimized-progress-widget'), minimizedProgressLabel: document.getElementById('minimized-progress-label'), minimizedProgressPercent: document.getElementById('minimized-progress-percent'), minimizedProgressBarFill: document.getElementById('minimized-progress-bar-fill'),
-                settingsCloseBtn: document.getElementById('settings-close-btn'), wizardMinimizeBtn: document.getElementById('wizard-minimize-btn'),
+                wizardMinimizeBtn: document.getElementById('wizard-minimize-btn'),
+                settingsDrawer: document.getElementById('settings-drawer'),
+                settingsDrawerOverlay: document.getElementById('settings-drawer-overlay'),
+                settingsDrawerCloseBtn: document.getElementById('settings-drawer-close-btn'),
+                resumeModal: document.getElementById('resume-modal'),
+                resumeDiscardBtn: document.getElementById('resume-discard-btn'),
+                resumeContinueBtn: document.getElementById('resume-continue-btn'),
                 debugPanel: document.getElementById('debug-panel'), debugCloseStatus: document.getElementById('debug-close-status'), launcherVersion: document.getElementById('launcher-version')
             }};
 
@@ -1657,12 +1797,28 @@ HTML_CONTENT = f"""
                         domPlayer.volumeSlider.value = vol; setVolume();
                     }}).catch(e => {{ domPlayer.volumeSlider.value = 1.0; setVolume(); console.error(e); }});
 
-                    // Decidir pantalla
-                    if (pathsAreValid) {{
-                        switchScreen('play');
-                    }} else {{
-                        startInitialSetupWizard();
-                    }}
+                    // Check for interrupted modpack download before showing main screen
+                    pywebview.api.py_check_interrupted_download().then(info => {{
+                        if (info && info.found && info.bytes_downloaded > 0) {{
+                            const mb = (info.bytes_downloaded / 1048576).toFixed(1);
+                            document.getElementById('resume-modal-details').textContent =
+                                `"${{info.filename}}" — ${{mb}} MB already downloaded. Resume where you left off?`;
+                            dom.resumeModal.classList.add('visible');
+                            // Stash info for buttons
+                            dom.resumeModal._interruptedInfo = info;
+                        }} else if (pathsAreValid) {{
+                            switchScreen('play');
+                        }} else {{
+                            startInitialSetupWizard();
+                        }}
+                    }}).catch(() => {{
+                        // If check fails just proceed normally
+                        if (pathsAreValid) {{
+                            switchScreen('play');
+                        }} else {{
+                            startInitialSetupWizard();
+                        }}
+                    }});
                     return pywebview.api.py_get_debug_status();
 
                 }}).then(isDebug => {{
@@ -1743,8 +1899,13 @@ HTML_CONTENT = f"""
             dom.settings.saveBtn.addEventListener('click', () => {{
                 if (dom.settings.saveBtn.disabled) return;
                 pywebview.api.py_save_paths(setupState.prismPath, setupState.instancePath).then(didSave => {{
-                    if (didSave) switchScreen('play');
-                    else showResult(false, "Save Error", "Could not save paths.");
+                    if (didSave) {{
+                        closeSettingsDrawer();
+                        // Update play button label in case paths changed
+                        if (setupState.prismPath && setupState.instancePath) {{
+                            dom.playBtn.textContent = "PLAY";
+                        }}
+                    }} else showResult(false, "Save Error", "Could not save paths.");
                 }}).catch(err => showResult(false, "Unexpected Error", "Could not save config: " + err));
             }});
 
@@ -1774,7 +1935,7 @@ HTML_CONTENT = f"""
             // Side Panel Listeners
             dom.panelOverlay.addEventListener('click', closeSidePanel);
             dom.panelCloseBtn.addEventListener('click', closeSidePanel);
-            dom.panelSettingsBtn.addEventListener('click', () => {{ closeSidePanel(); switchScreen('settings'); validateSettings(); }});
+            dom.panelSettingsBtn.addEventListener('click', () => {{ closeSidePanel(); openSettingsDrawer(); }});
             dom.panelDebugBtn.addEventListener('click', () => {{ const isVisible = dom.debugPanel.style.display === 'block'; toggleDebugPanel(!isVisible); closeSidePanel(); }});
             dom.panelQuitBtn.addEventListener('click', () => {{ if (!window.quitting) {{ window.quitting = true; pywebview.api.py_quit_launcher(); }} }});
 
@@ -1802,8 +1963,9 @@ HTML_CONTENT = f"""
                  }}
              }});
 
-            // Settings close button
-            dom.settingsCloseBtn.addEventListener('click', () => switchScreen('play'));
+            // Settings drawer close button + overlay
+            dom.settingsDrawerCloseBtn.addEventListener('click', closeSettingsDrawer);
+            dom.settingsDrawerOverlay.addEventListener('click', closeSettingsDrawer);
 
             // Wizard minimize button
             dom.wizardMinimizeBtn.addEventListener('click', () => {{
@@ -1814,6 +1976,30 @@ HTML_CONTENT = f"""
                 setTimeout(() => {{ dom.minimizedProgressBarFill.style.transition = 'width 0.3s ease'; }}, 50);
                 dom.mainContainer.classList.remove('visible');
                 dom.minimizedWidget.style.display = 'flex';
+            }});
+
+            // Resume modal buttons
+            dom.resumeDiscardBtn.addEventListener('click', () => {{
+                dom.resumeModal.classList.remove('visible');
+                pywebview.api.py_discard_interrupted_download().catch(e => console.error("Error discarding download:", e));
+                if (setupState.prismPath && setupState.instancePath) {{
+                    switchScreen('play');
+                }} else {{
+                    startInitialSetupWizard();
+                }}
+            }});
+            dom.resumeContinueBtn.addEventListener('click', () => {{
+                dom.resumeModal.classList.remove('visible');
+                const info = dom.resumeModal._interruptedInfo;
+                if (!info || !info.extra) {{ startInitialSetupWizard(); return; }}
+                const {{ prism_exe_path, instance_base_path }} = info.extra;
+                if (!prism_exe_path || !instance_base_path) {{ startInitialSetupWizard(); return; }}
+                // Resume the download via the wizard progress step
+                switchScreen('initial-setup');
+                showWizardStep('install-progress');
+                dom.wizard.installTitle.textContent = "Resuming Download...";
+                dom.wizard.installSubtitle.textContent = `Resuming from ${{(info.bytes_downloaded / 1048576).toFixed(1)}} MB. Large files can be paused.`;
+                pywebview.api.py_start_threaded_task('install_modpack', prism_exe_path, instance_base_path);
             }});
 
             // Modal & Music Player Listeners
