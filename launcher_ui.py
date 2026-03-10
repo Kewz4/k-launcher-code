@@ -6,8 +6,8 @@ import sys
 FONT_IMPORT_URL = f"https://fonts.googleapis.com/css2?family={'&family='.join(f.replace(' ', '+') for f in ['Inter:wght@400;500;700;900', 'Montserrat:wght@900'])}&display=swap"
 FONT_AWESOME_URL = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
 UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
-LOGO_URL = f"{UNIFIED_REPO_RAW_URL}/logo.png"
-URL_ALBUM_COVER = f"{UNIFIED_REPO_RAW_URL}/albumcover.png"
+LOGO_URL = f"{UNIFIED_REPO_RAW_URL}/minecraftlogo.png"
+URL_ALBUM_COVER = ""  # Each song provides its own cover.jpg inside its songs/<folder>/ directory
 VIMEO_EMBED_SRC = "https://player.vimeo.com/video/1131522974?badge=0&autopause=0&player_id=0&app_id=58479&background=1&autoplay=1&loop=1&muted=1"
 
 
