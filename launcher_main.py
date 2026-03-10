@@ -109,10 +109,14 @@ LOCAL_OPTIONS_BACKUP_FILENAME = "options_backup.txt"
 PRISM_DEFAULT_PATHS_WINDOWS = [
     os.path.expandvars(r"%LocalAppData%\Programs\PrismLauncher\prismlauncher.exe"),
     os.path.expandvars(r"%LocalAppData%\Programs\Prism Launcher\prismlauncher.exe"),
+    os.path.expandvars(r"%LocalAppData%\PrismLauncher\prismlauncher.exe"),
     r"C:\Program Files\Prism Launcher\prismlauncher.exe",
     r"C:\Program Files\Prism Launcher\PrismLauncher.exe",
+    r"C:\Program Files\PrismLauncher\prismlauncher.exe",
     r"C:\Program Files\PrismLauncher\PrismLauncher.exe",
-    r"C:\Program Files\PrismLauncher\prismlauncher.exe"
+    r"C:\Program Files (x86)\Prism Launcher\prismlauncher.exe",
+    r"C:\Program Files (x86)\Prism Launcher\PrismLauncher.exe",
+    r"C:\Program Files (x86)\PrismLauncher\prismlauncher.exe",
 ]
 MODPACK_INSTANCE_NAME = "Kewz's Cobblemon"
 # URL of the text file that contains the modpack download link (from GoFile)
@@ -1223,17 +1227,38 @@ class ModpackLauncherAPI:
         Paso 1: Comprueba la ruta de instalación por defecto de Prism.
         Retorna: {{status: 'prism_detected', path: '...'} o {status: 'not_found'}}
         """
-        # (CORREGIDO) Iterar sobre la lista de rutas comunes
         self._log(f"Asistente: Comprobando rutas por defecto...")
         if IS_WINDOWS:
+            # 1. Check known install locations
             for path in PRISM_DEFAULT_PATHS_WINDOWS:
                 self._log(f"Asistente: Comprobando: {path}")
                 if self._validate_prism_path(path):
                     self._log(f"Asistente: Prism detectado en: {path}")
                     return {"status": "prism_detected", "path": path}
 
-        # Si el bucle termina sin encontrar nada
-        self._log("Asistente: Prism no encontrado en rutas por defecto.")
+            # 2. Fallback: check Windows registry (covers custom install paths)
+            try:
+                import winreg
+                reg_keys = [
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PrismLauncher"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\PrismLauncher"),
+                    (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PrismLauncher"),
+                ]
+                for hive, key_path in reg_keys:
+                    try:
+                        with winreg.OpenKey(hive, key_path) as key:
+                            install_dir, _ = winreg.QueryValueEx(key, "InstallLocation")
+                            for exe_name in ("prismlauncher.exe", "PrismLauncher.exe"):
+                                candidate = os.path.join(install_dir, exe_name)
+                                if self._validate_prism_path(candidate):
+                                    self._log(f"Asistente: Prism detectado via registro: {candidate}")
+                                    return {"status": "prism_detected", "path": candidate}
+                    except (FileNotFoundError, OSError):
+                        continue
+            except ImportError:
+                pass  # winreg only available on Windows CPython, skip silently
+
+        self._log("Asistente: Prism no encontrado en rutas por defecto ni en registro.")
         return {"status": "not_found"}
 
     def py_setup_ask_for_prism_path(self):
@@ -1290,29 +1315,51 @@ class ModpackLauncherAPI:
     def py_setup_check_modpack_installed(self, prism_exe_path):
         """
         Paso 4: Comprueba si la instancia del modpack ya existe.
-        Retorna: {{status: 'modpack_installed', ...} o {status: 'modpack_not_installed', ...} o {status: 'error', ...}}
+        Retorna: {status: 'modpack_installed', ...} o {status: 'modpack_not_installed', ...} o {status: 'error', ...}
         """
         self._log(f"Asistente: Comprobando si el modpack '{MODPACK_INSTANCE_NAME}' existe para Prism en '{prism_exe_path}'")
         try:
-            prism_dir = os.path.dirname(prism_exe_path)
-            instance_base_path = os.path.join(prism_dir, "instances")
-            instance_folder_path = os.path.join(instance_base_path, MODPACK_INSTANCE_NAME)
-            instance_mc_path = os.path.join(instance_folder_path, "minecraft")
-
-            if self._validate_instance_path(instance_mc_path):
+            # Use _find_instance_from_prism_path which checks BOTH portable and AppData/Roaming
+            instance_mc_path = self._find_instance_from_prism_path(prism_exe_path)
+            if instance_mc_path:
                 self._log("Asistente: Modpack ya está instalado.")
                 return {
                     "status": "modpack_installed",
                     "prism_path": prism_exe_path,
                     "instance_path": instance_mc_path
                 }
-            else:
-                self._log("Asistente: Modpack no encontrado. Listo para instalar.")
-                return {
-                    "status": "modpack_not_installed",
-                    "prism_path": prism_exe_path,
-                    "instance_base_path": instance_base_path # Ruta '.../instances'
-                }
+
+            # Not installed — determine where Prism actually stores its instances
+            # so the installer puts the modpack in the right place.
+            prism_dir = os.path.dirname(prism_exe_path)
+            instance_base_path = None
+
+            # Prefer the portable instances folder if it already exists
+            portable_instances = os.path.join(prism_dir, "instances")
+            if os.path.isdir(portable_instances):
+                instance_base_path = portable_instances
+                self._log(f"Asistente: Modo portable detectado, instancias en: {instance_base_path}")
+            elif IS_WINDOWS:
+                # Installer (non-portable): instances live in AppData\Roaming
+                appdata = os.environ.get('APPDATA', '')
+                for folder in ("PrismLauncher", "Prism Launcher"):
+                    candidate = os.path.join(appdata, folder, "instances")
+                    if os.path.isdir(candidate):
+                        instance_base_path = candidate
+                        self._log(f"Asistente: Modo instalador detectado, instancias en: {instance_base_path}")
+                        break
+
+            # If neither exists yet, default to portable (will be created during install)
+            if not instance_base_path:
+                instance_base_path = portable_instances
+                self._log(f"Asistente: Sin instancias previas, usando portable por defecto: {instance_base_path}")
+
+            self._log("Asistente: Modpack no encontrado. Listo para instalar.")
+            return {
+                "status": "modpack_not_installed",
+                "prism_path": prism_exe_path,
+                "instance_base_path": instance_base_path
+            }
         except Exception as e:
             msg = f"Error comprobando instancia: {e}"
             self._log(f"Asistente: {msg}")
