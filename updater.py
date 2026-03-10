@@ -8,22 +8,18 @@ import time
 import json
 import threading
 
-# Configurar un logger simple para el módulo de actualización
 log = logging.getLogger(__name__)
 
-LAUNCHER_VERSION_URL = "https://gitlab.com/Kewz4/vanilla-plus/-/raw/main/%20launcher_version.txt"
+LAUNCHER_VERSION_URL = "https://gitlab.com/Kewz4/kewz-cobblemon/-/raw/main/launcher_version.txt"
 
 class Updater:
-    """
-    Maneja la comprobación, descarga y aplicación de actualizaciones para el launcher.
-    """
+    """Handles checking, downloading and applying launcher updates."""
     def __init__(self, repo_owner_repo, current_version, progress_callback=None, log_callback=None):
         """
-        Inicializa el Updater.
-        :param repo_owner_repo: String en formato 'usuario/repositorio'.
-        :param current_version: La versión actual del launcher (ej: '1.0').
-        :param progress_callback: Función opcional para reportar progreso (message, percentage).
-        :param log_callback: Función opcional para enviar logs a la UI.
+        :param repo_owner_repo: String in 'owner/repo' format.
+        :param current_version: Current launcher version (e.g. '1.0').
+        :param progress_callback: Optional function to report progress (message, percentage).
+        :param log_callback: Optional function to send logs to the UI.
         """
         self.github_repo = repo_owner_repo
         self.current_version = current_version
@@ -35,108 +31,92 @@ class Updater:
         self.cancel_event = threading.Event()
 
     def _log(self, message):
-        """Envía un mensaje de log al logger y opcionalmente a la UI."""
         log.info(message)
         if self.log_callback:
             self.log_callback(message)
 
     def _update_progress(self, message, percentage=None):
-        """Envía una actualización de progreso a la UI."""
         if self.progress_callback:
             self.progress_callback(message, percentage)
 
     def check_for_updates(self):
         """
-        Comprueba si hay una nueva versión del launcher disponible.
-        Ahora consulta GitLab para saber la última versión, y si hay update, busca el asset en GitHub.
+        Checks if a new launcher version is available.
+        Queries the unified GitLab repo for the latest version, then fetches the asset from GitHub.
 
         Returns:
-            dict: Un diccionario con el resultado.
+            dict: Result dictionary.
         """
-        self._log(f"Consultando versión en {LAUNCHER_VERSION_URL}")
+        self._log(f"Checking version at {LAUNCHER_VERSION_URL}")
         try:
             current_version_float = float(self.current_version)
         except (ValueError, TypeError):
-            return {'error': f"Formato de versión actual inválido: '{self.current_version}'"}
+            return {'error': f"Invalid current version format: '{self.current_version}'"}
 
-        # 1. Fetch GitLab version
+        # 1. Fetch latest version from unified GitLab repo
         try:
             v_response = requests.get(LAUNCHER_VERSION_URL, timeout=10)
             v_response.raise_for_status()
             remote_version_str = v_response.text.strip()
             remote_version_float = float(remote_version_str)
         except Exception as e:
-             self._log(f"Error obteniendo versión remota desde GitLab: {e}")
-             return {'error': f"Error obteniendo versión remota: {e}"}
+            self._log(f"Error fetching remote version from GitLab: {e}")
+            return {'error': f"Error fetching remote version: {e}"}
 
-        self._log(f"Versión local: {current_version_float} | Versión remota: {remote_version_float}")
+        self._log(f"Local version: {current_version_float} | Remote version: {remote_version_float}")
 
         if remote_version_float <= current_version_float:
-             return {'update_available': False}
+            return {'update_available': False}
 
-        # 2. Update available, fetch GitHub assets
-        self._log(f"Actualización detectada. Buscando release para v{remote_version_str} en GitHub...")
+        # 2. Update available — find GitHub release asset
+        self._log(f"Update detected. Looking for release v{remote_version_str} on GitHub...")
 
         target_asset_name = f"Kewz.Launcher.v{remote_version_str}.exe"
         full_release_data = None
 
         try:
-            # Estrategia 1: Buscar por tag exacto (ej: "1.4")
+            # Strategy 1: exact tag (e.g. "1.0")
             try:
                 tag_url = f"{self.base_api_url}/tags/{remote_version_str}"
-                self._log(f"Intentando obtener release por tag: {tag_url}")
+                self._log(f"Trying release by tag: {tag_url}")
                 response = requests.get(tag_url, timeout=15)
-
                 if response.status_code == 200:
-                    self._log("Release encontrada por tag exacto.")
+                    self._log("Release found by exact tag.")
                     full_release_data = response.json()
                 elif response.status_code == 404:
-                    self._log(f"Tag '{remote_version_str}' no encontrado. Probando 'latest'...")
+                    self._log(f"Tag '{remote_version_str}' not found. Trying 'latest'...")
                 else:
                     response.raise_for_status()
             except Exception as e:
-                self._log(f"Advertencia: Falló búsqueda por tag: {e}")
+                self._log(f"Warning: tag lookup failed: {e}")
 
-            # Estrategia 2: Si falla tag, buscar en "latest"
+            # Strategy 2: fallback to 'latest' release
             if not full_release_data:
                 try:
                     latest_url = f"{self.base_api_url}/latest"
-                    self._log(f"Intentando obtener release 'latest': {latest_url}")
+                    self._log(f"Trying 'latest' release: {latest_url}")
                     response = requests.get(latest_url, timeout=15)
                     if response.status_code == 200:
                         data = response.json()
-                        # Verificar si la 'latest' contiene el asset que buscamos
                         temp_assets = data.get("assets", [])
                         if any(a.get("name") == target_asset_name for a in temp_assets):
-                            self._log(f"Release 'latest' contiene el asset '{target_asset_name}'. Usándola.")
+                            self._log(f"'latest' release contains '{target_asset_name}'. Using it.")
                             full_release_data = data
                         else:
-                            self._log(f"Release 'latest' encontrada ({data.get('tag_name')}), pero NO contiene '{target_asset_name}'.")
+                            self._log(f"'latest' release ({data.get('tag_name')}) does NOT contain '{target_asset_name}'.")
                 except Exception as e:
-                     self._log(f"Advertencia: Falló búsqueda por latest: {e}")
-
-            # Estrategia 3: Si todo falla, probar tag "Update" (Legacy)
-            if not full_release_data:
-                try:
-                    legacy_url = f"{self.base_api_url}/tags/Update"
-                    self._log(f"Intentando fallback a tag 'Update': {legacy_url}")
-                    response = requests.get(legacy_url, timeout=15)
-                    if response.status_code == 200:
-                        full_release_data = response.json()
-                except Exception as e:
-                    self._log(f"Advertencia: Falló búsqueda por tag legacy 'Update': {e}")
-
+                    self._log(f"Warning: latest lookup failed: {e}")
 
             if not full_release_data:
-                 error_msg = f"No se pudo encontrar ninguna release válida en GitHub para la versión {remote_version_str}."
-                 self._log(error_msg)
-                 return {'error': error_msg}
+                error_msg = f"Could not find a valid GitHub release for version {remote_version_str}."
+                self._log(error_msg)
+                return {'error': error_msg}
 
-            # Buscar el asset en la release encontrada
+            # Find the asset in the release
             assets = full_release_data.get("assets", [])
             found_asset = None
             available_assets = [a.get("name") for a in assets]
-            self._log(f"Assets disponibles en la release: {available_assets}")
+            self._log(f"Available assets in release: {available_assets}")
 
             for asset in assets:
                 if asset.get("name") == target_asset_name:
@@ -144,16 +124,15 @@ class Updater:
                     break
 
             if not found_asset:
-                 error_msg = f"La release existe, pero no contiene el archivo '{target_asset_name}'. (Disponibles: {available_assets})"
-                 self._log(error_msg)
-                 return {'error': error_msg}
+                error_msg = f"Release exists but does not contain '{target_asset_name}'. (Available: {available_assets})"
+                self._log(error_msg)
+                return {'error': error_msg}
 
-            # Prepare filtered data for the downloader
             filtered_release_data = full_release_data.copy()
             filtered_release_data['assets'] = [found_asset]
             self.latest_release_data = filtered_release_data
 
-            notes = full_release_data.get("body", "No hay notas.").strip()
+            notes = full_release_data.get("body", "No release notes.").strip()
 
             return {
                 'update_available': True,
@@ -162,8 +141,8 @@ class Updater:
                 'release_data': filtered_release_data
             }
         except Exception as e:
-            log.exception("Ocurrió un error inesperado durante la comprobación de actualizaciones.")
-            return {'error': f"Ocurrió un error inesperado: {e}"}
+            log.exception("Unexpected error during update check.")
+            return {'error': f"Unexpected error: {e}"}
 
     def _download_file(self, url, destination_path):
         """Descarga un archivo y reporta el progreso."""

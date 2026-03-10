@@ -229,7 +229,7 @@ class MusicLibrary:
         Inicializa la biblioteca de música.
         
         :param gitlab_raw_url: La URL base "raw" de tu proyecto.
-                               Ej: "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main"
+                               Ej: "https://gitlab.com/Kewz4/kewz-cobblemon/-/raw/main"
         """
         self.base_raw_url = gitlab_raw_url
         self.playlist = [] # Aquí se guardará la lista de diccionarios de canciones
@@ -317,7 +317,7 @@ if __name__ == "__main__":
     print("--- Iniciando prueba de MusicLibrary (GitLab) ---")
     
     # URL base de tu repo (la misma para todos)
-    REPO_RAW_URL = "https://gitlab.com/Kewz4/kewz-launcher/-/raw/main"
+    REPO_RAW_URL = "https://gitlab.com/Kewz4/kewz-cobblemon/-/raw/main"
     
     # Simplemente inicializar la clase ahora construye todo
     library = MusicLibrary(gitlab_raw_url=REPO_RAW_URL)

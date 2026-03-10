@@ -122,7 +122,7 @@ MODPACK_INSTALL_ZIP_URL = ""  # Set via modpack-url.txt (GoFile link)
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/10.0.5/PrismLauncher-Windows-MinGW-w64-Portable-10.0.5.zip"
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
-def get_current_launcher_version(default_version="1.6"):
+def get_current_launcher_version(default_version="1.0"):
     """Lee la versión desde 'launcher_version.txt', o devuelve la versión por defecto."""
     version_file = "launcher_version.txt"
     if os.path.exists(version_file):
