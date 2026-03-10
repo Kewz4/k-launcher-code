@@ -42,7 +42,7 @@ class Updater:
     def check_for_updates(self):
         """
         Checks if a new launcher version is available.
-        Queries the unified GitLab repo for the latest version, then fetches the asset from GitHub.
+        Queries the unified GitHub repo for the latest version, then fetches the asset from GitHub.
 
         Returns:
             dict: Result dictionary.
@@ -53,14 +53,14 @@ class Updater:
         except (ValueError, TypeError):
             return {'error': f"Invalid current version format: '{self.current_version}'"}
 
-        # 1. Fetch latest version from unified GitLab repo
+        # 1. Fetch latest version from unified GitHub repo
         try:
             v_response = requests.get(LAUNCHER_VERSION_URL, timeout=10)
             v_response.raise_for_status()
             remote_version_str = v_response.text.strip()
             remote_version_float = float(remote_version_str)
         except Exception as e:
-            self._log(f"Error fetching remote version from GitLab: {e}")
+            self._log(f"Error fetching remote version from GitHub: {e}")
             return {'error': f"Error fetching remote version: {e}"}
 
         self._log(f"Local version: {current_version_float} | Remote version: {remote_version_float}")

@@ -32,9 +32,9 @@ HTML_CONTENT = f"""
             --color-bg-lighter: #161b22;
             --color-text: #e0e0e0;
             --color-text-muted: #7a8fa6;
-            /* Cyan / Aqua accent palette */
-            --color-accent: #00d4ff;
-            --color-accent-dark: #0078a8;
+            /* Aqua accent palette */
+            --color-accent: #00cfaa;
+            --color-accent-dark: #007a65;
             --color-danger: #e53935;
             --color-danger-dark: #b71c1c;
             --color-success: #00e676;
@@ -42,17 +42,17 @@ HTML_CONTENT = f"""
             --radius-md: 8px;
             --radius-lg: 12px;
             --radius-btn: 11px;
-            --shadow: 0 4px 20px rgba(0, 212, 255, 0.08);
+            --shadow: 0 4px 20px rgba(0, 207, 170, 0.08);
             /* Button colors */
-            --play-btn-grad-start: #0078a8;
-            --play-btn-grad-end: #00d4ff;
+            --play-btn-grad-start: #007a65;
+            --play-btn-grad-end: #00cfaa;
             --cancel-btn-grad-start: #b71c1c;
             --cancel-btn-grad-end: #e53935;
 
             --menu-btn-fill-start: #000000;
             --menu-btn-fill-end: #0d1117;
-            --menu-btn-stroke-start: #003d5c;
-            --menu-btn-stroke-end: #00d4ff;
+            --menu-btn-stroke-start: #004840;
+            --menu-btn-stroke-end: #00cfaa;
             /* Side panel */
             --panel-bg: #080d13;
             --panel-width: 280px;
@@ -135,7 +135,7 @@ HTML_CONTENT = f"""
         /* --- (RENOMBRADO) Pantalla de Ajustes (Post-Setup) --- */
         #screen-settings .setup-label {{ font-size: 16px; font-weight: 500; margin-bottom: 8px; margin-top: 16px; display: block; }}
         #screen-settings .folder-display {{ display: flex; align-items: center; background-color: var(--color-bg); border-radius: var(--radius-md); padding: 12px 16px; border: 2px dashed var(--color-bg-lighter); margin-bottom: 12px; transition: all 0.3s ease; min-height: 48px; cursor: default; }}
-        #screen-settings .folder-display.dragover {{ border-color: var(--color-accent); background-color: rgba(0, 212, 255, 0.07); }}
+        #screen-settings .folder-display.dragover {{ border-color: var(--color-accent); background-color: rgba(0, 207, 170, 0.07); }}
         #screen-settings .folder-display.valid {{ border-style: solid; border-color: var(--color-success-dark); background-color: rgba(0, 230, 118, 0.07); }}
         #screen-settings .folder-display.invalid {{ border-style: solid; border-color: var(--color-danger-dark); background-color: rgba(229, 57, 53, 0.07); }}
         #screen-settings .folder-display span {{ flex-grow: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; pointer-events: none; }}
@@ -150,7 +150,7 @@ HTML_CONTENT = f"""
         #screen-initial-setup .wizard-step-content p {{ font-size: 15px; color: var(--color-text); margin-bottom: 24px; line-height: 1.6; }}
         #screen-initial-setup .wizard-buttons-horizontal {{ display: flex; gap: 16px; justify-content: center; }}
         #screen-initial-setup .wizard-buttons-horizontal .btn {{ flex: 1; }}
-        #screen-initial-setup .wizard-spinner {{ width: 40px; height: 40px; border: 4px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto 20px auto; box-shadow: 0 0 12px rgba(0, 212, 255, 0.3); }}
+        #screen-initial-setup .wizard-spinner {{ width: 40px; height: 40px; border: 4px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto 20px auto; box-shadow: 0 0 12px rgba(0, 207, 170, 0.3); }}
         
         /* (NUEVO) Consola y progreso para el asistente */
         #wizard-progress-container {{ display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }}
@@ -188,9 +188,9 @@ HTML_CONTENT = f"""
         }}
 
         #minecraft-logo {{
-            display: block; width: 90%; max-width: 1000px; height: auto;
+            display: block; width: 70%; max-width: 820px; height: auto;
             object-fit: contain; z-index: 1; pointer-events: none;
-            margin: 0 auto; margin-top: 1%;
+            align-self: center; margin-top: 28px; flex-shrink: 0;
         }}
         #bottom-gradient {{
             position: absolute; bottom: 0; left: 0; width: 100%; height: 150px;
@@ -208,11 +208,11 @@ HTML_CONTENT = f"""
             transition: transform 0.2s ease, box-shadow 0.2s ease, background-image 0.3s ease;
             z-index: 101;
             background-image: linear-gradient(30deg, var(--play-btn-grad-start), var(--play-btn-grad-end));
-            border: none; box-shadow: 0 5px 25px rgba(0, 212, 255, 0.3);
+            border: none; box-shadow: 0 5px 25px rgba(0, 207, 170, 0.3);
             color: #000; font-weight: 900;
         }}
         #play-btn::before {{ content: ''; position: absolute; inset: -6px; border-radius: calc(var(--radius-btn) + 6px); background-image: linear-gradient(90deg, var(--play-btn-grad-start), var(--play-btn-grad-end)); z-index: -1; padding: 6px; -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; transition: background-image 0.3s ease; }}
-        #play-btn:hover {{ transform: translateX(-50%) scale(1.04); box-shadow: 0 10px 35px rgba(0, 212, 255, 0.45); }}
+        #play-btn:hover {{ transform: translateX(-50%) scale(1.04); box-shadow: 0 10px 35px rgba(0, 207, 170, 0.45); }}
         #play-btn:active {{ transform: translateX(-50%) scale(0.98); box-shadow: 0 3px 10px rgba(0,0,0,0.2); }}
 
         #play-btn.cancel-mode {{
@@ -294,10 +294,10 @@ HTML_CONTENT = f"""
         }}
 
         /* --- Panel Lateral --- */
-        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid rgba(0,212,255,0.12); box-shadow: 5px 0 30px rgba(0,212,255,0.06); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding-top: 80px; display: flex; flex-direction: column; gap: 10px; padding-left: 15px; padding-right: 15px; }}
+        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid rgba(0,207,170,0.12); box-shadow: 5px 0 30px rgba(0,207,170,0.06); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding-top: 80px; display: flex; flex-direction: column; gap: 10px; padding-left: 15px; padding-right: 15px; }}
         #side-panel.panel-open {{ transform: translateX(0); }}
         .panel-button {{ display: flex; align-items: center; gap: 15px; padding: 15px; background-color: var(--color-bg-lighter); color: var(--color-text); border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; text-align: left; font-size: 16px; border: 1px solid transparent; }}
-        .panel-button:hover {{ background-color: rgba(0, 212, 255, 0.07); border-color: rgba(0, 212, 255, 0.2); color: var(--color-accent); }}
+        .panel-button:hover {{ background-color: rgba(0, 207, 170, 0.07); border-color: rgba(0, 207, 170, 0.2); color: var(--color-accent); }}
         .panel-button:hover i {{ color: var(--color-accent); }}
         .panel-button i {{ font-size: 18px; width: 20px; text-align: center; color: var(--color-text-muted); transition: color 0.2s ease; }}
         #panel-overlay {{ position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s linear; }}
@@ -333,7 +333,7 @@ HTML_CONTENT = f"""
         .changelog-item h4 .status-updated {{ color: var(--color-success); }}
         .changelog-item h4 .status-removed {{ color: var(--color-danger); }}
         .changelog-item h4 a {{ color: var(--color-text); text-decoration: none; vertical-align: middle; }}
-        .changelog-item h4 a:hover {{ color: var(--color-accent); text-decoration: underline; text-shadow: 0 0 8px rgba(0, 212, 255, 0.4); }}
+        .changelog-item h4 a:hover {{ color: var(--color-accent); text-decoration: underline; text-shadow: 0 0 8px rgba(0, 207, 170, 0.4); }}
         .changelog-item h4 span.no-link {{ color: var(--color-text); vertical-align: middle; }}
         .changelog-item p {{ font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
         .progress-bar {{ width: 100%; height: 16px; background-color: var(--color-bg); border-radius: 10px; overflow: hidden; }}
@@ -345,7 +345,7 @@ HTML_CONTENT = f"""
         #console::-webkit-scrollbar-thumb {{ background-color: var(--color-bg-lighter); border-radius: 4px; border: 2px solid var(--color-bg); }}
         #console p {{ margin-bottom: 4px; word-break: break-all; user-select: text; }}
         #console p:last-child {{ margin-bottom: 0; }}
-        #console p.highlight {{ color: var(--color-accent); font-weight: 500; background-color: rgba(0, 212, 255, 0.08); border-radius: 4px; padding: 2px 4px; }}
+        #console p.highlight {{ color: var(--color-accent); font-weight: 500; background-color: rgba(0, 207, 170, 0.08); border-radius: 4px; padding: 2px 4px; }}
         #scroll-bottom-btn {{ display: none; position: absolute; bottom: 20px; right: 20px; z-index: 10; background-color: var(--color-accent); color: #000; border: none; border-radius: 50px; padding: 8px 16px; font-size: 12px; font-weight: 700; cursor: pointer; opacity: 0.85; transition: all 0.2s ease; }}
         #scroll-bottom-btn:hover {{ opacity: 1; transform: scale(1.05); }}
         #scroll-bottom-btn.visible {{ display: block; }}
@@ -363,7 +363,7 @@ HTML_CONTENT = f"""
         #minimized-progress-widget:hover {{ background-color: rgba(42, 42, 42, 0.5); }}
         .minimized-progress-text {{ display: flex; justify-content: space-between; align-items: center; width: 100%; }}
         #minimized-progress-label {{ font-size: 13px; font-weight: 500; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }}
-        #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; text-shadow: 0 0 8px rgba(0, 212, 255, 0.4); }}
+        #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; text-shadow: 0 0 8px rgba(0, 207, 170, 0.4); }}
         .minimized-progress-bar-container {{ width: 100%; height: 6px; background-color: var(--color-bg); border-radius: 3px; overflow: hidden; }}
         #minimized-progress-bar-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); border-radius: 3px; transition: width 0.3s ease; }}
 
@@ -420,13 +420,13 @@ HTML_CONTENT = f"""
 
         /* --- Botones Generales --- */
         .btn {{ font-family: var(--font-family-sans); font-size: 14px; font-weight: 500; padding: 12px 16px; border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; }}
-        .btn:focus-visible {{ box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.35); }}
+        .btn:focus-visible {{ box-shadow: 0 0 0 3px rgba(0, 207, 170, 0.35); }}
         .btn:disabled {{ opacity: 0.5; cursor: not-allowed; background: var(--color-bg-lighter) !important; box-shadow: none !important; transform: none !important; }}
         .btn:not(:disabled):hover {{ transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); }}
         .btn:not(:disabled):active {{ transform: translateY(0) scale(0.98); box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15); }}
         .btn-primary {{ background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); color: #000; font-weight: 700; width: 100%; }}
-        .btn-secondary {{ background-color: var(--color-bg-lighter); color: var(--color-text); border: 1px solid rgba(0,212,255,0.1); }}
-        .btn-secondary:not(:disabled):hover {{ background-color: rgba(0,212,255,0.08); border-color: rgba(0,212,255,0.3); color: var(--color-accent); }}
+        .btn-secondary {{ background-color: var(--color-bg-lighter); color: var(--color-text); border: 1px solid rgba(0,207,170,0.1); }}
+        .btn-secondary:not(:disabled):hover {{ background-color: rgba(0,207,170,0.08); border-color: rgba(0,207,170,0.3); color: var(--color-accent); }}
         .btn-danger {{ background: linear-gradient(90deg, var(--color-danger-dark), var(--color-danger)); color: white; width: 100%; }}
 
         /* --- Download Manager Banner --- */
@@ -512,7 +512,7 @@ HTML_CONTENT = f"""
             </button>
             <h2 id="progress-title">Updating...</h2>
             <!-- Download Details Banner -->
-            <div id="download-details-banner" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(0,212,255,0.06); border:1px solid rgba(0,212,255,0.18); border-radius:8px; display:none; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div id="download-details-banner" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(0,207,170,0.06); border:1px solid rgba(0,207,170,0.18); border-radius:8px; align-items:center; gap:12px; flex-wrap:wrap;">
                 <i class="fas fa-download" style="color:var(--color-accent); flex-shrink:0;"></i>
                 <span id="download-filename" style="font-weight:600; color:var(--color-text); flex-shrink:0; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
                 <span id="download-size-label" style="font-size:13px; color:var(--color-text-muted); flex-grow:1;"></span>
@@ -623,7 +623,7 @@ HTML_CONTENT = f"""
                 </div>
                 <div class="wizard-step-content">
                     <!-- Wizard Download Details -->
-                    <div id="wizard-download-details" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(0,212,255,0.06); border:1px solid rgba(0,212,255,0.18); border-radius:8px; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div id="wizard-download-details" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(0,207,170,0.06); border:1px solid rgba(0,207,170,0.18); border-radius:8px; align-items:center; gap:10px; flex-wrap:wrap;">
                         <i class="fas fa-download" style="color:var(--color-accent); flex-shrink:0;"></i>
                         <span id="wizard-dl-filename" style="font-weight:600; color:var(--color-text); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0;"></span>
                         <span id="wizard-dl-size" style="font-size:12px; color:var(--color-text-muted); flex-grow:1;"></span>
@@ -1291,7 +1291,7 @@ HTML_CONTENT = f"""
             setTimeout(() => {{
                 dom.playBtn.disabled = false;
                 dom.playBtn.classList.remove('cancel-mode');
-                dom.playBtn.textContent = "PLAY";
+                dom.playBtn.textContent = (setupState.prismPath && setupState.instancePath) ? "PLAY" : "DOWNLOAD";
             }}, 500);
         }}
 
@@ -1500,8 +1500,13 @@ HTML_CONTENT = f"""
             }}
 
             // Main entry point
+            let _initRetries = 0;
             function initializeApp() {{
                 if (!window.pywebview || !window.pywebview.apiReady) {{
+                    if (++_initRetries > 200) {{ // 10s max wait
+                        onUpdateError("Python backend did not become ready in time.");
+                        return;
+                    }}
                     return setTimeout(initializeApp, 50);
                 }}
                 console.log("DOM and API ready! Starting update check...");
