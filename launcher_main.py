@@ -351,6 +351,47 @@ class ModpackLauncherAPI:
         """
         import urllib.request
         import subprocess
+        import re as _re
+
+        def _resolve_lfs_url(pointer_bytes, original_url):
+            """
+            Parse a Git LFS pointer and call the LFS batch API to get the real
+            download URL.  Works for any public GitHub repo.
+            """
+            text = pointer_bytes.decode('utf-8', errors='replace')
+            oid_m  = _re.search(r'oid sha256:([0-9a-f]{64})', text)
+            size_m = _re.search(r'size (\d+)', text)
+            if not oid_m or not size_m:
+                raise RuntimeError("Could not parse Git LFS pointer")
+            oid  = oid_m.group(1)
+            size = int(size_m.group(1))
+
+            # Extract owner/repo from raw.githubusercontent.com URL
+            gh_m = _re.match(
+                r'https?://raw\.githubusercontent\.com/([^/]+)/([^/]+)/', original_url
+            )
+            if not gh_m:
+                raise RuntimeError("URL is not a raw.githubusercontent.com URL — cannot resolve LFS")
+            owner, repo = gh_m.group(1), gh_m.group(2)
+
+            import json as _json
+            lfs_api = f"https://github.com/{owner}/{repo}.git/info/lfs/objects/batch"
+            payload = _json.dumps({
+                "operation": "download",
+                "transfers": ["basic"],
+                "objects": [{"oid": oid, "size": size}],
+            }).encode()
+            req = urllib.request.Request(
+                lfs_api, data=payload,
+                headers={
+                    "Content-Type": "application/vnd.git-lfs+json",
+                    "Accept":       "application/vnd.git-lfs+json",
+                    "User-Agent":   "KewzLauncher/1.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = _json.loads(resp.read())
+            return data['objects'][0]['actions']['download']['href']
 
         try:
             import imageio_ffmpeg
@@ -440,16 +481,38 @@ class ModpackLauncherAPI:
 
                 dl_size = os.path.getsize(tmp_path)
                 if dl_size < MIN_VIDEO_SIZE:
-                    # Read first bytes to give a clear error for LFS pointers
                     with open(tmp_path, 'rb') as _f:
-                        header = _f.read(64)
-                    if header.startswith(LFS_POINTER_PREFIX):
-                        raise RuntimeError(
-                            f"{vdef['filename']} is a Git LFS pointer ({dl_size} bytes). "
-                            "raw.githubusercontent.com does not serve LFS content. "
-                            "Host the video on GitHub Releases or another direct-download URL."
-                        )
-                    raise RuntimeError(f"Download too small ({dl_size} bytes) — expected a real video file")
+                        header = _f.read(256)
+                    if header.lstrip().startswith(LFS_POINTER_PREFIX):
+                        # Transparently resolve the LFS pointer → real CDN URL and re-download
+                        self._log(f"{vdef['filename']} is a Git LFS pointer — resolving via LFS batch API...")
+                        with open(tmp_path, 'rb') as _pf:
+                            pointer_bytes = _pf.read()
+                        os.remove(tmp_path)
+                        lfs_url = _resolve_lfs_url(pointer_bytes, src_url)
+                        self._log(f"LFS resolved, downloading actual content...")
+                        lfs_req = urllib.request.Request(lfs_url, headers={"User-Agent": "KewzLauncher/1.0"})
+                        with urllib.request.urlopen(lfs_req, timeout=300) as lfs_resp:
+                            total_b = int(lfs_resp.headers.get("Content-Length") or 0)
+                            downloaded = 0
+                            last_pct = -1
+                            with open(tmp_path, "wb") as f:
+                                while True:
+                                    chunk = lfs_resp.read(CHUNK)
+                                    if not chunk:
+                                        break
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    if total_b > 0:
+                                        pct = int(downloaded / total_b * 100)
+                                        if pct - last_pct >= 5:
+                                            last_pct = pct
+                                            _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress({video_idx},{video_total},{pct})')
+                        dl_size = os.path.getsize(tmp_path)
+                        if dl_size < MIN_VIDEO_SIZE:
+                            raise RuntimeError(f"LFS download also too small ({dl_size} bytes)")
+                    else:
+                        raise RuntimeError(f"Download too small ({dl_size} bytes) — expected a real video file")
 
                 # Compress using bundled ffmpeg; fall back to raw file if unavailable
                 if ffmpeg_exe:
