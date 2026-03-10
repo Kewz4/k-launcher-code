@@ -338,8 +338,10 @@ class ModpackLauncherAPI:
         port = self._start_video_server()
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
+        video_total = len(VIDEO_DEFINITIONS)
+
         def _task():
-            for vdef in VIDEO_DEFINITIONS:
+            for video_idx, vdef in enumerate(VIDEO_DEFINITIONS, start=1):
                 out_path = os.path.join(VIDEO_DIR, vdef["filename"])
                 url = f"http://127.0.0.1:{port}/{vdef['filename']}"
 
@@ -353,9 +355,31 @@ class ModpackLauncherAPI:
                 try:
                     self._log(f"Downloading background video: {vdef['filename']}")
 
+                    # Progress hook: throttle UI updates to avoid flooding evaluate_js.
+                    _last_reported_pct = [-1]
+                    def _progress_hook(d, _idx=video_idx, _total=video_total):
+                        if d['status'] != 'downloading':
+                            return
+                        total_b = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                        if not total_b:
+                            return
+                        pct = int(d.get('downloaded_bytes', 0) / total_b * 100)
+                        if pct - _last_reported_pct[0] < 5:
+                            return  # only update every 5 %
+                        _last_reported_pct[0] = pct
+                        if self.window:
+                            self.window.evaluate_js(
+                                f'onBgVideoProgress({_idx}, {_total}, {pct})'
+                            )
+
                     # Download with the yt-dlp Python API (no external exe needed).
-                    # YouTube returns 403 without browser cookies due to bot-detection,
-                    # so we try each installed browser in turn, then fall back to no cookies.
+                    #
+                    # Root cause of 403: YouTube bot-detection.
+                    # Strategy: try alternative yt-dlp player clients first
+                    # (tv_embedded / mweb) — these bypass bot-detection without
+                    # requiring any browser cookies, so they work even when a
+                    # browser is open and has its cookie DB locked.
+                    # Only fall back to cookiesfrombrowser if all client tricks fail.
                     base_opts = {
                         'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
                         'merge_output_format': 'mp4',
@@ -364,11 +388,23 @@ class ModpackLauncherAPI:
                         'quiet': True,
                         'no_warnings': True,
                         'ffmpeg_location': os.path.dirname(ffmpeg_exe),
+                        'progress_hooks': [_progress_hook],
                     }
-                    browsers_to_try = ['edge', 'chrome', 'firefox', 'brave', 'opera', 'chromium', None]
+                    # (extractor_args, cookiesfrombrowser) tuples — tried in order
+                    attempts = [
+                        ({'youtube': {'player_client': ['tv_embedded']}}, None),
+                        ({'youtube': {'player_client': ['mweb']}},         None),
+                        ({'youtube': {'player_client': ['web']}},           None),
+                        (None, 'edge'),
+                        (None, 'chrome'),
+                        (None, 'firefox'),
+                        (None, None),  # last resort: no cookies, default client
+                    ]
                     last_err = None
-                    for browser in browsers_to_try:
+                    for ext_args, browser in attempts:
                         opts = dict(base_opts)
+                        if ext_args:
+                            opts['extractor_args'] = ext_args
                         if browser:
                             opts['cookiesfrombrowser'] = (browser,)
                         try:
@@ -379,8 +415,10 @@ class ModpackLauncherAPI:
                         except Exception as e:
                             last_err = e
                             err_str = str(e)
-                            # Only retry with next browser on 403/auth errors
-                            if '403' not in err_str and 'Forbidden' not in err_str and 'cookies' not in err_str.lower():
+                            retriable = any(k in err_str for k in (
+                                '403', 'Forbidden', 'cookie', 'Sign in', 'bot'
+                            ))
+                            if not retriable:
                                 break
                     if last_err:
                         raise last_err
