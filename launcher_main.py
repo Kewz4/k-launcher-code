@@ -131,9 +131,9 @@ DOWNLOAD_STATE_FILE = os.path.join(os.getcwd(), ".download_state.json")
 # (GitHub Release assets, R2, S3, etc. all work fine).
 VIDEO_DIR = os.path.join(os.getcwd(), "videos")
 VIDEO_DEFINITIONS = [
-    {"url": "https://github.com/Kewz4/k-launcher-code/releases/download/bg-videos/video_bg1_cob.mp4", "filename": "video_bg1_cob.mp4"},
-    {"url": "https://github.com/Kewz4/k-launcher-code/releases/download/bg-videos/video_bg2_cob.mp4", "filename": "video_bg2_cob.mp4"},
-    {"url": "https://github.com/Kewz4/k-launcher-code/releases/download/bg-videos/video_bg3_cob.mp4", "filename": "video_bg3_cob.mp4"},
+    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg1_cob.mp4", "filename": "video_bg1_cob.mp4"},
+    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg2_cob.mp4", "filename": "video_bg2_cob.mp4"},
+    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg3_cob.mp4", "filename": "video_bg3_cob.mp4"},
 ]
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
