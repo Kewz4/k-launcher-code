@@ -1844,6 +1844,97 @@ HTML_CONTENT = f"""
         }}
 
 
+        // Helper: show progress screen and auto-start the modpack install+launch flow.
+        // Called when Prism paths are saved but mods aren't installed yet.
+        function _autoStartInstall(reason) {{
+            console.log("Auto-starting install flow:", reason);
+            dom.playBtn.textContent = "CANCEL";
+            dom.playBtn.classList.add('cancel-mode');
+            switchScreen('progress');
+            dom.console.innerHTML = '';
+            dom.changelogContent.innerHTML = '';
+            logToConsole(reason);
+            dom.cancelBtn.disabled = false;
+            dom.cancelBtn.textContent = "Cancel";
+            updateProgress(0, "Starting...");
+            setLoadScreen("Installing Modpack...", "Getting things ready...");
+            pywebview.api.py_start_game().catch(e => {{
+                showResult(false, "Install Error", "Could not start installation: " + e);
+                returnToPlayScreen();
+            }});
+        }}
+
+        // Main app startup — called by tryAdvanceToMain() once both the update check
+        // and first video are ready. Lives in outer scope so onUpdateCheckComplete and
+        // onUpdateError reference it directly (no fragile window.startMainApp indirection).
+        function startMainApp() {{
+            console.log("startMainApp: loading config...");
+            pywebview.api.py_get_os_sep().then(sep => {{
+                osSep = sep || '/';
+                return pywebview.api.py_load_and_migrate_config();
+            }}).then(pathsAreValid => {{
+                console.log("pathsAreValid:", pathsAreValid);
+                return pywebview.api.py_get_current_paths().then(paths => {{
+                    console.log("Current paths:", paths);
+                    if (paths) {{
+                        setupState.prismPath = paths.prism_path;
+                        setupState.instancePath = paths.instance_path;
+                    }}
+                    return pywebview.api.py_is_modpack_installed().then(installed => {{
+                        console.log("modpackInstalled:", installed);
+                        setupState.modpackInstalled = installed;
+                        return pathsAreValid;
+                    }}).catch(() => pathsAreValid);
+                }});
+            }}).then(pathsAreValid => {{
+                // Load music (fire-and-forget, doesn't block screen transition)
+                pywebview.api.py_get_playlist().then(p => {{
+                    if (p && p.length > 0) {{ playlist = p; loadTrack(0); playTrack(); }}
+                    else {{ domPlayer.title.textContent = "Playlist Error"; }}
+                }}).catch(e => {{ domPlayer.title.textContent = "Playlist API Error"; console.error(e); }});
+                pywebview.api.py_load_music_volume().then(vol => {{
+                    domPlayer.volumeSlider.value = vol; setVolume();
+                }}).catch(e => {{ domPlayer.volumeSlider.value = 1.0; setVolume(); }});
+
+                // Determine which screen to show
+                pywebview.api.py_check_interrupted_download().then(info => {{
+                    if (info && info.found && info.bytes_downloaded > 0) {{
+                        // Previous download was interrupted — offer resume
+                        const mb = (info.bytes_downloaded / 1048576).toFixed(1);
+                        document.getElementById('resume-modal-details').textContent =
+                            `"${{info.filename}}" — ${{mb}} MB already downloaded. Resume where you left off?`;
+                        switchScreen(pathsAreValid ? 'play' : 'initial-setup');
+                        dom.resumeModal.classList.add('visible');
+                        dom.resumeModal._interruptedInfo = info;
+                    }} else if (!pathsAreValid) {{
+                        // No saved Prism/instance paths — run setup wizard
+                        startInitialSetupWizard();
+                    }} else if (!setupState.modpackInstalled) {{
+                        // Prism found, instance structure exists, but no mods — auto-install
+                        _autoStartInstall("Modpack not installed. Starting download and install...");
+                    }} else {{
+                        // Fully installed — go straight to play screen
+                        switchScreen('play');
+                    }}
+                }}).catch(() => {{
+                    if (!pathsAreValid) startInitialSetupWizard();
+                    else if (!setupState.modpackInstalled) _autoStartInstall("Modpack not installed. Starting download and install...");
+                    else switchScreen('play');
+                }});
+
+                return pywebview.api.py_get_debug_status();
+            }}).then(isDebug => {{
+                dom.panelDebugBtn.style.display = isDebug ? 'flex' : 'none';
+                return pywebview.api.py_get_launcher_version();
+            }}).then(version => {{
+                if (version) dom.launcherVersion.textContent = `v${{version}}`;
+            }}).catch(e => {{
+                console.error("startMainApp chain error:", e);
+                showResult(false, "Load Error", `Could not load configuration: ${{e}}`);
+                startInitialSetupWizard();
+            }});
+        }}
+
         // --- Event Listeners ---
         window.addEventListener('pywebviewready', () => {{
             console.log("pywebviewready: Python API is ready.");
@@ -1904,79 +1995,6 @@ HTML_CONTENT = f"""
                 }} else if (vid.paused && vid.readyState >= 2) {{
                     vid.play().catch(() => {{}});
                 }}
-            }}
-
-            // Main app startup (after update check)
-            function startMainApp() {{
-                console.log("Starting main application...");
-                pywebview.api.py_get_os_sep().then(sep => {{
-                    osSep = sep || '/';
-                    return pywebview.api.py_load_and_migrate_config();
-                }}).then(pathsAreValid => {{
-                    return pywebview.api.py_get_current_paths().then(paths => {{
-                        console.log("Current paths loaded:", paths);
-                        if (paths) {{
-                            setupState.prismPath = paths.prism_path;
-                            setupState.instancePath = paths.instance_path;
-                        }}
-                        // Check if the actual mod files are present
-                        return pywebview.api.py_is_modpack_installed().then(installed => {{
-                            setupState.modpackInstalled = installed;
-                            return pathsAreValid;
-                        }}).catch(() => pathsAreValid);
-                    }});
-                }}).then(pathsAreValid => {{
-                    // Load music
-                    pywebview.api.py_get_playlist().then(p => {{
-                        if (p && p.length > 0) {{
-                            playlist = p;
-                            loadTrack(0);
-                            playTrack();
-                        }} else {{
-                             domPlayer.title.textContent = "Playlist Error";
-                        }}
-                    }}).catch(e => {{ domPlayer.title.textContent = "Playlist API Error"; console.error(e); }});
-
-                    // Cargar volumen
-                    pywebview.api.py_load_music_volume().then(vol => {{
-                        domPlayer.volumeSlider.value = vol; setVolume();
-                    }}).catch(e => {{ domPlayer.volumeSlider.value = 1.0; setVolume(); console.error(e); }});
-
-                    // Check for interrupted modpack download before showing main screen
-                    pywebview.api.py_check_interrupted_download().then(info => {{
-                        if (info && info.found && info.bytes_downloaded > 0) {{
-                            const mb = (info.bytes_downloaded / 1048576).toFixed(1);
-                            document.getElementById('resume-modal-details').textContent =
-                                `"${{info.filename}}" — ${{mb}} MB already downloaded. Resume where you left off?`;
-                            // MUST dismiss updater screen first before showing resume modal
-                            switchScreen(pathsAreValid ? 'play' : 'initial-setup');
-                            dom.resumeModal.classList.add('visible');
-                            // Stash info for buttons
-                            dom.resumeModal._interruptedInfo = info;
-                        }} else if (pathsAreValid) {{
-                            switchScreen('play');
-                        }} else {{
-                            startInitialSetupWizard();
-                        }}
-                    }}).catch(() => {{
-                        // If check fails just proceed normally
-                        if (pathsAreValid) {{
-                            switchScreen('play');
-                        }} else {{
-                            startInitialSetupWizard();
-                        }}
-                    }});
-                    return pywebview.api.py_get_debug_status();
-
-                }}).then(isDebug => {{
-                    dom.panelDebugBtn.style.display = isDebug ? 'flex' : 'none';
-                    return pywebview.api.py_get_launcher_version();
-                }}).then(version => {{
-                    if (version) dom.launcherVersion.textContent = `v${{version}}`;
-                }}).catch(e => {{
-                    showResult(false, "Load Error", `Could not load configuration: ${{e}}`);
-                    startInitialSetupWizard();
-                }});
             }}
 
             // Main entry point
