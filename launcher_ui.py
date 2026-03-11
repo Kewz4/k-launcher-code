@@ -365,6 +365,7 @@ HTML_CONTENT = f"""
             cursor: pointer; transition: background-color 0.2s ease;
         }}
         #minimized-progress-widget:hover {{ background-color: rgba(20, 28, 38, 0.97); }}
+        .minimized-widget-header {{ font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent); margin-bottom: 4px; }}
         .minimized-progress-text {{ display: flex; justify-content: space-between; align-items: center; width: 100%; }}
         #minimized-progress-label {{ font-size: 13px; font-weight: 500; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }}
         #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; text-shadow: 0 0 8px rgba(0, 207, 170, 0.4); }}
@@ -770,6 +771,7 @@ HTML_CONTENT = f"""
 
     <!-- Minimized Progress Widget -->
     <div id="minimized-progress-widget">
+         <div class="minimized-widget-header">&#x25B2; Download Manager</div>
          <div class="minimized-progress-text">
               <span id="minimized-progress-label">Loading Modpack</span>
               <span id="minimized-progress-percent">0%</span>
@@ -1767,10 +1769,12 @@ HTML_CONTENT = f"""
                     step.classList.remove('active');
                 }}
             }});
+            const isDownloading = (stepName === 'install-progress');
             // Show minimize button only during active download/install
-            dom.wizardMinimizeBtn.style.display = (stepName === 'install-progress') ? 'flex' : 'none';
-            // Resetear consola y progreso al mostrar un paso de instalación
-            if (stepName === 'install-progress') {{
+            dom.wizardMinimizeBtn.style.display = isDownloading ? 'flex' : 'none';
+            // Hide the play button while a download is in progress; restore otherwise
+            dom.playBtn.style.display = isDownloading ? 'none' : '';
+            if (isDownloading) {{
                 dom.wizard.console.innerHTML = '';
                 dom.wizard.progressBar.style.width = '0%';
                 dom.wizard.progressLabel.textContent = 'Starting...';
