@@ -605,9 +605,9 @@ class ModpackLauncherAPI:
     def py_start_update_check(self):
         """Inicia la comprobación de actualizaciones en segundo plano."""
         if not getattr(sys, 'frozen', False):
-            self._log("Dev mode: omitiendo búsqueda de actualizaciones.")
+            self._log("Omitiendo búsqueda de actualizaciones en entorno de desarrollo.")
             if self.window:
-                self.window.evaluate_js('onUpdateCheckComplete(false, null)')
+                self.window.evaluate_js("startMainApp();")
             return
 
         def check_thread_task():

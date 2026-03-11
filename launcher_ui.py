@@ -1310,15 +1310,14 @@ HTML_CONTENT = f"""
             closeSidePanel();
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); loadingAnimationId = null; }}
 
-            // Mostrar reproductor siempre (solicitud de usuario)
-            domPlayer.player.style.display = 'flex';
-            domPlayer.player.classList.add('visible');
+            // Ocultar reproductor y pantalla de juego en pantallas de configuración
+            const isSetupScreen = (screenName === 'initial-setup' || screenName === 'settings');
+            domPlayer.player.style.display = isSetupScreen ? 'none' : 'flex';
+            domPlayer.player.classList.toggle('visible', !isSetupScreen);
 
-            // Mostrar la pantalla de juego (fondo) en la mayoría de los casos
-            // #screen-play siempre actúa como fondo; su z-index se controla con la clase 'active'.
-            const showPlayAsMainScreen = (screenName !== 'initial-setup');
-            dom.screens.play.style.display = 'flex';
-            dom.screens.play.classList.toggle('active', showPlayAsMainScreen);
+            const showPlayBackground = (screenName !== 'initial-setup' && screenName !== 'settings');
+            dom.screens.play.style.display = showPlayBackground ? 'flex' : 'none';
+            dom.screens.play.classList.toggle('active', showPlayBackground);
             resumeBgVideoIfReady();
 
             // wizardMinimizeBtn shown/hidden by showWizardStep
