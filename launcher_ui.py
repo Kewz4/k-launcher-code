@@ -1596,23 +1596,32 @@ HTML_CONTENT = f"""
             openSettingsDrawer();
         }}
 
-        // Refresh play button label based on detected state
+        // Refresh play button label — always queries Python for authoritative state.
+        // setupState is updated as a side-effect so other UI (settings) stays in sync.
         function refreshPlayBtnLabel() {{
             // Paused download takes priority — restore the manager
             if (isProgressMinimized) {{
                 dom.playBtn.textContent = "OPEN DOWNLOAD MANAGER";
                 return;
             }}
-            if (!setupState.prismPath) {{
-                dom.playBtn.textContent = "INSTALL PRISM";
-                return;
-            }}
-            // Prism found — check if modpack is installed
-            pywebview.api.py_is_modpack_installed().then(installed => {{
+            pywebview.api.py_get_current_paths().then(paths => {{
+                const prismPath = paths && paths.prism_path;
+                // Sync setupState from Python (settings panel reads from here)
+                setupState.prismPath = prismPath || null;
+                setupState.instancePath = (paths && paths.instance_path) || null;
+                if (!prismPath) {{
+                    dom.playBtn.textContent = "INSTALL PRISM";
+                    return;
+                }}
+                return pywebview.api.py_is_modpack_installed();
+            }}).then(installed => {{
+                if (installed === undefined || installed === null) return; // already handled above
                 setupState.modpackInstalled = installed;
                 dom.playBtn.textContent = installed ? "PLAY" : "DOWNLOAD MODPACK";
             }}).catch(() => {{
-                dom.playBtn.textContent = setupState.modpackInstalled ? "PLAY" : "DOWNLOAD MODPACK";
+                // Fallback to cached state on API failure
+                if (!setupState.prismPath) dom.playBtn.textContent = "INSTALL PRISM";
+                else dom.playBtn.textContent = setupState.modpackInstalled ? "PLAY" : "DOWNLOAD MODPACK";
             }});
         }}
 
