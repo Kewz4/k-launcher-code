@@ -1041,17 +1041,8 @@ HTML_CONTENT = f"""
             }}
         }}
 
-        // Gate: startMainApp only runs once BOTH the update check AND first video are ready.
-        let _updateCheckDone = false;
+        // Gate variables removed — videos load in background, app starts after update check only.
         let _firstVideoReady = false;
-        let _videoTimeoutId = null;
-
-        function tryAdvanceToMain() {{
-            if (_updateCheckDone && _firstVideoReady) {{
-                if (_videoTimeoutId) {{ clearTimeout(_videoTimeoutId); _videoTimeoutId = null; }}
-                startMainApp();
-            }}
-        }}
 
         // Called by Python each time a video becomes ready (downloaded or already cached).
         function onBgVideoReady(url) {{
@@ -1060,17 +1051,12 @@ HTML_CONTENT = f"""
                 _firstVideoReady = true;
                 bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
                 _loadBgVideo(bgVideoIndex);
-                tryAdvanceToMain();
             }}
         }}
 
         // Called by Python if the download fails for the first video.
         function onBgVideoError(msg) {{
             console.warn("Background video error:", msg);
-            if (!_firstVideoReady) {{
-                _firstVideoReady = true;
-                tryAdvanceToMain();
-            }}
         }}
 
         // --- Lógica del Panel de Depuración ---
@@ -1237,20 +1223,21 @@ HTML_CONTENT = f"""
             }}
         }}
 
-        // Called by Python only when an update IS available (prod mode only).
-        // The app is already running — show the updater overlay on top of everything.
         function onUpdateCheckComplete(update_available, details_json) {{
             console.log(`onUpdateCheckComplete: available=${{update_available}}`);
+
             if (!update_available) {{
-                // No update — advance the startup gate
-                _updateCheckDone = true;
-                tryAdvanceToMain();
+                // No update — hide updater and launch main app
+                logToUpdaterConsole("You're up to date. Loading launcher...");
+                updateUpdaterProgress(100);
+                setTimeout(() => {{
+                    if (dom.updater && dom.updater.screen) dom.updater.screen.classList.add('hidden');
+                    startMainApp();
+                }}, 1200);
                 return;
             }}
 
-            // Show the updater overlay (it is still in the DOM but hidden)
-            if (dom.updater && dom.updater.screen) dom.updater.screen.classList.remove('hidden');
-
+            // Update available — keep updater visible, start countdown
             const details = JSON.parse(details_json);
             logToUpdaterConsole(`New version available: ${{details.version}}!`);
             dom.updater.title.textContent = `Update Available`;
@@ -1281,10 +1268,18 @@ HTML_CONTENT = f"""
         }}
 
         function onUpdateError(error_message) {{
-            console.warn("onUpdateError (continuing):", error_message);
-            // Treat update check failure as done — still advance to main app
-            _updateCheckDone = true;
-            tryAdvanceToMain();
+            console.error("onUpdateError:", error_message);
+            logToUpdaterConsole(`Warning: ${{error_message}}`);
+            dom.updater.title.textContent = 'Update Check Failed';
+            dom.updater.buttons.innerHTML = '';
+            const skipButton = document.createElement('button');
+            skipButton.textContent = 'Continue Anyway';
+            skipButton.className = 'btn btn-secondary';
+            skipButton.onclick = () => {{
+                if (dom.updater && dom.updater.screen) dom.updater.screen.classList.add('hidden');
+                startMainApp();
+            }};
+            dom.updater.buttons.appendChild(skipButton);
         }}
 
         // --- Funciones UI ---
@@ -1853,30 +1848,16 @@ HTML_CONTENT = f"""
             }});
         }}
 
-        // Main app startup — called by tryAdvanceToMain() once both the update check
-        // and first video are ready (or their timeout/error fallbacks fire).
-        // Lives in outer scope so Python evaluate_js can also call it if needed.
+        // Main app startup — called from onUpdateCheckComplete (no update) or onUpdateError.
         function startMainApp() {{
             console.log("startMainApp: loading config...");
             pywebview.api.py_get_os_sep().then(sep => {{
                 osSep = sep || '/';
                 return pywebview.api.py_load_and_migrate_config();
             }}).then(pathsAreValid => {{
-                console.log("pathsAreValid:", pathsAreValid);
-                return pywebview.api.py_get_current_paths().then(paths => {{
-                    console.log("Current paths:", paths);
-                    if (paths) {{
-                        setupState.prismPath = paths.prism_path;
-                        setupState.instancePath = paths.instance_path;
-                    }}
-                    return pywebview.api.py_is_modpack_installed().then(installed => {{
-                        console.log("modpackInstalled:", installed);
-                        setupState.modpackInstalled = installed;
-                        return pathsAreValid;
-                    }}).catch(() => pathsAreValid);
-                }});
-            }}).then(pathsAreValid => {{
-                // Load music (fire-and-forget, doesn't block screen transition)
+                console.log("startMainApp: pathsAreValid =", pathsAreValid);
+
+                // Load music in background (fire-and-forget)
                 pywebview.api.py_get_playlist().then(p => {{
                     if (p && p.length > 0) {{ playlist = p; loadTrack(0); playTrack(); }}
                     else {{ domPlayer.title.textContent = "Playlist Error"; }}
@@ -1885,31 +1866,12 @@ HTML_CONTENT = f"""
                     domPlayer.volumeSlider.value = vol; setVolume();
                 }}).catch(e => {{ domPlayer.volumeSlider.value = 1.0; setVolume(); }});
 
-                // Determine which screen to show
-                pywebview.api.py_check_interrupted_download().then(info => {{
-                    if (info && info.found && info.bytes_downloaded > 0) {{
-                        // Previous download was interrupted — offer resume
-                        const mb = (info.bytes_downloaded / 1048576).toFixed(1);
-                        document.getElementById('resume-modal-details').textContent =
-                            `"${{info.filename}}" — ${{mb}} MB already downloaded. Resume where you left off?`;
-                        switchScreen(pathsAreValid ? 'play' : 'initial-setup');
-                        dom.resumeModal.classList.add('visible');
-                        dom.resumeModal._interruptedInfo = info;
-                    }} else if (!pathsAreValid) {{
-                        // No saved Prism/instance paths — run setup wizard
-                        startInitialSetupWizard();
-                    }} else if (!setupState.modpackInstalled) {{
-                        // Prism found, instance structure exists, but no mods — auto-install
-                        _autoStartInstall("Modpack not installed. Starting download and install...");
-                    }} else {{
-                        // Fully installed — go straight to play screen
-                        switchScreen('play');
-                    }}
-                }}).catch(() => {{
-                    if (!pathsAreValid) startInitialSetupWizard();
-                    else if (!setupState.modpackInstalled) _autoStartInstall("Modpack not installed. Starting download and install...");
-                    else switchScreen('play');
-                }});
+                // Show the right screen
+                if (pathsAreValid) {{
+                    switchScreen('play');
+                }} else {{
+                    startInitialSetupWizard();
+                }}
 
                 return pywebview.api.py_get_debug_status();
             }}).then(isDebug => {{
@@ -1919,7 +1881,6 @@ HTML_CONTENT = f"""
                 if (version) dom.launcherVersion.textContent = `v${{version}}`;
             }}).catch(e => {{
                 console.error("startMainApp chain error:", e);
-                showResult(false, "Load Error", `Could not load configuration: ${{e}}`);
                 startInitialSetupWizard();
             }});
         }}
@@ -1991,44 +1952,22 @@ HTML_CONTENT = f"""
             function initializeApp() {{
                 if (!window.pywebview || !window.pywebview.apiReady) {{
                     if (++_initRetries > 200) {{ // 10s max wait
-                        console.warn("Python backend did not become ready in time.");
-                        _updateCheckDone = true;
-                        _firstVideoReady = true;
-                        tryAdvanceToMain();
+                        onUpdateError("Python backend did not become ready in time.");
                         return;
                     }}
                     return setTimeout(initializeApp, 50);
                 }}
                 console.log("DOM and API ready! Initializing app...");
                 window.quitting = false;
-                window.startMainApp = startMainApp; // Expose globally for Python
+                window.startMainApp = startMainApp;
 
-                // Start bg video download. onBgVideoReady / onBgVideoError advance the gate.
-                try {{
-                    pywebview.api.py_ensure_background_videos().catch(() => {{
-                        if (!_firstVideoReady) {{ _firstVideoReady = true; tryAdvanceToMain(); }}
-                    }});
-                }} catch(e) {{
-                    console.warn("Could not start background video download:", e);
-                    if (!_firstVideoReady) {{ _firstVideoReady = true; tryAdvanceToMain(); }}
-                }}
+                // Start bg video download in background (does not block startup)
+                try {{ pywebview.api.py_ensure_background_videos().catch(() => {{}}); }}
+                catch(e) {{ console.warn("Could not start background video download:", e); }}
 
-                // Start update check. onUpdateCheckComplete / onUpdateError advance the gate.
+                // Start update check — onUpdateCheckComplete/onUpdateError will call startMainApp
                 try {{ pywebview.api.py_start_update_check(); }}
-                catch(e) {{
-                    console.warn("Update check call failed:", e);
-                    _updateCheckDone = true;
-                    tryAdvanceToMain();
-                }}
-
-                // Safety net: if video never loads within 10s, advance anyway
-                _videoTimeoutId = setTimeout(() => {{
-                    if (!_firstVideoReady) {{
-                        console.warn("Video load timeout — advancing without video");
-                        _firstVideoReady = true;
-                        tryAdvanceToMain();
-                    }}
-                }}, 10000);
+                catch(e) {{ onUpdateError(`Backend communication failed: ${{e}}`); }}
             }}
 
             // Iniciar la aplicación
