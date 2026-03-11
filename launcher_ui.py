@@ -1015,19 +1015,6 @@ HTML_CONTENT = f"""
             vid.play().catch(() => {{}});
         }}
 
-        // --- Gate: both update-check AND first video must be ready before advancing ---
-        let _updateCheckDone = false;
-        let _firstVideoReady = false;
-        let _pendingStartMainApp = null;
-
-        function tryAdvanceToMain() {{
-            if (_updateCheckDone && _firstVideoReady && _pendingStartMainApp) {{
-                const fn = _pendingStartMainApp;
-                _pendingStartMainApp = null;
-                fn();
-            }}
-        }}
-
         // Called by Python during a video download — updates progress bar + status line.
         function onBgVideoProgress(videoIdx, totalVideos, pct) {{
             if (dom && dom.updater.title) {{
@@ -1055,26 +1042,19 @@ HTML_CONTENT = f"""
         }}
 
         // Called by Python each time a video becomes ready (downloaded or already cached).
+        let _firstVideoReady = false;
         function onBgVideoReady(url) {{
             bgVideoList.push(url);
             if (!_firstVideoReady) {{
                 _firstVideoReady = true;
                 bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
                 _loadBgVideo(bgVideoIndex);
-                tryAdvanceToMain();
             }}
         }}
 
         // Called by Python if the download fails for the first video.
         function onBgVideoError(msg) {{
             console.warn("Background video error:", msg);
-            if (!_firstVideoReady) {{
-                _firstVideoReady = true;
-                if (_updateCheckDone && dom && dom.updater) {{
-                    logToUpdaterConsole("Warning: Could not download background video: " + msg);
-                }}
-                tryAdvanceToMain();
-            }}
         }}
 
         // --- Lógica del Panel de Depuración ---
@@ -1241,61 +1221,47 @@ HTML_CONTENT = f"""
             }}
         }}
 
+        // Called by Python only when an update IS available (prod mode only).
+        // The app is already running — show the updater overlay on top of everything.
         function onUpdateCheckComplete(update_available, details_json) {{
             console.log(`onUpdateCheckComplete: available=${{update_available}}`);
+            if (!update_available) return; // No update — app already running, nothing to do
 
-            if (update_available) {{
-                const details = JSON.parse(details_json);
-                logToUpdaterConsole(`New version available: ${{details.version}}!`);
-                dom.updater.title.textContent = `Update Available`;
+            // Show the updater overlay (it is still in the DOM but hidden)
+            if (dom.updater && dom.updater.screen) dom.updater.screen.classList.remove('hidden');
 
-                const notes = document.createElement('p');
-                notes.innerHTML = `<strong>Release notes:</strong><br>${{details.notes || 'No notes available.'}}`;
-                dom.updater.console.appendChild(notes);
+            const details = JSON.parse(details_json);
+            logToUpdaterConsole(`New version available: ${{details.version}}!`);
+            dom.updater.title.textContent = `Update Available`;
 
-                logToUpdaterConsole('This update is required and will start in 5 seconds...');
+            const notes = document.createElement('p');
+            notes.innerHTML = `<strong>Release notes:</strong><br>${{details.notes || 'No notes available.'}}`;
+            dom.updater.console.appendChild(notes);
 
-                let countdown = 5;
-                const countdownInterval = setInterval(() => {{
-                    countdown--;
-                    if (countdown > 0) {{
-                        logToUpdaterConsole(`Starting in ${{countdown}}...`);
-                    }} else {{
-                        clearInterval(countdownInterval);
-                        logToUpdaterConsole('Starting download...');
-                        dom.updater.title.textContent = 'Downloading Update...';
-                        dom.updater.buttons.innerHTML = '';
-                        try {{
-                            pywebview.api.py_download_and_apply_update();
-                        }} catch (e) {{
-                            onUpdateError("Could not start download: " + e.message);
-                        }}
-                    }}
-                }}, 1000);
+            logToUpdaterConsole('This update is required and will start in 5 seconds...');
 
-            }} else {{
-                updateUpdaterProgress(100);
-                _updateCheckDone = true;
-                _pendingStartMainApp = startMainApp;
-                if (!_firstVideoReady) {{
-                    dom.updater.title.textContent = 'Preparing videos...';
-                    logToUpdaterConsole("Update check done. Waiting for first video to be ready...");
+            let countdown = 5;
+            const countdownInterval = setInterval(() => {{
+                countdown--;
+                if (countdown > 0) {{
+                    logToUpdaterConsole(`Starting in ${{countdown}}...`);
                 }} else {{
-                    logToUpdaterConsole("You're up to date. Starting launcher...");
-                    tryAdvanceToMain();
+                    clearInterval(countdownInterval);
+                    logToUpdaterConsole('Starting download...');
+                    dom.updater.title.textContent = 'Downloading Update...';
+                    dom.updater.buttons.innerHTML = '';
+                    try {{
+                        pywebview.api.py_download_and_apply_update();
+                    }} catch (e) {{
+                        onUpdateError("Could not start download: " + e.message);
+                    }}
                 }}
-            }}
+            }}, 1000);
         }}
 
         function onUpdateError(error_message) {{
-            console.error("onUpdateError:", error_message);
-            logToUpdaterConsole(`Warning: ${{error_message}}`);
-            logToUpdaterConsole("Could not check for updates. Continuing...");
-            dom.updater.title.textContent = 'Skipping Update Check';
-            // Auto-advance — no user interaction needed for a failed update check
-            _updateCheckDone = true;
-            _pendingStartMainApp = startMainApp;
-            tryAdvanceToMain();
+            // Background update check failed — silently ignore, app is already running.
+            console.warn("onUpdateError (ignored, app already running):", error_message);
         }}
 
         // --- Funciones UI ---
@@ -1864,9 +1830,9 @@ HTML_CONTENT = f"""
             }});
         }}
 
-        // Main app startup — called by tryAdvanceToMain() once both the update check
-        // and first video are ready. Lives in outer scope so onUpdateCheckComplete and
-        // onUpdateError reference it directly (no fragile window.startMainApp indirection).
+        // Main app startup — called directly from initializeApp(). Runs immediately on
+        // startup without waiting for background video or update check. Lives in outer scope
+        // so it can be referenced from anywhere without fragile window.startMainApp indirection.
         function startMainApp() {{
             console.log("startMainApp: loading config...");
             pywebview.api.py_get_os_sep().then(sep => {{
@@ -2007,17 +1973,21 @@ HTML_CONTENT = f"""
                     }}
                     return setTimeout(initializeApp, 50);
                 }}
-                console.log("DOM and API ready! Starting update check...");
+                console.log("DOM and API ready! Initializing app...");
                 window.quitting = false;
                 window.startMainApp = startMainApp; // Expose globally for Python
 
-                // Kick off video downloads immediately in parallel with the update check
-                // so the first video is ready (or nearly ready) by the time the main screen loads
+                // Start bg videos immediately in background (non-blocking)
                 try {{ pywebview.api.py_ensure_background_videos().catch(() => {{}}); }}
                 catch(e) {{ console.warn("Could not start background video download:", e); }}
 
+                // Start update check in background (non-blocking; shows overlay if update found)
                 try {{ pywebview.api.py_start_update_check(); }}
-                catch(e) {{ onUpdateError(`Backend communication failed: ${{e}}`); }}
+                catch(e) {{ console.warn("Update check failed:", e); }}
+
+                // Run startup immediately — don't gate behind videos or update check.
+                // The original working flow: check config right away and show wizard/play.
+                startMainApp();
             }}
 
             // Iniciar la aplicación
