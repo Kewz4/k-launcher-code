@@ -605,9 +605,9 @@ class ModpackLauncherAPI:
     def py_start_update_check(self):
         """Inicia la comprobación de actualizaciones en segundo plano."""
         if not getattr(sys, 'frozen', False):
-            self._log("Omitiendo búsqueda de actualizaciones en entorno de desarrollo.")
+            self._log("Dev mode: omitiendo búsqueda de actualizaciones.")
             if self.window:
-                self.window.evaluate_js("startMainApp();")
+                self.window.evaluate_js('onUpdateCheckComplete(false, null)')
             return
 
         def check_thread_task():
@@ -3166,7 +3166,7 @@ def main():
         print(f"Ventana '{window_title}' creada. Iniciando WebView...")
 
         # Mantenemos http_server=True
-        webview.start(debug=False, http_server=True)
+        webview.start(debug=True, http_server=True)
 
         print("WebView cerrado.")
 

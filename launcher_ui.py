@@ -1041,8 +1041,21 @@ HTML_CONTENT = f"""
             }}
         }}
 
-        // Gate variables removed — videos load in background, app starts after update check only.
+        // Gate: main app starts only after BOTH update check AND first video are ready.
+        let _updateCheckDone = false;
         let _firstVideoReady = false;
+        let _mainAppStarted = false;
+        let _videoGateTimeout = null;
+
+        function _maybeStartMainApp() {{
+            if (_mainAppStarted) return;
+            if (_updateCheckDone && _firstVideoReady) {{
+                _mainAppStarted = true;
+                if (_videoGateTimeout) {{ clearTimeout(_videoGateTimeout); _videoGateTimeout = null; }}
+                if (dom.updater && dom.updater.screen) dom.updater.screen.classList.add('hidden');
+                startMainApp();
+            }}
+        }}
 
         // Called by Python each time a video becomes ready (downloaded or already cached).
         function onBgVideoReady(url) {{
@@ -1051,12 +1064,17 @@ HTML_CONTENT = f"""
                 _firstVideoReady = true;
                 bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
                 _loadBgVideo(bgVideoIndex);
+                _maybeStartMainApp();
             }}
         }}
 
-        // Called by Python if the download fails for the first video.
+        // Called by Python if a video download fails.
         function onBgVideoError(msg) {{
             console.warn("Background video error:", msg);
+            if (!_firstVideoReady) {{
+                _firstVideoReady = true; // don't block forever on video failure
+                _maybeStartMainApp();
+            }}
         }}
 
         // --- Lógica del Panel de Depuración ---
@@ -1227,13 +1245,16 @@ HTML_CONTENT = f"""
             console.log(`onUpdateCheckComplete: available=${{update_available}}`);
 
             if (!update_available) {{
-                // No update — hide updater and launch main app
                 logToUpdaterConsole("You're up to date. Loading launcher...");
                 updateUpdaterProgress(100);
-                setTimeout(() => {{
-                    if (dom.updater && dom.updater.screen) dom.updater.screen.classList.add('hidden');
-                    startMainApp();
-                }}, 1200);
+                _updateCheckDone = true;
+                // Fallback: if video never arrives within 10s, proceed anyway
+                _videoGateTimeout = setTimeout(() => {{
+                    console.warn("Video gate timeout — proceeding without video.");
+                    _firstVideoReady = true;
+                    _maybeStartMainApp();
+                }}, 10000);
+                _maybeStartMainApp();
                 return;
             }}
 
@@ -1276,8 +1297,10 @@ HTML_CONTENT = f"""
             skipButton.textContent = 'Continue Anyway';
             skipButton.className = 'btn btn-secondary';
             skipButton.onclick = () => {{
-                if (dom.updater && dom.updater.screen) dom.updater.screen.classList.add('hidden');
-                startMainApp();
+                if (_videoGateTimeout) {{ clearTimeout(_videoGateTimeout); _videoGateTimeout = null; }}
+                _updateCheckDone = true;
+                _firstVideoReady = true;
+                _maybeStartMainApp();
             }};
             dom.updater.buttons.appendChild(skipButton);
         }}
