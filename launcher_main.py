@@ -603,9 +603,7 @@ class ModpackLauncherAPI:
         return True
 
     def py_start_update_check(self):
-        """Inicia la comprobación de actualizaciones en segundo plano.
-        En dev mode no hace nada — startMainApp() ya fue llamado desde initializeApp().
-        En modo producción, si hay actualización disponible muestra la pantalla de actualización."""
+        """Inicia la comprobación de actualizaciones en segundo plano."""
         if not getattr(sys, 'frozen', False):
             self._log("Dev mode: omitiendo búsqueda de actualizaciones.")
             if self.window:
@@ -616,15 +614,25 @@ class ModpackLauncherAPI:
             try:
                 result = self.updater.check_for_updates()
 
-                if result.get('update_available'):
-                    # Only interrupt the user if there's actually an update to install
+                if 'error' in result:
+                    error_msg = f"Error comprobando actualizaciones: {result['error']}"
+                    self._log(error_msg)
+                    if self.window:
+                        self.window.evaluate_js(f'onUpdateError({json.dumps(error_msg)})')
+                elif result.get('update_available'):
                     self.latest_release_data = result['release_data']
                     details = {"version": result['version'], "notes": result['notes']}
                     if self.window:
                         self.window.evaluate_js(f'onUpdateCheckComplete(true, {json.dumps(json.dumps(details))})')
-                # If no update or error: silently ignore — app is already running
+                else:
+                    # No update — advance the startup gate
+                    self._log("El launcher ya está actualizado.")
+                    if self.window:
+                        self.window.evaluate_js('onUpdateCheckComplete(false, null)')
             except Exception as e:
-                self._log(f"Update check crashed (ignored): {e}")
+                self._log(f"Update check crashed: {e}")
+                if self.window:
+                    self.window.evaluate_js(f'onUpdateError({json.dumps(str(e))})')
 
         update_thread = threading.Thread(target=check_thread_task, daemon=True)
         update_thread.start()
