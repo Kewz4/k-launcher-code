@@ -1596,17 +1596,23 @@ HTML_CONTENT = f"""
             openSettingsDrawer();
         }}
 
-        // Refresh play button label from Python (async, updates when resolved)
+        // Refresh play button label based on detected state
         function refreshPlayBtnLabel() {{
-            if (!setupState.prismPath || !setupState.instancePath) {{
-                dom.playBtn.textContent = "DOWNLOAD";
+            // Paused download takes priority — restore the manager
+            if (isProgressMinimized) {{
+                dom.playBtn.textContent = "OPEN DOWNLOAD MANAGER";
                 return;
             }}
+            if (!setupState.prismPath) {{
+                dom.playBtn.textContent = "INSTALL PRISM";
+                return;
+            }}
+            // Prism found — check if modpack is installed
             pywebview.api.py_is_modpack_installed().then(installed => {{
                 setupState.modpackInstalled = installed;
-                dom.playBtn.textContent = installed ? "PLAY" : "INSTALL";
+                dom.playBtn.textContent = installed ? "PLAY" : "DOWNLOAD MODPACK";
             }}).catch(() => {{
-                dom.playBtn.textContent = setupState.modpackInstalled ? "PLAY" : "INSTALL";
+                dom.playBtn.textContent = setupState.modpackInstalled ? "PLAY" : "DOWNLOAD MODPACK";
             }});
         }}
 
@@ -1889,8 +1895,12 @@ HTML_CONTENT = f"""
             pywebview.api.py_get_os_sep().then(sep => {{
                 osSep = sep || '/';
                 return pywebview.api.py_load_and_migrate_config();
-            }}).then(pathsAreValid => {{
-                console.log("startMainApp: pathsAreValid =", pathsAreValid);
+            }}).then(config => {{
+                console.log("startMainApp: config =", config);
+
+                // Populate setupState from saved config
+                setupState.prismPath = (config && config.prism_path) || null;
+                setupState.instancePath = (config && config.instance_path) || null;
 
                 // Load music in background (fire-and-forget)
                 pywebview.api.py_get_playlist().then(p => {{
@@ -1901,12 +1911,8 @@ HTML_CONTENT = f"""
                     domPlayer.volumeSlider.value = vol; setVolume();
                 }}).catch(e => {{ domPlayer.volumeSlider.value = 1.0; setVolume(); }});
 
-                // Show the right screen
-                if (pathsAreValid) {{
-                    switchScreen('play');
-                }} else {{
-                    startInitialSetupWizard();
-                }}
+                // Always show play screen — button label reflects install state
+                switchScreen('play');
 
                 return pywebview.api.py_get_debug_status();
             }}).then(isDebug => {{
@@ -2055,38 +2061,26 @@ HTML_CONTENT = f"""
             dom.playBtn.addEventListener('click', () => {{
                 if (dom.playBtn.classList.contains('cancel-mode')) {{
                     cancelCurrentProcess();
+                    return;
+                }}
+                const label = dom.playBtn.textContent.trim();
+                if (label === 'OPEN DOWNLOAD MANAGER') {{
+                    restoreRunningTaskView();
+                }} else if (label === 'INSTALL PRISM' || label === 'DOWNLOAD MODPACK') {{
+                    startInitialSetupWizard();
                 }} else {{
-                    if (!setupState.prismPath || !setupState.instancePath) {{
-                        // If a wizard download is already running (just minimized), restore it
-                        // instead of restarting setup — which would cause a task conflict.
-                        if (isProgressMinimized && dom.screens.initialSetup.classList.contains('active')) {{
-                            restoreRunningTaskView();
-                            return;
-                        }}
-                        // If the setup wizard is already visible, just scroll/pulse it into focus
-                        // instead of restarting it (which would lose wizard progress).
-                        if (dom.screens.initialSetup.classList.contains('active')) {{
-                            dom.mainContainer.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
-                            dom.mainContainer.style.transition = 'box-shadow 0.2s';
-                            dom.mainContainer.style.boxShadow = '0 0 0 3px var(--color-accent)';
-                            setTimeout(() => {{ dom.mainContainer.style.boxShadow = ''; }}, 600);
-                            return;
-                        }}
-                        console.log("Paths not set, starting setup wizard...");
-                        startInitialSetupWizard();
-                    }} else {{
-                        dom.playBtn.textContent = "CANCEL"; dom.playBtn.classList.add('cancel-mode');
-                        switchScreen('progress');
-                        dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';
-                        logToConsole("Starting process...");
-                        dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancel";
-                        updateProgress(0, "Starting...");
-                        setLoadScreen(setupState.modpackInstalled ? "Updating..." : "Installing...", "Checking versions...");
-                        pywebview.api.py_start_game().catch(e => {{
-                            showResult(false, "API Error", "Could not start game: " + e);
-                            returnToPlayScreen();
-                        }});
-                    }}
+                    // PLAY — start the game
+                    dom.playBtn.textContent = "CANCEL"; dom.playBtn.classList.add('cancel-mode');
+                    switchScreen('progress');
+                    dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';
+                    logToConsole("Starting process...");
+                    dom.cancelBtn.disabled = false; dom.cancelBtn.textContent = "Cancel";
+                    updateProgress(0, "Starting...");
+                    setLoadScreen(setupState.modpackInstalled ? "Updating..." : "Installing...", "Checking versions...");
+                    pywebview.api.py_start_game().catch(e => {{
+                        showResult(false, "API Error", "Could not start game: " + e);
+                        returnToPlayScreen();
+                    }});
                 }}
              }});
             dom.menuBtn.addEventListener('click', openSidePanel);

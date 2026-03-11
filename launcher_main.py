@@ -705,16 +705,14 @@ class ModpackLauncherAPI:
             if is_prism_valid and is_instance_valid:
                 self.prism_exe_path = prism_path
                 self.instance_mc_path = instance_path
-
-                # (NUEVO) Sincronizar configuración de Prism (Portable/Installer)
                 self._sync_prism_config()
-
-                # Cargar el resto de las configuraciones
                 self.avg_launch_time_sec = self._calculate_avg_launch_time(config_data.get("launch_times_sec", []))
-                # El volumen de la música se carga desde JS
-                return True
+                return {"prism_path": prism_path, "instance_path": instance_path}
+            elif is_prism_valid:
+                self.prism_exe_path = prism_path
+                return {"prism_path": prism_path, "instance_path": None}
             else:
-                return False
+                return {"prism_path": None, "instance_path": None}
 
     def _sync_prism_config(self):
         """Sincroniza prismlauncher.cfg según si es portable o instalador."""
@@ -888,7 +886,11 @@ class ModpackLauncherAPI:
     # --- (ACTUALIZADO) Funciones de Configuración QoL ---
 
     def _get_config_path(self):
-        return os.path.join(os.getcwd(), "launcher_config.json")
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base, "launcher_config.json")
 
     def py_load_and_migrate_config(self):
         """(NUEVO) Expone la función de migración y carga a la API de JS."""
@@ -3166,7 +3168,7 @@ def main():
         print(f"Ventana '{window_title}' creada. Iniciando WebView...")
 
         # Mantenemos http_server=True
-        webview.start(debug=True, http_server=True)
+        webview.start(debug=False, http_server=True)
 
         print("WebView cerrado.")
 
