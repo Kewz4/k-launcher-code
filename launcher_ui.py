@@ -2091,6 +2091,15 @@ HTML_CONTENT = f"""
                             restoreRunningTaskView();
                             return;
                         }}
+                        // If the setup wizard is already visible, just scroll/pulse it into focus
+                        // instead of restarting it (which would lose wizard progress).
+                        if (dom.screens.initialSetup.classList.contains('active')) {{
+                            dom.mainContainer.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                            dom.mainContainer.style.transition = 'box-shadow 0.2s';
+                            dom.mainContainer.style.boxShadow = '0 0 0 3px var(--color-accent)';
+                            setTimeout(() => {{ dom.mainContainer.style.boxShadow = ''; }}, 600);
+                            return;
+                        }}
                         console.log("Paths not set, starting setup wizard...");
                         startInitialSetupWizard();
                     }} else {{

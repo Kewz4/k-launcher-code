@@ -1680,14 +1680,12 @@ class ModpackLauncherAPI:
         if not self.prism_exe_path or not self.instance_mc_path:
             self._log("Rutas no encontradas, recargando desde config...")
             if not self._migrate_and_load_config():
-                self._log("Error Crítico: Faltan las rutas. Volviendo a configuración.")
-                self._show_result(False, "Error de Configuración", "Las rutas guardadas no son válidas. Por favor, configúralas de nuevo.")
+                self._log("Error Crítico: Faltan las rutas. Iniciando asistente de configuración.")
                 if self.window:
                     try:
-                        # (MODIFICADO) Llamar a la pantalla de AJUSTES
-                        self.window.evaluate_js('forceShowSetupScreen()')
+                        self.window.evaluate_js('startInitialSetupWizard()')
                     except Exception as e:
-                        self._log(f"Error forcing setup screen: {e}")
+                        self._log(f"Error starting setup wizard: {e}")
                 return
 
         self.cancel_event.clear()
@@ -1869,6 +1867,11 @@ class ModpackLauncherAPI:
                 self._launch_game()
             else:
                 self._log("La actualización falló o fue cancelada. No se iniciará el juego.")
+                if self.window:
+                    try:
+                        self.window.evaluate_js('returnToPlayScreen()')
+                    except Exception:
+                        pass
 
         except Exception as e:
             self._log(f"Error fatal inesperado en el hilo de inicio: {e}")
@@ -1905,9 +1908,8 @@ class ModpackLauncherAPI:
             remote_options_content = response.text
             self._log("Lista de resource packs descargada con éxito.")
         except requests.RequestException as e:
-            self._log(f"ERROR CRÍTICO: No se pudo descargar la configuración de resource packs: {e}")
-            self._show_result(False, "Error de Red", f"No se pudo descargar la configuración de resource packs.<br>Revisa tu conexión a internet.<br><br>Error: {e}")
-            return False
+            self._log(f"Advertencia: No se pudo descargar la configuración de resource packs: {e}. Continuando sin sincronizar.")
+            return True  # Non-fatal: skip options sync, let the game launch anyway
 
         # Extraer las líneas importantes del archivo descargado
         new_rp_line, new_irp_line = None, None
