@@ -1041,20 +1041,36 @@ HTML_CONTENT = f"""
             }}
         }}
 
-        // Called by Python each time a video becomes ready (downloaded or already cached).
+        // Gate: startMainApp only runs once BOTH the update check AND first video are ready.
+        let _updateCheckDone = false;
         let _firstVideoReady = false;
+        let _videoTimeoutId = null;
+
+        function tryAdvanceToMain() {{
+            if (_updateCheckDone && _firstVideoReady) {{
+                if (_videoTimeoutId) {{ clearTimeout(_videoTimeoutId); _videoTimeoutId = null; }}
+                startMainApp();
+            }}
+        }}
+
+        // Called by Python each time a video becomes ready (downloaded or already cached).
         function onBgVideoReady(url) {{
             bgVideoList.push(url);
             if (!_firstVideoReady) {{
                 _firstVideoReady = true;
                 bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
                 _loadBgVideo(bgVideoIndex);
+                tryAdvanceToMain();
             }}
         }}
 
         // Called by Python if the download fails for the first video.
         function onBgVideoError(msg) {{
             console.warn("Background video error:", msg);
+            if (!_firstVideoReady) {{
+                _firstVideoReady = true;
+                tryAdvanceToMain();
+            }}
         }}
 
         // --- Lógica del Panel de Depuración ---
@@ -1225,7 +1241,12 @@ HTML_CONTENT = f"""
         // The app is already running — show the updater overlay on top of everything.
         function onUpdateCheckComplete(update_available, details_json) {{
             console.log(`onUpdateCheckComplete: available=${{update_available}}`);
-            if (!update_available) return; // No update — app already running, nothing to do
+            if (!update_available) {{
+                // No update — advance the startup gate
+                _updateCheckDone = true;
+                tryAdvanceToMain();
+                return;
+            }}
 
             // Show the updater overlay (it is still in the DOM but hidden)
             if (dom.updater && dom.updater.screen) dom.updater.screen.classList.remove('hidden');
@@ -1260,8 +1281,10 @@ HTML_CONTENT = f"""
         }}
 
         function onUpdateError(error_message) {{
-            // Background update check failed — silently ignore, app is already running.
-            console.warn("onUpdateError (ignored, app already running):", error_message);
+            console.warn("onUpdateError (continuing):", error_message);
+            // Treat update check failure as done — still advance to main app
+            _updateCheckDone = true;
+            tryAdvanceToMain();
         }}
 
         // --- Funciones UI ---
@@ -1830,9 +1853,9 @@ HTML_CONTENT = f"""
             }});
         }}
 
-        // Main app startup — called directly from initializeApp(). Runs immediately on
-        // startup without waiting for background video or update check. Lives in outer scope
-        // so it can be referenced from anywhere without fragile window.startMainApp indirection.
+        // Main app startup — called by tryAdvanceToMain() once both the update check
+        // and first video are ready (or their timeout/error fallbacks fire).
+        // Lives in outer scope so Python evaluate_js can also call it if needed.
         function startMainApp() {{
             console.log("startMainApp: loading config...");
             pywebview.api.py_get_os_sep().then(sep => {{
@@ -1968,7 +1991,10 @@ HTML_CONTENT = f"""
             function initializeApp() {{
                 if (!window.pywebview || !window.pywebview.apiReady) {{
                     if (++_initRetries > 200) {{ // 10s max wait
-                        onUpdateError("Python backend did not become ready in time.");
+                        console.warn("Python backend did not become ready in time.");
+                        _updateCheckDone = true;
+                        _firstVideoReady = true;
+                        tryAdvanceToMain();
                         return;
                     }}
                     return setTimeout(initializeApp, 50);
@@ -1977,17 +2003,32 @@ HTML_CONTENT = f"""
                 window.quitting = false;
                 window.startMainApp = startMainApp; // Expose globally for Python
 
-                // Start bg videos immediately in background (non-blocking)
-                try {{ pywebview.api.py_ensure_background_videos().catch(() => {{}}); }}
-                catch(e) {{ console.warn("Could not start background video download:", e); }}
+                // Start bg video download. onBgVideoReady / onBgVideoError advance the gate.
+                try {{
+                    pywebview.api.py_ensure_background_videos().catch(() => {{
+                        if (!_firstVideoReady) {{ _firstVideoReady = true; tryAdvanceToMain(); }}
+                    }});
+                }} catch(e) {{
+                    console.warn("Could not start background video download:", e);
+                    if (!_firstVideoReady) {{ _firstVideoReady = true; tryAdvanceToMain(); }}
+                }}
 
-                // Start update check in background (non-blocking; shows overlay if update found)
+                // Start update check. onUpdateCheckComplete / onUpdateError advance the gate.
                 try {{ pywebview.api.py_start_update_check(); }}
-                catch(e) {{ console.warn("Update check failed:", e); }}
+                catch(e) {{
+                    console.warn("Update check call failed:", e);
+                    _updateCheckDone = true;
+                    tryAdvanceToMain();
+                }}
 
-                // Run startup immediately — don't gate behind videos or update check.
-                // The original working flow: check config right away and show wizard/play.
-                startMainApp();
+                // Safety net: if video never loads within 10s, advance anyway
+                _videoTimeoutId = setTimeout(() => {{
+                    if (!_firstVideoReady) {{
+                        console.warn("Video load timeout — advancing without video");
+                        _firstVideoReady = true;
+                        tryAdvanceToMain();
+                    }}
+                }}, 10000);
             }}
 
             // Iniciar la aplicación

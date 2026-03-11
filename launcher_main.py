@@ -607,7 +607,9 @@ class ModpackLauncherAPI:
         En dev mode no hace nada — startMainApp() ya fue llamado desde initializeApp().
         En modo producción, si hay actualización disponible muestra la pantalla de actualización."""
         if not getattr(sys, 'frozen', False):
-            self._log("Dev mode: omitiendo búsqueda de actualizaciones (startMainApp ya fue llamado desde JS).")
+            self._log("Dev mode: omitiendo búsqueda de actualizaciones.")
+            if self.window:
+                self.window.evaluate_js('onUpdateCheckComplete(false, null)')
             return
 
         def check_thread_task():
