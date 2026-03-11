@@ -822,7 +822,21 @@ class ModpackLauncherAPI:
         return self.debug_mode
 
     def py_get_current_paths(self):
-        """Devuelve las rutas actuales configuradas para actualizar la UI."""
+        """Returns current paths. Falls back to live auto-detection if memory is empty."""
+        if not self.prism_exe_path:
+            result = self.py_setup_check_prism_default_path()
+            if result.get("status") == "prism_detected":
+                self.prism_exe_path = result["path"]
+                self._log(f"py_get_current_paths: auto-detected prism at {self.prism_exe_path}")
+                try:
+                    self.py_save_paths(self.prism_exe_path, None)
+                except Exception:
+                    pass
+        if not self.instance_mc_path and self.prism_exe_path:
+            detected = self._find_instance_from_prism_path(self.prism_exe_path)
+            if detected:
+                self.instance_mc_path = detected
+                self._log(f"py_get_current_paths: auto-detected instance at {detected}")
         return {
             "prism_path": self.prism_exe_path,
             "instance_path": self.instance_mc_path

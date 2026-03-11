@@ -1662,12 +1662,16 @@ HTML_CONTENT = f"""
                 console.error("Error calling py_cancel_update:", e);
             }}
             
-            // Si estamos en el asistente, volver al paso de pregunta
+            // If wizard is active: go back to play screen if Prism is already detected,
+            // otherwise fall back to ask-installed so the user can retry.
             if (dom.screens.initialSetup.classList.contains('active')) {{
-                showWizardStep('ask-installed');
-                // Re-habilitar botones del asistente
-                dom.wizard.btnCancelInstall.disabled = false;
-                dom.wizard.btnCancelInstall.textContent = "Cancel";
+                if (setupState.prismPath) {{
+                    returnToPlayScreen();
+                }} else {{
+                    showWizardStep('ask-installed');
+                    dom.wizard.btnCancelInstall.disabled = false;
+                    dom.wizard.btnCancelInstall.textContent = "Cancel";
+                }}
             }} else {{
                 // Si estábamos en el juego, volver a la pantalla de juego
                 returnToPlayScreen();
@@ -1870,14 +1874,23 @@ HTML_CONTENT = f"""
             }} else {{
                 console.error("Modpack install failed:", error);
                 showResult(false, "Installation Error", "Could not install modpack: " + error);
-                showWizardStep('ask-installed');
+                // If Prism is already detected, return to play screen (not wizard restart)
+                if (setupState.prismPath) {{
+                    returnToPlayScreen();
+                }} else {{
+                    showWizardStep('ask-installed');
+                }}
             }}
         }}
 
         function onTaskError(taskName, error) {{
             console.error("Error in task '" + taskName + "':", error);
             showResult(false, 'Error: ' + taskName, error);
-            showWizardStep('ask-installed');
+            if (setupState.prismPath) {{
+                returnToPlayScreen();
+            }} else {{
+                showWizardStep('ask-installed');
+            }}
         }}
 
 
