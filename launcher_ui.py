@@ -1015,6 +1015,19 @@ HTML_CONTENT = f"""
             vid.play().catch(() => {{}});
         }}
 
+        // Retry bg video play when the play screen becomes visible
+        // (video may have been loaded while screen was display:none)
+        function resumeBgVideoIfReady() {{
+            const vid = dom && dom.bgVideo;
+            if (!vid || bgVideoList.length === 0) return;
+            if (!vid.src || vid.src === window.location.href) {{
+                bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
+                _loadBgVideo(bgVideoIndex);
+            }} else if (vid.paused && vid.readyState >= 2) {{
+                vid.play().catch(() => {{}});
+            }}
+        }}
+
         // Called by Python during a video download — updates progress bar + status line.
         function onBgVideoProgress(videoIdx, totalVideos, pct) {{
             if (dom && dom.updater.title) {{
@@ -1955,19 +1968,6 @@ HTML_CONTENT = f"""
                 }});
             }}
 
-            // Retry bg video play when the play screen becomes visible
-            // (video may have been loaded while screen was display:none)
-            function resumeBgVideoIfReady() {{
-                const vid = dom.bgVideo;
-                if (!vid || bgVideoList.length === 0) return;
-                if (!vid.src || vid.src === window.location.href) {{
-                    // No video loaded yet — pick a random one and start it
-                    bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
-                    _loadBgVideo(bgVideoIndex);
-                }} else if (vid.paused && vid.readyState >= 2) {{
-                    vid.play().catch(() => {{}});
-                }}
-            }}
 
             // Main entry point
             let _initRetries = 0;
