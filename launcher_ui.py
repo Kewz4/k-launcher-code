@@ -1897,13 +1897,16 @@ HTML_CONTENT = f"""
             console.log("startMainApp: loading config...");
             pywebview.api.py_get_os_sep().then(sep => {{
                 osSep = sep || '/';
+                // Load config into Python internal state, then read paths back
                 return pywebview.api.py_load_and_migrate_config();
-            }}).then(config => {{
-                console.log("startMainApp: config =", config);
+            }}).then(() => {{
+                return pywebview.api.py_get_current_paths();
+            }}).then(paths => {{
+                console.log("startMainApp: paths =", paths);
 
-                // Populate setupState from saved config
-                setupState.prismPath = (config && config.prism_path) || null;
-                setupState.instancePath = (config && config.instance_path) || null;
+                // Sync setupState from Python's authoritative in-memory state
+                setupState.prismPath = (paths && paths.prism_path) || null;
+                setupState.instancePath = (paths && paths.instance_path) || null;
 
                 // Load music in background (fire-and-forget)
                 pywebview.api.py_get_playlist().then(p => {{
@@ -1924,8 +1927,8 @@ HTML_CONTENT = f"""
             }}).then(version => {{
                 if (version) dom.launcherVersion.textContent = `v${{version}}`;
             }}).catch(e => {{
-                console.error("startMainApp chain error:", e);
-                startInitialSetupWizard();
+                // Non-fatal: debug/version calls may fail — just log, don't open wizard
+                console.error("startMainApp non-critical error:", e);
             }});
         }}
 

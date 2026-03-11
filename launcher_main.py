@@ -87,11 +87,11 @@ try:
         ctypes = None
         print("Plataforma no es Windows, pywin32 y ctypes no serán usados.")
 except ImportError:
-    print("ADVERTENCIA: pywin32 o ctypes no encontrado (pip install pywin32). Se usará el método on_top estándar (menos robusto).")
+    print("ADVERTENCIA: pywin32 no encontrado (pip install pywin32). Se usará el método on_top estándar.")
     win32gui = None
     win32con = None
     ctypes = None
-    IS_WINDOWS = False # Desactivar lógica de Windows si no se pudo importar
+    # Keep IS_WINDOWS True — pywin32 is optional; OS detection must not change.
 
 
 # --- Lógica de la Aplicación (Backend de Python) ---
@@ -829,9 +829,17 @@ class ModpackLauncherAPI:
         }
 
     def py_is_modpack_installed(self):
-        """Returns True if the modpack instance has actual .jar mod files installed."""
+        """Returns True if the modpack instance folder exists with mod files."""
+        # If instance path not cached, try to auto-detect from the known prism path
+        if not self.instance_mc_path and self.prism_exe_path:
+            detected = self._find_instance_from_prism_path(self.prism_exe_path)
+            if detected:
+                self._log(f"Auto-detected instance path on check: {detected}")
+                self.instance_mc_path = detected
+
         if not self.instance_mc_path or not os.path.isdir(self.instance_mc_path):
             return False
+
         mods_path = os.path.join(self.instance_mc_path, 'mods')
         if not os.path.isdir(mods_path):
             return False
