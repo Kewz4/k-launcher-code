@@ -1346,14 +1346,14 @@ HTML_CONTENT = f"""
             closeSidePanel();
             if (loadingAnimationId) {{ cancelAnimationFrame(loadingAnimationId); loadingAnimationId = null; }}
 
-            // Ocultar reproductor y pantalla de juego en pantallas de configuración
-            const isSetupScreen = (screenName === 'initial-setup' || screenName === 'settings');
-            domPlayer.player.style.display = isSetupScreen ? 'none' : 'flex';
-            domPlayer.player.classList.toggle('visible', !isSetupScreen);
+            // Play screen is always the background — visible for all screens.
+            // Only 'active' class is toggled (controls z-index) for play screen focus.
+            domPlayer.player.style.display = 'flex';
+            domPlayer.player.classList.add('visible');
 
-            const showPlayBackground = (screenName !== 'initial-setup' && screenName !== 'settings');
-            dom.screens.play.style.display = showPlayBackground ? 'flex' : 'none';
-            dom.screens.play.classList.toggle('active', showPlayBackground);
+            const showPlayAsMain = (screenName === 'play');
+            dom.screens.play.style.display = 'flex';
+            dom.screens.play.classList.toggle('active', showPlayAsMain);
             resumeBgVideoIfReady();
 
             // wizardMinimizeBtn shown/hidden by showWizardStep
