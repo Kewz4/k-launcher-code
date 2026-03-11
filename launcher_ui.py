@@ -1790,6 +1790,9 @@ HTML_CONTENT = f"""
         function handlePrismPathFound(prismPath) {{
             console.log("Valid Prism path found:", prismPath);
             setupState.prismPath = prismPath;
+            // Persist the prism path immediately so it survives app restarts
+            // even if the user closes before modpack install completes.
+            pywebview.api.py_save_paths(prismPath, null).catch(e => console.warn("Pre-save prism path failed:", e));
             showWizardStep('check-modpack');
             try {{
                 pywebview.api.py_setup_check_modpack_installed(prismPath).then(result => {{

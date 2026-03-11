@@ -897,18 +897,21 @@ class ModpackLauncherAPI:
         return self._migrate_and_load_config()
 
     def py_save_paths(self, prism_path, instance_path):
-        """(ACTUALIZADO) Guarda AMBAS rutas en config.json, preservando otros datos."""
-        if not self._validate_prism_path(prism_path):
-            self._log(f"Error al guardar: Ruta Prism inválida ('{prism_path}')")
+        """Save paths to config. Prism path is required; instance path is optional."""
+        prism_valid = self._validate_prism_path(prism_path)
+        if not prism_valid:
+            self._log(f"Error saving: invalid prism path ('{prism_path}')")
             return False
-        if not self._validate_instance_path(instance_path):
-            self._log(f"Error al guardar: Ruta Instancia inválida ('{instance_path}')")
-            return False
+
+        instance_valid = bool(instance_path) and self._validate_instance_path(instance_path)
+        if instance_path and not instance_valid:
+            self._log(f"Warning: instance path invalid ('{instance_path}') — saving prism path only")
 
         self.prism_exe_path = prism_path
-        self.instance_mc_path = instance_path
-        config_path = self._get_config_path()
+        if instance_valid:
+            self.instance_mc_path = instance_path
 
+        config_path = self._get_config_path()
         with self.config_lock:
             config_data = {}
             if os.path.exists(config_path):
@@ -916,19 +919,20 @@ class ModpackLauncherAPI:
                     with open(config_path, 'r', encoding='utf-8') as f:
                         config_data = json.load(f)
                 except Exception as e:
-                    self._log(f"Advertencia: No se pudo leer config existente al guardar: {e}. Se sobrescribirá.")
+                    self._log(f"Warning: could not read existing config: {e}")
                     config_data = {}
 
             config_data["prism_exe_path"] = self.prism_exe_path
-            config_data["instance_mc_path"] = self.instance_mc_path
+            if instance_valid:
+                config_data["instance_mc_path"] = self.instance_mc_path
 
             try:
                 with open(config_path, 'w', encoding='utf-8') as f:
                     json.dump(config_data, f, indent=4)
-                self._log(f"Configuración guardada en: {config_path}")
+                self._log(f"Config saved to: {config_path}")
                 return True
             except Exception as e:
-                self._log(f"Error al guardar la configuración en '{config_path}': {e}")
+                self._log(f"Error saving config to '{config_path}': {e}")
                 return False
 
     def _save_new_launch_time(self, time_sec):
@@ -1679,9 +1683,10 @@ class ModpackLauncherAPI:
         """Inicia el proceso completo: Actualizar y Luego Lanzar."""
         self._log("Botón JUGAR presionado.")
         if not self.prism_exe_path or not self.instance_mc_path:
-            self._log("Rutas no encontradas, recargando desde config...")
-            if not self._migrate_and_load_config():
-                self._log("Error Crítico: Faltan las rutas. Iniciando asistente de configuración.")
+            self._log("Paths missing — reloading from config...")
+            self._migrate_and_load_config()
+            if not self.prism_exe_path or not self.instance_mc_path:
+                self._log("Critical: paths still missing after config reload. Opening setup wizard.")
                 if self.window:
                     try:
                         self.window.evaluate_js('startInitialSetupWizard()')
@@ -1809,20 +1814,15 @@ class ModpackLauncherAPI:
         return False
 
     def _validate_instance_path(self, path):
-        """Valida si la ruta es una carpeta 'minecraft' de instancia válida."""
+        """Validates a Minecraft instance 'minecraft' folder."""
         if not path or not isinstance(path, str) or not os.path.isdir(path):
             return False
         try:
-            if os.path.basename(path).lower() != 'minecraft':
-                return False
-            mods_path = os.path.join(path, 'mods')
-            options_path = os.path.join(path, 'options.txt')
-            if os.path.isdir(mods_path) and os.path.isfile(options_path):
-                return True
-            else:
-                return False
+            # Must be a directory named 'minecraft' — options.txt only exists after
+            # first launch so we cannot require it for freshly installed modpacks.
+            return os.path.basename(path).lower() == 'minecraft'
         except Exception as e:
-            self._log(f"Error validando ruta Instancia '{os.path.basename(path)}': {e}")
+            self._log(f"Error validating instance path '{os.path.basename(path)}': {e}")
             return False
 
     # --- Lógica de Lanzamiento del Juego ---
