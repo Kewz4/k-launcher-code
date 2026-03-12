@@ -1628,17 +1628,16 @@ HTML_CONTENT = f"""
         }}
 
         function returnToPlayScreen() {{
-            console.log("Returning to play screen (hiding progress/modal)."); 
-            dom.modal.element.style.display = 'none'; 
-            dom.screens.progress.style.display = 'none'; 
-            dom.screens.progress.classList.remove('active'); 
-            
+            console.log("Returning to play screen (hiding progress/modal).");
+            dom.modal.element.style.display = 'none';
+            dom.screens.progress.style.display = 'none';
+            dom.screens.progress.classList.remove('active');
             dom.minimizedWidget.style.display = 'none';
             isProgressMinimized = false;
-
-            dom.cancelBtn.disabled = false; 
+            dom.playBtn.style.display = '';  // restore if hidden by install-progress step
+            dom.cancelBtn.disabled = false;
             dom.cancelBtn.textContent = "Cancel";
-            updateProgress(0, ""); 
+            updateProgress(0, "");
             dom.progressTitle.textContent = "Updating...";
             
             dom.playBtn.classList.remove('cancel-mode');
