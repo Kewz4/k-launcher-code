@@ -1586,7 +1586,13 @@ class ModpackLauncherAPI:
                         modpack_url = resolve_gofile_share_url(raw_url, timeout=20)
                         self._log(f"URL directa obtenida desde GoFile: {modpack_url}")
                     except Exception as gofile_err:
-                        raise RuntimeError(f"GoFile no pudo resolver el enlace: {gofile_err}")
+                        raise RuntimeError(
+                            f"No se pudo contactar la API de GoFile (api.gofile.io). "
+                            f"Esto suele deberse a que tu red o ISP bloquea ese servidor. "
+                            f"Solución: sube el modpack a GitHub Releases y actualiza modpack-url.txt "
+                            f"con la URL directa de descarga. "
+                            f"Error técnico: {gofile_err}"
+                        )
                 else:
                     # Already a direct download URL
                     modpack_url = raw_url
