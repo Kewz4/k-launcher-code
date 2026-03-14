@@ -13,6 +13,7 @@ Returns the first download URL found (printed to stdout).
 Also importable: use resolve_gofile_url(content_id) -> str | None
 """
 
+import re
 import sys
 import requests
 
@@ -20,6 +21,22 @@ import requests
 DEFAULT_CONTENT_ID = "Ke5wvh"
 
 GOFILE_API_BASE = "https://api.gofile.io"
+# GoFile website token — required by the API alongside the bearer token.
+# Fetched dynamically from config.js; this value is the known fallback.
+_GOFILE_WT_FALLBACK = "4fd6sg89d7s6"
+
+
+def _get_website_token(timeout: int = 10) -> str:
+    """Fetch the GoFile website token (wt) from their config JS."""
+    try:
+        resp = requests.get("https://gofile.io/dist/js/config.js", timeout=timeout)
+        resp.raise_for_status()
+        match = re.search(r'appdata\.wt\s*=\s*["\']([^"\']+)["\']', resp.text)
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+    return _GOFILE_WT_FALLBACK
 
 
 def _create_guest_token(timeout: int = 15) -> str:
@@ -29,8 +46,7 @@ def _create_guest_token(timeout: int = 15) -> str:
     data = resp.json()
     if data.get("status") != "ok":
         raise RuntimeError(f"GoFile accounts API error: {data}")
-    token = data["data"]["token"]
-    return token
+    return data["data"]["token"]
 
 
 def resolve_gofile_url(content_id: str, timeout: int = 15) -> str:
@@ -38,21 +54,29 @@ def resolve_gofile_url(content_id: str, timeout: int = 15) -> str:
     Resolve a GoFile content ID to a direct download URL.
 
     Steps:
-      1. Create a guest account token (POST /accounts).
-      2. Fetch content metadata (GET /contents/{content_id}).
-      3. Walk the children to find the first downloadable file URL.
+      1. Fetch the GoFile website token (wt) from config.js.
+      2. Create a guest account token (POST /accounts).
+      3. Fetch content metadata (GET /contents/{content_id}).
+      4. Walk the children to find the first downloadable file URL.
 
     Returns the direct download URL string.
     Raises RuntimeError if resolution fails.
     """
-    # 1. Guest token
+    # 1. Website token (required by GoFile API alongside bearer token)
+    wt = _get_website_token(timeout=timeout)
+
+    # 2. Guest bearer token
     token = _create_guest_token(timeout=timeout)
 
-    # 2. Content metadata
-    headers = {"Authorization": f"Bearer {token}"}
+    # 3. Content metadata — send both Authorization header and X-Website-Token header
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Website-Token": wt,
+    }
     resp = requests.get(
         f"{GOFILE_API_BASE}/contents/{content_id}",
         headers=headers,
+        params={"wt": wt},
         timeout=timeout,
     )
     resp.raise_for_status()
@@ -63,9 +87,7 @@ def resolve_gofile_url(content_id: str, timeout: int = 15) -> str:
 
     content = data["data"]
 
-    # 3. Find the download link
-    # GoFile content can be a folder (type="folder") with children,
-    # or a file (type="file") with a direct "link" field.
+    # 4. Find the download link
     return _extract_download_link(content)
 
 
@@ -82,17 +104,12 @@ def _extract_download_link(content: dict) -> str:
     if ctype == "folder":
         children = content.get("children", {})
         # children can be a dict {id: child_obj} or a list
-        if isinstance(children, dict):
-            child_iter = children.values()
-        else:
-            child_iter = children
-
+        child_iter = children.values() if isinstance(children, dict) else children
         for child in child_iter:
             try:
                 return _extract_download_link(child)
             except RuntimeError:
                 continue
-
         raise RuntimeError("No downloadable files found in GoFile folder")
 
     raise RuntimeError(f"Unknown GoFile content type: {ctype!r}")
@@ -103,7 +120,6 @@ def resolve_gofile_share_url(share_url: str, timeout: int = 15) -> str:
     Convenience wrapper: accepts a full GoFile share URL like
     https://gofile.io/d/Ke5wvh and returns the direct download URL.
     """
-    # Extract content ID from URL
     content_id = share_url.rstrip("/").split("/")[-1]
     return resolve_gofile_url(content_id, timeout=timeout)
 
