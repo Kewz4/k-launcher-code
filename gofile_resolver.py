@@ -27,8 +27,8 @@ GOFILE_API_BASE = "https://api.gofile.io"
 _GOFILE_WT_FALLBACK = "4fd6sg89d7s6"
 
 # Module-level cache so we don't hammer /accounts across multiple calls
-_cached_guest_token: str | None = None
-_cached_wt: str | None = None
+_cached_guest_token = None  # type: str
+_cached_wt = None  # type: str
 
 
 def _get_website_token(timeout: int = 10) -> str:
