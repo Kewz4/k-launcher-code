@@ -15,6 +15,7 @@ Also importable: use resolve_gofile_url(content_id) -> str | None
 
 import re
 import sys
+import time
 import requests
 
 # Default modpack GoFile content ID (from https://gofile.io/d/Ke5wvh)
@@ -25,28 +26,57 @@ GOFILE_API_BASE = "https://api.gofile.io"
 # Fetched dynamically from config.js; this value is the known fallback.
 _GOFILE_WT_FALLBACK = "4fd6sg89d7s6"
 
+# Module-level cache so we don't hammer /accounts across multiple calls
+_cached_guest_token: str | None = None
+_cached_wt: str | None = None
+
 
 def _get_website_token(timeout: int = 10) -> str:
-    """Fetch the GoFile website token (wt) from their config JS."""
+    """Fetch the GoFile website token (wt) from their config JS, with caching."""
+    global _cached_wt
+    if _cached_wt:
+        return _cached_wt
     try:
         resp = requests.get("https://gofile.io/dist/js/config.js", timeout=timeout)
         resp.raise_for_status()
         match = re.search(r'appdata\.wt\s*=\s*["\']([^"\']+)["\']', resp.text)
         if match:
-            return match.group(1)
+            _cached_wt = match.group(1)
+            return _cached_wt
     except Exception:
         pass
-    return _GOFILE_WT_FALLBACK
+    _cached_wt = _GOFILE_WT_FALLBACK
+    return _cached_wt
 
 
 def _create_guest_token(timeout: int = 15) -> str:
-    """Create a GoFile guest account and return its token."""
-    resp = requests.post(f"{GOFILE_API_BASE}/accounts", timeout=timeout)
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("status") != "ok":
-        raise RuntimeError(f"GoFile accounts API error: {data}")
-    return data["data"]["token"]
+    """
+    Create a GoFile guest account and return its token.
+    Retries up to 3 times with exponential backoff on 429 rate-limit responses.
+    """
+    for attempt in range(3):
+        try:
+            resp = requests.post(f"{GOFILE_API_BASE}/accounts", timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("status") != "ok":
+                raise RuntimeError(f"GoFile accounts API error: {data}")
+            return data["data"]["token"]
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
+                wait = 2 ** (attempt + 1)  # 2s, 4s, 8s
+                time.sleep(wait)
+                continue
+            raise
+    raise RuntimeError("GoFile /accounts rate-limited after 3 retries")
+
+
+def _get_or_create_guest_token(timeout: int = 15) -> str:
+    """Return cached guest token or create a new one."""
+    global _cached_guest_token
+    if not _cached_guest_token:
+        _cached_guest_token = _create_guest_token(timeout=timeout)
+    return _cached_guest_token
 
 
 def resolve_gofile_url(content_id: str, timeout: int = 15) -> str:
@@ -54,41 +84,53 @@ def resolve_gofile_url(content_id: str, timeout: int = 15) -> str:
     Resolve a GoFile content ID to a direct download URL.
 
     Steps:
-      1. Fetch the GoFile website token (wt) from config.js.
-      2. Create a guest account token (POST /accounts).
+      1. Fetch the GoFile website token (wt) from config.js (cached).
+      2. Get or create a guest account token (cached per process).
       3. Fetch content metadata (GET /contents/{content_id}).
       4. Walk the children to find the first downloadable file URL.
 
     Returns the direct download URL string.
     Raises RuntimeError if resolution fails.
     """
-    # 1. Website token (required by GoFile API alongside bearer token)
+    global _cached_guest_token
+
     wt = _get_website_token(timeout=timeout)
+    token = _get_or_create_guest_token(timeout=timeout)
 
-    # 2. Guest bearer token
-    token = _create_guest_token(timeout=timeout)
-
-    # 3. Content metadata — send both Authorization header and X-Website-Token header
     headers = {
         "Authorization": f"Bearer {token}",
         "X-Website-Token": wt,
     }
-    resp = requests.get(
-        f"{GOFILE_API_BASE}/contents/{content_id}",
-        headers=headers,
-        params={"wt": wt},
-        timeout=timeout,
-    )
-    resp.raise_for_status()
-    data = resp.json()
 
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                f"{GOFILE_API_BASE}/contents/{content_id}",
+                headers=headers,
+                params={"wt": wt},
+                timeout=timeout,
+            )
+            if resp.status_code == 401:
+                # Token expired or invalid — clear cache and retry with a fresh one
+                _cached_guest_token = None
+                token = _get_or_create_guest_token(timeout=timeout)
+                headers["Authorization"] = f"Bearer {token}"
+                continue
+            if resp.status_code == 429:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            resp.raise_for_status()
+            break
+        except requests.exceptions.HTTPError:
+            if attempt == 2:
+                raise
+            time.sleep(2 ** (attempt + 1))
+
+    data = resp.json()
     if data.get("status") != "ok":
         raise RuntimeError(f"GoFile contents API error: {data}")
 
-    content = data["data"]
-
-    # 4. Find the download link
-    return _extract_download_link(content)
+    return _extract_download_link(data["data"])
 
 
 def _extract_download_link(content: dict) -> str:
@@ -103,7 +145,6 @@ def _extract_download_link(content: dict) -> str:
 
     if ctype == "folder":
         children = content.get("children", {})
-        # children can be a dict {id: child_obj} or a list
         child_iter = children.values() if isinstance(children, dict) else children
         for child in child_iter:
             try:
