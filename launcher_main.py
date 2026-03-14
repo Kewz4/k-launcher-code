@@ -119,10 +119,12 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
     r"C:\Program Files (x86)\PrismLauncher\prismlauncher.exe",
 ]
 MODPACK_INSTANCE_NAME = "Kewz's Cobblemon"
-# URL of the text file that contains the modpack download link (from GoFile)
+# GoFile content ID for the modpack (from https://gofile.io/d/Ke5wvh)
+MODPACK_GOFILE_CONTENT_ID = "Ke5wvh"
+# Fallback: URL of the text file that contains the modpack download link
 MODPACK_URL_SOURCE = f"{UNIFIED_REPO_RAW_URL}/modpack-url.txt"
-# Fallback URL if dynamic fetch fails
-MODPACK_INSTALL_ZIP_URL = ""  # Set via modpack-url.txt (GoFile link)
+# Hard-coded fallback (empty = no hard-coded fallback)
+MODPACK_INSTALL_ZIP_URL = ""
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/10.0.5/PrismLauncher-Windows-MinGW-w64-Portable-10.0.5.zip"
 
 # --- Stable download directory for crash-resumable downloads ---
@@ -1565,23 +1567,34 @@ class ModpackLauncherAPI:
             # 1. Obtener URL y Descargar
             modpack_url = None
 
-            self._update_install_status(f"Obteniendo enlace de descarga dinámico...")
-            try:
-                # Intentar obtener la URL desde GitLab
-                self._log(f"DEBUG: Consultando {MODPACK_URL_SOURCE}")
-                resp = requests.get(MODPACK_URL_SOURCE, timeout=15)
-                resp.raise_for_status()
-                # Limpiar la respuesta (quitar saltos de línea y espacios)
-                remote_url = resp.text.replace('\n', '').replace('\r', '').strip()
+            self._update_install_status("Obteniendo enlace de descarga...")
 
-                if remote_url.startswith('http'):
-                    modpack_url = remote_url
-                    self._log(f"URL de modpack obtenida dinámicamente: {modpack_url}")
-                else:
-                    raise ValueError(f"El contenido de modpack-url.txt no es una URL válida: '{remote_url}'")
-            except Exception as e:
-                # Si falla, lanzamos error para detener la instalación (sin fallback)
-                err_msg = f"No se pudo obtener la URL de descarga: {e}"
+            # --- Strategy 1: GoFile API (primary) ---
+            try:
+                self._log(f"DEBUG: Resolviendo GoFile content ID: {MODPACK_GOFILE_CONTENT_ID}")
+                from gofile_resolver import resolve_gofile_url
+                modpack_url = resolve_gofile_url(MODPACK_GOFILE_CONTENT_ID, timeout=20)
+                self._log(f"URL obtenida desde GoFile: {modpack_url}")
+            except Exception as gofile_err:
+                self._log(f"GoFile resolution failed ({gofile_err}), trying fallback...")
+
+            # --- Strategy 2: modpack-url.txt in repo (fallback) ---
+            if not modpack_url:
+                try:
+                    self._log(f"DEBUG: Consultando {MODPACK_URL_SOURCE}")
+                    resp = requests.get(MODPACK_URL_SOURCE, timeout=15)
+                    resp.raise_for_status()
+                    remote_url = resp.text.replace('\n', '').replace('\r', '').strip()
+                    if remote_url.startswith('http'):
+                        modpack_url = remote_url
+                        self._log(f"URL de modpack obtenida desde repo: {modpack_url}")
+                    else:
+                        raise ValueError(f"modpack-url.txt no contiene una URL válida: '{remote_url}'")
+                except Exception as repo_err:
+                    self._log(f"Repo URL fallback failed: {repo_err}")
+
+            if not modpack_url:
+                err_msg = "No se pudo obtener la URL de descarga del modpack (GoFile y repo fallaron)."
                 self._update_install_status(f"ERROR: {err_msg}")
                 raise RuntimeError(err_msg)
 
