@@ -2,6 +2,7 @@ pywebview
 psutil
 requests
 pywin32
+pycaw
 Pillow
 yt-dlp
 imageio-ffmpeg

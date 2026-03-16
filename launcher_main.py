@@ -79,19 +79,34 @@ try:
     if IS_WINDOWS:
         import win32gui
         import win32con
-        import ctypes # (NUEVO) Necesario para la comprobación de administrador
+        import win32process
+        import ctypes
         print("pywin32 y ctypes importados exitosamente.")
     else:
         win32gui = None
         win32con = None
+        win32process = None
         ctypes = None
         print("Plataforma no es Windows, pywin32 y ctypes no serán usados.")
 except ImportError:
-    print("ADVERTENCIA: pywin32 no encontrado (pip install pywin32). Se usará el método on_top estándar.")
+    print("ADVERTENCIA: pywin32 no encontrado (pip install pywin32).")
     win32gui = None
     win32con = None
+    win32process = None
     ctypes = None
     # Keep IS_WINDOWS True — pywin32 is optional; OS detection must not change.
+
+try:
+    if IS_WINDOWS:
+        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+        print("pycaw importado exitosamente.")
+    else:
+        AudioUtilities = None
+        ISimpleAudioVolume = None
+except ImportError:
+    print("ADVERTENCIA: pycaw no encontrado (pip install pycaw). El silencio de Java no estará disponible.")
+    AudioUtilities = None
+    ISimpleAudioVolume = None
 
 
 # --- Lógica de la Aplicación (Backend de Python) ---
@@ -1898,12 +1913,7 @@ class ModpackLauncherAPI:
                 self._log("Intentando revertir debido a error fatal...")
                 self._revert_changes()
             self.game_ready_event.set()
-            if IS_WINDOWS and self.hwnd and win32gui:
-                try: win32gui.SetWindowPos(self.hwnd, win32con.HWND_NOTOPMOST, 0,0,0,0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-                except: pass
-            elif self.window:
-                try: self.window.on_top = False
-                except: pass
+            self._set_java_audio_mute(False)
 
     def _sync_options_txt(self):
         """
@@ -2101,18 +2111,12 @@ class ModpackLauncherAPI:
         except (FileNotFoundError, ValueError, RuntimeError) as launch_err:
             self._log(f"Error de Lanzamiento: {launch_err}")
             self.game_ready_event.set()
-            if self.window:
-                try: self.window.on_top = False
-                except: pass
             self._show_result(False, "Error al Lanzar", f"Fallo al iniciar el proceso: {launch_err}")
         except Exception as e:
             self._log(f"Error inesperado al lanzar el juego: {e}")
             import traceback
             self._log(traceback.format_exc())
             self.game_ready_event.set()
-            if self.window:
-                try: self.window.on_top = False
-                except: pass
             self._show_result(False, "Error Inesperado al Lanzar", f"No se pudo iniciar el juego: {e}")
 
     def _stream_reader(self, stream, log_prefix):
@@ -2126,91 +2130,91 @@ class ModpackLauncherAPI:
             self._log(f"Error leyendo stream '{log_prefix}': {e}")
 
     def _focus_game_window(self):
-        """(NUEVO) Busca y enfoca la ventana principal de Minecraft/Java."""
-        if not IS_WINDOWS or not win32gui: return
+        """Finds the Minecraft window and forces it to the foreground."""
+        if not IS_WINDOWS or not win32gui:
+            return
 
-        self._log("Intentando enfocar ventana del juego...")
-
-        def find_mc_window(hwnd, results):
-            if win32gui.IsWindowVisible(hwnd):
-                title = win32gui.GetWindowText(hwnd)
-                # Buscar ventanas que contengan 'Minecraft' (ej: 'Minecraft 1.20.1', 'Minecraft* 1.20.1', etc.)
-                if "Minecraft" in title:
-                    results.append(hwnd)
-            return True
+        self._log("Buscando ventana de Minecraft para enfocar...")
 
         hwnds = []
+        def _cb(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd) and "Minecraft" in win32gui.GetWindowText(hwnd):
+                hwnds.append(hwnd)
+            return True
+
         try:
-            win32gui.EnumWindows(find_mc_window, hwnds)
-            if hwnds:
-                # Si hay varias, tomamos la primera (usualmente solo hay una instancia lanzada por nosotros)
-                target_hwnd = hwnds[0]
-                self._log(f"Ventana encontrada: {target_hwnd} - '{win32gui.GetWindowText(target_hwnd)}'")
+            win32gui.EnumWindows(_cb, None)
+            if not hwnds:
+                self._log("No se encontró ventana visible con 'Minecraft' en el título.")
+                return
 
-                # Restaurar si está minimizada (aunque con SW_SHOWNOACTIVATE no debería estarlo)
-                if win32gui.IsIconic(target_hwnd):
-                    win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
+            target_hwnd = hwnds[0]
+            self._log(f"Ventana objetivo: {target_hwnd} - '{win32gui.GetWindowText(target_hwnd)}'")
 
-                # Traer al frente y dar foco
-                win32gui.SetForegroundWindow(target_hwnd)
-                self._log("Foco transferido al juego.")
-            else:
-                self._log("No se encontró ninguna ventana visible con 'Minecraft' en el título.")
+            if win32gui.IsIconic(target_hwnd):
+                win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
+
+            # AttachThreadInput trick — required on Windows 10/11 to reliably
+            # steal focus from another process without being silently ignored.
+            if win32process:
+                cur_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+                tgt_tid, _ = win32process.GetWindowThreadProcessId(target_hwnd)
+                if cur_tid != tgt_tid:
+                    ctypes.windll.user32.AttachThreadInput(tgt_tid, cur_tid, True)
+
+            ctypes.windll.user32.BringWindowToTop(target_hwnd)
+            win32gui.SetForegroundWindow(target_hwnd)
+
+            if win32process:
+                cur_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+                tgt_tid, _ = win32process.GetWindowThreadProcessId(target_hwnd)
+                if cur_tid != tgt_tid:
+                    ctypes.windll.user32.AttachThreadInput(tgt_tid, cur_tid, False)
+
+            self._log("Foco transferido al juego.")
         except Exception as e:
-            self._log(f"Error al intentar enfocar el juego: {e}")
+            self._log(f"Error al enfocar ventana del juego: {e}")
 
-    def _keep_on_top(self, hwnd):
-        """Hilo agresivo que mantiene la ventana del launcher "siempre encima"."""
-        self._log(f"[OnTopThread] Iniciado (HWND: {hwnd}, Usando pywin32: {IS_WINDOWS and hwnd and win32gui}).")
-        is_using_win32 = IS_WINDOWS and hwnd and win32gui
+    def _set_java_audio_mute(self, mute: bool):
+        """Mute or unmute audio sessions belonging to java.exe / javaw.exe."""
+        if not IS_WINDOWS or AudioUtilities is None or ISimpleAudioVolume is None:
+            return 0
+        volume_level = 0.0 if mute else 1.0
+        label = "silenciado" if mute else "restaurado"
+        count = 0
         try:
-            while not self.game_ready_event.wait(0.1):
-                if is_using_win32:
+            sessions = AudioUtilities.GetAllSessions()
+            for session in sessions:
+                if session.Process and session.Process.name().lower() in ("java.exe", "javaw.exe"):
                     try:
-                        if win32gui.IsWindow(hwnd):
-                            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-                                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
-                        else:
-                            self._log("[OnTopThread] HWND ya no es válido. Deteniendo.")
-                            break
-                    except Exception as e:
-                        if hasattr(e, 'winerror') and e.winerror in [1400, 0]:
-                             self._log(f"[OnTopThread] Error SetWindowPos (HWND_TOPMOST) esperado al cerrar: {e}")
-                             break
-                        else:
-                             self._log(f"[OnTopThread] Error inesperado en SetWindowPos (HWND_TOPMOST): {e}")
-                             is_using_win32 = False
-                             time.sleep(1)
-
-                if not is_using_win32:
-                    if self.window:
-                        try:
-                            if not self.window.minimized:
-                                self.window.on_top = True
-                        except Exception as e:
-                            pass
-                    else:
-                        self._log("[OnTopThread] self.window no existe. Deteniendo.")
-                        break
+                        vol = session._ctl.QueryInterface(ISimpleAudioVolume)
+                        vol.SetMasterVolume(volume_level, None)
+                        count += 1
+                    except Exception:
+                        pass
+            if count:
+                self._log(f"[Audio] {count} sesión(es) de Java {label}.")
         except Exception as e:
-            self._log(f"[OnTopThread] Error fatal: {e}")
-        finally:
-            self._log("[OnTopThread] Finalizando y quitando 'Siempre Encima'...")
-            if is_using_win32 and hwnd:
-                try:
-                    if win32gui.IsWindow(hwnd):
-                        win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
-                                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
-                        self._log("[OnTopThread] HWND_NOTOPMOST aplicado.")
-                except Exception as e:
-                    self._log(f"[OnTopThread] Error SetWindowPos (HWND_NOTOPMOST) al finalizar (ignorado): {e}")
-            if self.window:
-                try:
-                    self.window.on_top = False
-                    self._log("[OnTopThread] Fallback self.window.on_top = False aplicado.")
-                except:
-                    pass
-            self._log("Limpieza finalizada.")
+            self._log(f"[Audio] Error al {'silenciar' if mute else 'restaurar'} Java: {e}")
+        return count
+
+    def _mute_java_until_ready(self):
+        """Background thread: mutes java audio as soon as sessions appear,
+        keeps polling until game_ready_event fires (then unmutes)."""
+        self._log("[Audio] Iniciando hilo de silencio de Java...")
+        deadline = time.time() + 180  # give up polling after 3 min if no java audio
+        muted = False
+        while not self.game_ready_event.is_set():
+            count = self._set_java_audio_mute(True)
+            if count > 0:
+                muted = True
+            if time.time() > deadline and not muted:
+                self._log("[Audio] No se encontraron sesiones de Java en 3 min. Deteniendo poll.")
+                break
+            self.game_ready_event.wait(2.0)
+        # Ensure unmute on exit regardless of how we got here
+        self._set_java_audio_mute(False)
+        self._log("[Audio] Hilo de silencio de Java finalizado.")
 
 
     def _watch_log(self, log_path):
@@ -2249,8 +2253,8 @@ class ModpackLauncherAPI:
                     except Exception: pass
                 return
 
-            self._log(f"Archivo '{log_filename}' detectado. Iniciando bucle 'Siempre Encima'...")
-            self.on_top_thread = threading.Thread(target=self._keep_on_top, args=(self.hwnd,), name="OnTopThread")
+            self._log(f"Archivo '{log_filename}' detectado. Iniciando hilo de silencio de Java...")
+            self.on_top_thread = threading.Thread(target=self._mute_java_until_ready, name="JavaMuteThread")
             self.on_top_thread.daemon = True
             self.on_top_thread.start()
 
@@ -2322,11 +2326,11 @@ class ModpackLauncherAPI:
                                     threading.Thread(target=self._save_new_launch_time, args=(game_load_time,), daemon=True).start()
                                 except Exception: pass
 
-                            # Enfocar juego (Prioritario)
+                            # Restaurar audio de Java y enfocar ventana del juego
+                            self._set_java_audio_mute(False)
                             self._focus_game_window()
 
                             if self.window:
-                                # Intentar fade out, pero no bloquear si falla
                                 self.window.evaluate_js('fadeLauncherOut()')
 
                         except Exception as e:
@@ -2375,24 +2379,10 @@ class ModpackLauncherAPI:
             if file_handle:
                 try: file_handle.close()
                 except: pass
-            self._log("Vigilante de log finalizado. Señalando a OnTopThread para que pare...")
+            self._log("Vigilante de log finalizado. Señalando hilo de silencio para que pare...")
             self.game_ready_event.set()
             if self.on_top_thread and self.on_top_thread.is_alive():
-                self._log("Esperando a que OnTopThread termine...")
-                self.on_top_thread.join(timeout=1.0)
-                if self.on_top_thread.is_alive():
-                    self._log("ADVERTENCIA: OnTopThread no terminó a tiempo.")
-                else:
-                    self._log("OnTopThread join() completado.")
-            
-            if IS_WINDOWS and self.hwnd and win32gui:
-                try:
-                    if win32gui.IsWindow(self.hwnd):
-                        win32gui.SetWindowPos(self.hwnd, win32con.HWND_NOTOPMOST, 0,0,0,0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE)
-                except: pass
-            elif self.window:
-                try: self.window.on_top = False
-                except: pass
+                self.on_top_thread.join(timeout=2.0)
             self._log("Limpieza final de _watch_log completada.")
 
 
@@ -2750,6 +2740,14 @@ class ModpackLauncherAPI:
                 if user_version_files:
                     versions_found = [float(os.path.splitext(f)[0]) for f in user_version_files if re.fullmatch(r'\d+(\.\d+)*', os.path.splitext(f)[0])]
                     user_version = max(versions_found) if versions_found else 1.0
+                else:
+                    # No version file found — create 1.0.txt so future checks work correctly
+                    default_ver_path = os.path.join(folder_path, "1.0.txt")
+                    try:
+                        open(default_ver_path, 'w').close()
+                        self._log(f"Archivo de versión ausente: creado '{default_ver_path}'.")
+                    except Exception as ce:
+                        self._log(f"Advertencia: No se pudo crear 1.0.txt: {ce}")
             except Exception as e:
                 self._log(f"Advertencia: No se pudo leer la versión local: {e}")
 
