@@ -179,7 +179,7 @@ LAUNCHER_VERSION = get_current_launcher_version()
 GITHUB_REPO = "Kewz4/k-launcher-code" # Repositorio para la auto-actualización
 
 # La línea que indica que el juego está listo
-LOG_TRIGGER_LINE = "[ModernFix/]: Game took"
+LOG_TRIGGER_LINE = "Game took"
 
 
 class ModpackLauncherAPI:
@@ -1618,31 +1618,6 @@ class ModpackLauncherAPI:
 
             if self.cancel_event.is_set(): raise InterruptedError("Descarga cancelada.")
 
-            # 2. Extraer
-            self._update_install_status("Descarga completa. Extrayendo archivos...")
-            extract_target = os.path.join(tmp_dir, "extracted")
-
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                if zf.testzip() is not None:
-                    raise zipfile.BadZipFile("Archivo ZIP del modpack corrupto.")
-
-                total_files = len(zf.infolist())
-                extracted_count = 0
-                last_update_time = time.time()
-
-                for member in zf.infolist():
-                    if self.cancel_event.is_set(): raise InterruptedError("Extracción cancelada.")
-                    zf.extract(member, extract_target)
-                    extracted_count += 1
-
-                    now = time.time()
-                    if now - last_update_time > 0.1 or extracted_count == total_files:
-                        pct = extracted_count / total_files if total_files > 0 else 0
-                        self._update_install_status(f"Extrayendo: {member.filename}")
-                        # Usar el mismo _update_progress pero para el wizard
-                        if self.window: self.window.evaluate_js(f'updateProgress({pct}, "Extrayendo... {extracted_count}/{total_files}")')
-                        last_update_time = now
-
             # 2. Crear directorio de destino y extraer
             self._update_install_status(f"Creando directorio de instancia: {os.path.basename(final_instance_path)}")
 
@@ -2769,12 +2744,12 @@ class ModpackLauncherAPI:
             self._log("Verificando versión del modpack...")
             self._update_progress(0.05, "Verificando versión...")
 
-            user_version = 0.0
+            user_version = 1.0
             try:
                 user_version_files = [f for f in os.listdir(folder_path) if f.endswith('.txt') and re.match(r'^\d+(\.\d+)*\.txt$', f)]
                 if user_version_files:
                     versions_found = [float(os.path.splitext(f)[0]) for f in user_version_files if re.fullmatch(r'\d+(\.\d+)*', os.path.splitext(f)[0])]
-                    user_version = max(versions_found) if versions_found else 0.0
+                    user_version = max(versions_found) if versions_found else 1.0
             except Exception as e:
                 self._log(f"Advertencia: No se pudo leer la versión local: {e}")
 
