@@ -114,10 +114,9 @@ except ImportError:
 # --- Unified Repository (all assets in one place) ---
 UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
 REPO_ZIP_URL = "https://github.com/Kewz4/kewz-cobblemon/archive/refs/heads/main.zip"
-# Per-version update system: versions/list.txt lists available versions (one per line),
-# and versions/{version}/url.txt contains the direct (or GoFile) download URL for that version's ZIP.
-VERSION_LIST_URL = f"{UNIFIED_REPO_RAW_URL}/versions/list.txt"
-VERSION_PACK_URL_TEMPLATE = UNIFIED_REPO_RAW_URL + "/versions/{version}/url.txt"
+# Per-version ZIP: each version is stored as versions/{version}.zip in the repo.
+# e.g. https://raw.githubusercontent.com/.../versions/1.1.zip
+VERSION_PACK_URL_TEMPLATE = UNIFIED_REPO_RAW_URL + "/versions/{version}.zip"
 GITHUB_RAW_URL = UNIFIED_REPO_RAW_URL  # Used by music player
 MUSIC_DATA_URL = UNIFIED_REPO_RAW_URL  # Music library base URL
 VERSION_URL = f"{UNIFIED_REPO_RAW_URL}/version.txt"
@@ -2777,90 +2776,40 @@ class ModpackLauncherAPI:
                 time.sleep(1) # Pequeña pausa para que el usuario vea el mensaje
                 return True
 
-            # --- 2. Obtener lista de versiones disponibles --- (Progreso 5% a 10%)
-            self._log("Obteniendo lista de versiones disponibles...")
-            self._update_progress(0.05, "Consultando versiones...")
-            try:
-                vlist_resp = requests.get(VERSION_LIST_URL, timeout=10)
-                vlist_resp.raise_for_status()
-                available_versions = sorted([
-                    float(v.strip()) for v in vlist_resp.text.strip().splitlines()
-                    if v.strip() and re.fullmatch(r'\d+(\.\d+)*', v.strip())
-                ])
-                if not available_versions:
-                    raise ValueError("La lista de versiones está vacía.")
-            except Exception as e:
-                raise IOError(f"No se pudo obtener la lista de versiones desde {VERSION_LIST_URL}: {e}")
-
-            updates_to_apply = [v for v in available_versions if user_version < v <= latest_version]
-            if not updates_to_apply:
-                self._log("El modpack ya está actualizado. Iniciando el juego...")
-                self._update_progress(1.0, "Modpack ya actualizado.")
-                time.sleep(1)
-                return True
-
-            self._log(f"Versiones a aplicar: {updates_to_apply}")
-
-            # --- 3. Descargar y extraer cada ZIP de versión --- (Progreso 10% a 55%)
+            # --- 2. Descargar ZIP de la nueva versión --- (Progreso 5% a 45%)
             tmp_dir = tempfile.mkdtemp(prefix="vplus_update_")
             self._log(f"Directorio temporal: {tmp_dir}")
-            total_updates = len(updates_to_apply)
-            version_roots = {}  # {ver_float: extracted_content_root_path}
 
-            for i, ver in enumerate(updates_to_apply):
-                if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado descargando v{ver}.")
-                dl_progress = 0.10 + (i / total_updates) * 0.45
+            updates_to_apply = [latest_version]
+            self._log(f"Versión a aplicar: {latest_version}")
 
-                # Obtener URL de descarga para esta versión
-                url_file_url = VERSION_PACK_URL_TEMPLATE.format(version=ver)
-                self._log(f"Obteniendo URL de descarga para v{ver}...")
-                try:
-                    url_resp = requests.get(url_file_url, timeout=10)
-                    url_resp.raise_for_status()
-                    raw_url = url_resp.text.strip()
-                    if not raw_url.startswith('http'):
-                        raise ValueError(f"URL inválida en url.txt: '{raw_url}'")
-                except Exception as e:
-                    raise IOError(f"No se pudo obtener la URL de descarga para v{ver}: {e}")
+            pack_url = VERSION_PACK_URL_TEMPLATE.format(version=latest_version)
+            self._log(f"Descargando v{latest_version} desde: {pack_url}")
+            self._update_progress(0.05, f"Descargando v{latest_version}...")
+            zip_path = os.path.join(tmp_dir, f"v{latest_version}.zip")
+            self._download_file(pack_url, zip_path, f"update_v{latest_version}")
+            self._log(f"Descarga completa ({os.path.getsize(zip_path) / (1024*1024):.2f} MB).")
+            self._update_progress(0.40, "Descarga completa.")
 
-                # Resolver GoFile si es necesario
-                if "gofile.io/d/" in raw_url:
-                    self._update_progress(dl_progress, f"Resolviendo GoFile para v{ver}...")
-                    try:
-                        from gofile_resolver import resolve_gofile_share_url
-                        raw_url = resolve_gofile_share_url(raw_url, timeout=20)
-                        self._log(f"URL directa GoFile para v{ver}: {raw_url}")
-                    except Exception as gofile_err:
-                        raise RuntimeError(
-                            f"No se pudo resolver el enlace GoFile para v{ver}. "
-                            f"Error: {gofile_err}"
-                        )
+            # --- 3. Extraer ZIP --- (Progreso 40% a 50%)
+            if self.cancel_event.is_set(): raise InterruptedError("Cancelado post-descarga.")
+            extract_path = os.path.join(tmp_dir, f"extracted_v{latest_version}")
+            os.makedirs(extract_path, exist_ok=True)
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    if zf.testzip() is not None: raise zipfile.BadZipFile(f"ZIP v{latest_version} corrupto.")
+                    zf.extractall(extract_path)
+            except Exception as e:
+                raise IOError(f"Error extrayendo ZIP v{latest_version}: {e}")
+            os.remove(zip_path)  # Liberar espacio
+            self._update_progress(0.50, "Extracción completa.")
 
-                # Descargar ZIP de la versión
-                self._log(f"Descargando v{ver}...")
-                self._update_progress(dl_progress, f"Descargando v{ver}...")
-                zip_path = os.path.join(tmp_dir, f"v{ver}.zip")
-                self._download_file(raw_url, zip_path, f"update_v{ver}")
-                self._log(f"v{ver} descargada ({os.path.getsize(zip_path) / (1024*1024):.2f} MB).")
+            # Auto-detectar raíz del contenido (ZIP con una sola carpeta raíz o estructura plana)
+            items = os.listdir(extract_path)
+            content_root = os.path.join(extract_path, items[0]) if len(items) == 1 and os.path.isdir(os.path.join(extract_path, items[0])) else extract_path
+            self._log(f"Raíz de contenido: {content_root}")
 
-                # Extraer ZIP
-                extract_path = os.path.join(tmp_dir, f"extracted_v{ver}")
-                os.makedirs(extract_path, exist_ok=True)
-                try:
-                    with zipfile.ZipFile(zip_path, 'r') as zf:
-                        if zf.testzip() is not None: raise zipfile.BadZipFile(f"ZIP v{ver} corrupto.")
-                        zf.extractall(extract_path)
-                except Exception as e:
-                    raise IOError(f"Error extrayendo ZIP v{ver}: {e}")
-                os.remove(zip_path)  # Liberar espacio
-
-                # Auto-detectar raíz del contenido (ZIP con una sola carpeta raíz o estructura plana)
-                items = os.listdir(extract_path)
-                if len(items) == 1 and os.path.isdir(os.path.join(extract_path, items[0])):
-                    version_roots[ver] = os.path.join(extract_path, items[0])
-                else:
-                    version_roots[ver] = extract_path
-                self._log(f"v{ver} extraída en: {version_roots[ver]}")
+            version_roots = {latest_version: content_root}
 
             # --- 4. Procesar TODOS los Changelogs ANTES de aplicar --- (Progreso 55% a 75%)
             self._process_all_changelogs(version_roots, updates_to_apply)
