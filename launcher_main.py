@@ -114,6 +114,10 @@ except ImportError:
 # --- Unified Repository (all assets in one place) ---
 UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
 REPO_ZIP_URL = "https://github.com/Kewz4/kewz-cobblemon/archive/refs/heads/main.zip"
+# Per-version update system: versions/list.txt lists available versions (one per line),
+# and versions/{version}/url.txt contains the direct (or GoFile) download URL for that version's ZIP.
+VERSION_LIST_URL = f"{UNIFIED_REPO_RAW_URL}/versions/list.txt"
+VERSION_PACK_URL_TEMPLATE = UNIFIED_REPO_RAW_URL + "/versions/{version}/url.txt"
 GITHUB_RAW_URL = UNIFIED_REPO_RAW_URL  # Used by music player
 MUSIC_DATA_URL = UNIFIED_REPO_RAW_URL  # Music library base URL
 VERSION_URL = f"{UNIFIED_REPO_RAW_URL}/version.txt"
@@ -2656,8 +2660,10 @@ class ModpackLauncherAPI:
 
     # --- Lógica de Actualización (MODIFICADA para usar _download_file) ---
 
-    def _process_all_changelogs(self, versions_path, updates_to_apply):
-        """Itera sobre las versiones a aplicar y envía la info al panel de changelog."""
+    def _process_all_changelogs(self, version_roots, updates_to_apply):
+        """Itera sobre las versiones a aplicar y envía la info al panel de changelog.
+        version_roots: dict {ver_float: extracted_content_root_path}
+        """
         self._log("--- Iniciando procesamiento de Changelogs para todas las versiones ---")
         self._update_progress(0.55, "Analizando cambios...")
         total_versions = len(updates_to_apply)
@@ -2674,7 +2680,7 @@ class ModpackLauncherAPI:
             self._log(f"  Procesando changelog para v{ver_str}...")
             progress = 0.55 + (processed_versions / total_versions) * 0.20
             self._update_progress(progress, f"Analizando cambios v{ver_str}...")
-            update_version_path = os.path.join(versions_path, ver_str)
+            update_version_path = version_roots[ver_float]
 
             # Procesar modsinfo.txt (Añadidos/Actualizados)
             mod_info_path = os.path.join(update_version_path, 'mods', 'modsinfo.txt')
@@ -2771,67 +2777,94 @@ class ModpackLauncherAPI:
                 time.sleep(1) # Pequeña pausa para que el usuario vea el mensaje
                 return True
 
-            # --- Si hay actualización, proceder con la descarga ---
-            tmp_dir = tempfile.mkdtemp(prefix="vplus_update_")
-            self._log(f"Directorio temporal: {tmp_dir}")
-
-            # --- 2. Descarga --- (Progreso 0% a 40%)
-            self._log("Descargando paquete de actualización...")
-            self._update_progress(0, "Iniciando descarga...")
-            zip_path = os.path.join(tmp_dir, "paquete.zip")
-
-            self._download_file(REPO_ZIP_URL, zip_path, "modpack_update")
-
-            self._log(f"Descarga completa ({os.path.getsize(zip_path) / (1024*1024):.2f} MB).")
-            self._update_progress(0.4, "Descarga completa")
-
-            # --- 3. Extracción --- (Progreso 40% a 50%)
-            if self.cancel_event.is_set(): raise InterruptedError("Cancelado post-descarga.")
-            self._log("Extrayendo paquete...")
-            self._update_progress(0.45, "Extrayendo...")
-            extract_target = os.path.join(tmp_dir, "extracted")
-            versions_path = None
+            # --- 2. Obtener lista de versiones disponibles --- (Progreso 5% a 10%)
+            self._log("Obteniendo lista de versiones disponibles...")
+            self._update_progress(0.05, "Consultando versiones...")
             try:
-                with zipfile.ZipFile(zip_path, 'r') as zf:
-                    if zf.testzip() is not None: raise zipfile.BadZipFile("ZIP corrupto.")
-                    os.makedirs(extract_target, exist_ok=True)
-                    zf.extractall(extract_target)
-                    # Buscar la carpeta 'versions'
-                    for root, dirs, _ in os.walk(extract_target):
-                        if 'versions' in dirs:
-                            versions_path = os.path.join(root, 'versions')
-                            break
-                    if versions_path is None:
-                        raise FileNotFoundError("No se encontró la carpeta 'versions' en el ZIP.")
+                vlist_resp = requests.get(VERSION_LIST_URL, timeout=10)
+                vlist_resp.raise_for_status()
+                available_versions = sorted([
+                    float(v.strip()) for v in vlist_resp.text.strip().splitlines()
+                    if v.strip() and re.fullmatch(r'\d+(\.\d+)*', v.strip())
+                ])
+                if not available_versions:
+                    raise ValueError("La lista de versiones está vacía.")
             except Exception as e:
-                raise IOError(f"Error extrayendo ZIP: {e}")
-            self._log("'versions' encontrada y validada.")
-            self._update_progress(0.50, "Extracción completa.")
+                raise IOError(f"No se pudo obtener la lista de versiones desde {VERSION_LIST_URL}: {e}")
 
-            # --- 4. Verificación de Versiones a Aplicar --- (Progreso 50% a 55%)
-            if self.cancel_event.is_set(): raise InterruptedError("Cancelado post-extracción.")
-
-            available_versions = []
-            try:
-                dirs = [v for v in os.listdir(versions_path) if os.path.isdir(os.path.join(versions_path, v))]
-                available_versions_found = [float(v) for v in dirs if re.fullmatch(r'\d+(\.\d+)*', v)]
-                if not available_versions_found:
-                    raise FileNotFoundError("No hay carpetas de versión válidas en paquete.")
-                available_versions = sorted(available_versions_found)
-            except Exception as e:
-                raise IOError(f"Error leyendo versiones del paquete: {e}")
-
-            updates_to_apply = [v for v in available_versions if v > user_version]
+            updates_to_apply = [v for v in available_versions if user_version < v <= latest_version]
             if not updates_to_apply:
-                self._log("El paquete descargado no contiene una versión más nueva. Saltando actualización.")
+                self._log("El modpack ya está actualizado. Iniciando el juego...")
+                self._update_progress(1.0, "Modpack ya actualizado.")
+                time.sleep(1)
                 return True
 
             self._log(f"Versiones a aplicar: {updates_to_apply}")
 
-            # --- 4. (NUEVO) Procesar TODOS los Changelogs ANTES de aplicar --- (Progreso 55% a 75%)
-            if updates_to_apply:
-                self._process_all_changelogs(versions_path, updates_to_apply)
-                time.sleep(1) # Pausa después de mostrar changelog
+            # --- 3. Descargar y extraer cada ZIP de versión --- (Progreso 10% a 55%)
+            tmp_dir = tempfile.mkdtemp(prefix="vplus_update_")
+            self._log(f"Directorio temporal: {tmp_dir}")
+            total_updates = len(updates_to_apply)
+            version_roots = {}  # {ver_float: extracted_content_root_path}
+
+            for i, ver in enumerate(updates_to_apply):
+                if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado descargando v{ver}.")
+                dl_progress = 0.10 + (i / total_updates) * 0.45
+
+                # Obtener URL de descarga para esta versión
+                url_file_url = VERSION_PACK_URL_TEMPLATE.format(version=ver)
+                self._log(f"Obteniendo URL de descarga para v{ver}...")
+                try:
+                    url_resp = requests.get(url_file_url, timeout=10)
+                    url_resp.raise_for_status()
+                    raw_url = url_resp.text.strip()
+                    if not raw_url.startswith('http'):
+                        raise ValueError(f"URL inválida en url.txt: '{raw_url}'")
+                except Exception as e:
+                    raise IOError(f"No se pudo obtener la URL de descarga para v{ver}: {e}")
+
+                # Resolver GoFile si es necesario
+                if "gofile.io/d/" in raw_url:
+                    self._update_progress(dl_progress, f"Resolviendo GoFile para v{ver}...")
+                    try:
+                        from gofile_resolver import resolve_gofile_share_url
+                        raw_url = resolve_gofile_share_url(raw_url, timeout=20)
+                        self._log(f"URL directa GoFile para v{ver}: {raw_url}")
+                    except Exception as gofile_err:
+                        raise RuntimeError(
+                            f"No se pudo resolver el enlace GoFile para v{ver}. "
+                            f"Error: {gofile_err}"
+                        )
+
+                # Descargar ZIP de la versión
+                self._log(f"Descargando v{ver}...")
+                self._update_progress(dl_progress, f"Descargando v{ver}...")
+                zip_path = os.path.join(tmp_dir, f"v{ver}.zip")
+                self._download_file(raw_url, zip_path, f"update_v{ver}")
+                self._log(f"v{ver} descargada ({os.path.getsize(zip_path) / (1024*1024):.2f} MB).")
+
+                # Extraer ZIP
+                extract_path = os.path.join(tmp_dir, f"extracted_v{ver}")
+                os.makedirs(extract_path, exist_ok=True)
+                try:
+                    with zipfile.ZipFile(zip_path, 'r') as zf:
+                        if zf.testzip() is not None: raise zipfile.BadZipFile(f"ZIP v{ver} corrupto.")
+                        zf.extractall(extract_path)
+                except Exception as e:
+                    raise IOError(f"Error extrayendo ZIP v{ver}: {e}")
+                os.remove(zip_path)  # Liberar espacio
+
+                # Auto-detectar raíz del contenido (ZIP con una sola carpeta raíz o estructura plana)
+                items = os.listdir(extract_path)
+                if len(items) == 1 and os.path.isdir(os.path.join(extract_path, items[0])):
+                    version_roots[ver] = os.path.join(extract_path, items[0])
+                else:
+                    version_roots[ver] = extract_path
+                self._log(f"v{ver} extraída en: {version_roots[ver]}")
+
+            # --- 4. Procesar TODOS los Changelogs ANTES de aplicar --- (Progreso 55% a 75%)
+            self._process_all_changelogs(version_roots, updates_to_apply)
+            time.sleep(1) # Pausa después de mostrar changelog
 
             # --- 5. Aplicar Actualizaciones (Borrar y Copiar) --- (Progreso 75% a 95%)
             total_updates = len(updates_to_apply)
@@ -2841,7 +2874,7 @@ class ModpackLauncherAPI:
                 progress = 0.75 + ((i + 1) / total_updates) * 0.20
                 self._update_progress(progress, f"Aplicando v{ver} ({i+1}/{total_updates})...")
                 self._log(f"--- Aplicando v{ver} ---")
-                update_version_path = os.path.join(versions_path, str(ver))
+                update_version_path = version_roots[ver]
                 if not os.path.isdir(update_version_path):
                     self._log(f"Warn: Carpeta v{ver} no encontrada. Saltando."); continue
 
@@ -2924,7 +2957,8 @@ class ModpackLauncherAPI:
                     src_item_path = os.path.join(update_version_path, item_name)
                     dest_item_path = os.path.join(folder_path, item_name)
                     if (item_name.startswith('removed') and item_name.endswith('.txt')) or \
-                       item_name == 'modsinfo.txt' or item_name == 'resourcepackoptions.txt': continue
+                       item_name == 'modsinfo.txt' or item_name == 'resourcepackoptions.txt' or \
+                       item_name == '.gitkeep': continue
                     try:
                         if os.path.isdir(src_item_path):
                             os.makedirs(dest_item_path, exist_ok=True)
@@ -3047,12 +3081,15 @@ class ModpackLauncherAPI:
             dest_item_path = os.path.join(dest_folder, item_name)
             current_rel_path = os.path.join(base_rel_folder, item_name)
 
-            # (CORREGIDO) Excluir todos los archivos 'removed...txt' de ser copiados.
+            # Excluir archivos de control y marcadores de directorio vacío.
             if item_name.lower().startswith('removed') and item_name.lower().endswith('.txt'):
                 self._log(f"                  - Ignorando archivo de control: {os.path.join(base_rel_folder, item_name)}")
                 continue
 
             if item_name.lower() == 'modsinfo.txt' and base_rel_folder.lower() == 'mods':
+                continue
+
+            if item_name == '.gitkeep':
                 continue
 
             try:
