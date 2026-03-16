@@ -114,9 +114,8 @@ except ImportError:
 # --- Unified Repository (all assets in one place) ---
 UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
 REPO_ZIP_URL = "https://github.com/Kewz4/kewz-cobblemon/archive/refs/heads/main.zip"
-# Per-version ZIP: each version is stored as versions/{version}.zip in the repo.
-# e.g. https://raw.githubusercontent.com/.../versions/1.1.zip
-VERSION_PACK_URL_TEMPLATE = UNIFIED_REPO_RAW_URL + "/versions/{version}.zip"
+# GitHub API: full recursive tree (used to detect empty folders, which GitHub ZIP omits)
+GITHUB_TREE_API_URL = "https://api.github.com/repos/Kewz4/kewz-cobblemon/git/trees/main?recursive=1"
 GITHUB_RAW_URL = UNIFIED_REPO_RAW_URL  # Used by music player
 MUSIC_DATA_URL = UNIFIED_REPO_RAW_URL  # Music library base URL
 VERSION_URL = f"{UNIFIED_REPO_RAW_URL}/version.txt"
@@ -2783,32 +2782,79 @@ class ModpackLauncherAPI:
             updates_to_apply = [latest_version]
             self._log(f"Versión a aplicar: {latest_version}")
 
-            pack_url = VERSION_PACK_URL_TEMPLATE.format(version=latest_version)
-            self._log(f"Descargando v{latest_version} desde: {pack_url}")
+            # --- 2. Descargar repo ZIP y extraer solo versions/{latest_version}/ ---
+            self._log(f"Descargando repositorio...")
             self._update_progress(0.05, f"Descargando v{latest_version}...")
-            zip_path = os.path.join(tmp_dir, f"v{latest_version}.zip")
-            self._download_file(pack_url, zip_path, f"update_v{latest_version}")
+            zip_path = os.path.join(tmp_dir, "repo.zip")
+            self._download_file(REPO_ZIP_URL, zip_path, "repo_archive")
             self._log(f"Descarga completa ({os.path.getsize(zip_path) / (1024*1024):.2f} MB).")
             self._update_progress(0.40, "Descarga completa.")
 
-            # --- 3. Extraer ZIP --- (Progreso 40% a 50%)
+            # --- 3. Extraer solo la carpeta de la versión --- (Progreso 40% a 50%)
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado post-descarga.")
             extract_path = os.path.join(tmp_dir, f"extracted_v{latest_version}")
             os.makedirs(extract_path, exist_ok=True)
             try:
                 with zipfile.ZipFile(zip_path, 'r') as zf:
-                    if zf.testzip() is not None: raise zipfile.BadZipFile(f"ZIP v{latest_version} corrupto.")
-                    zf.extractall(extract_path)
+                    if zf.testzip() is not None: raise zipfile.BadZipFile("ZIP del repositorio corrupto.")
+                    all_names = zf.namelist()
+                    # GitHub ZIPs have a single top-level folder like "reponame-main/"
+                    top_dirs = {n.split('/')[0] for n in all_names if '/' in n}
+                    top_prefix = (top_dirs.pop() + '/') if len(top_dirs) == 1 else ''
+                    version_prefix = f"{top_prefix}versions/{latest_version}/"
+                    matching = [n for n in all_names if n.startswith(version_prefix)]
+                    if not matching:
+                        raise IOError(f"No se encontró versions/{latest_version}/ en el ZIP del repositorio.")
+                    for member in matching:
+                        rel = member[len(version_prefix):]
+                        if not rel:
+                            continue
+                        dest = os.path.join(extract_path, rel)
+                        if member.endswith('/'):
+                            os.makedirs(dest, exist_ok=True)
+                        else:
+                            os.makedirs(os.path.dirname(dest), exist_ok=True)
+                            with zf.open(member) as src, open(dest, 'wb') as dst:
+                                dst.write(src.read())
+            except (IOError, zipfile.BadZipFile):
+                raise
             except Exception as e:
-                raise IOError(f"Error extrayendo ZIP v{latest_version}: {e}")
-            os.remove(zip_path)  # Liberar espacio
-            self._update_progress(0.50, "Extracción completa.")
+                raise IOError(f"Error extrayendo versión {latest_version}: {e}")
+            os.remove(zip_path)
+            self._update_progress(0.48, "Extracción completa.")
 
-            # Auto-detectar raíz del contenido (ZIP con una sola carpeta raíz o estructura plana)
-            items = os.listdir(extract_path)
-            content_root = os.path.join(extract_path, items[0]) if len(items) == 1 and os.path.isdir(os.path.join(extract_path, items[0])) else extract_path
-            self._log(f"Raíz de contenido: {content_root}")
+            # --- Crear carpetas vacías usando la GitHub Tree API ---
+            # GitHub ZIP omite directorios vacíos; la API de árbol los incluye.
+            try:
+                self._log("Consultando árbol del repositorio para detectar carpetas vacías...")
+                tree_resp = requests.get(GITHUB_TREE_API_URL, timeout=15)
+                tree_resp.raise_for_status()
+                tree_items = tree_resp.json().get('tree', [])
+                ver_prefix = f"versions/{latest_version}/"
+                # All 'tree' (directory) entries inside this version
+                all_dirs = {
+                    item['path'][len(ver_prefix):]
+                    for item in tree_items
+                    if item['type'] == 'tree' and item['path'].startswith(ver_prefix)
+                }
+                # Dirs that contain at least one blob (file) — these won't be empty after extract
+                non_empty_dirs = set()
+                for item in tree_items:
+                    if item['type'] == 'blob' and item['path'].startswith(ver_prefix):
+                        rel = item['path'][len(ver_prefix):]
+                        parts = rel.split('/')
+                        for depth in range(1, len(parts)):
+                            non_empty_dirs.add('/'.join(parts[:depth]))
+                empty_dirs = all_dirs - non_empty_dirs - {''}
+                for d in empty_dirs:
+                    dest_dir = os.path.join(extract_path, d)
+                    os.makedirs(dest_dir, exist_ok=True)
+                    self._log(f"Carpeta vacía creada: {d}")
+            except Exception as tree_err:
+                self._log(f"Advertencia: no se pudieron crear carpetas vacías via API: {tree_err}")
+            self._update_progress(0.50, "Listo para aplicar.")
 
+            content_root = extract_path
             version_roots = {latest_version: content_root}
 
             # --- 4. Procesar TODOS los Changelogs ANTES de aplicar --- (Progreso 55% a 75%)
