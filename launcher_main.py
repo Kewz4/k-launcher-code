@@ -2848,9 +2848,11 @@ class ModpackLauncherAPI:
                 # Fase Borrado
                 self._log(f"  [{ver}] Procesando eliminaciones...")
 
-                # (LÓGICA DE ELIMINACIÓN CORREGIDA)
-                # Busca 'removed...' en las subcarpetas del paquete de actualización, no en la raíz.
-                folders_to_check_for_removal = ['config', 'shaderpacks', 'mods']
+                # Busca 'removed{folder}.txt' en CUALQUIER subcarpeta del paquete de actualización.
+                folders_to_check_for_removal = [
+                    d for d in os.listdir(update_version_path)
+                    if os.path.isdir(os.path.join(update_version_path, d))
+                ]
 
                 for folder_name in folders_to_check_for_removal:
                     removal_filename = f"removed{folder_name}.txt"
