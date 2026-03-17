@@ -222,6 +222,46 @@ HTML_CONTENT = f"""
             background-image: linear-gradient(90deg, var(--cancel-btn-grad-start), var(--cancel-btn-grad-end));
         }}
 
+        /* --- Update badge above play button --- */
+        #update-badge {{
+            position: fixed;
+            bottom: 85px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            align-items: center;
+            gap: 7px;
+            background: rgba(0, 0, 0, 0.72);
+            border: 1px solid var(--color-accent);
+            border-radius: 20px;
+            padding: 5px 14px 5px 10px;
+            font-family: var(--font-family-sans);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-accent);
+            white-space: nowrap;
+            z-index: 102;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 0 14px rgba(0, 207, 170, 0.25);
+            animation: badgeFadeIn 0.5s ease forwards;
+            pointer-events: none;
+        }}
+        #update-badge.visible {{ display: flex; }}
+        #update-badge .badge-dot {{
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--color-accent);
+            box-shadow: 0 0 6px var(--color-accent);
+            animation: badgePulse 1.8s ease-in-out infinite;
+            flex-shrink: 0;
+        }}
+        @keyframes badgeFadeIn {{
+            from {{ opacity: 0; transform: translateX(-50%) translateY(6px); }}
+            to   {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+        }}
+        @keyframes badgePulse {{
+            0%, 100% {{ opacity: 1; transform: scale(1); }}
+            50%       {{ opacity: 0.5; transform: scale(1.35); }}
+        }}
 
         #menu-btn {{ position: absolute; top: 20px; left: 20px; right: auto; width: 50px; height: 50px; border-radius: var(--radius-btn); cursor: pointer; z-index: 102; display: flex; flex-direction: column; justify-content: space-around; align-items: center; padding: 10px; transition: transform 0.2s ease; background-image: linear-gradient(84deg, var(--menu-btn-fill-start), var(--menu-btn-fill-end)); border: none; }}
         #menu-btn::before {{ content: ''; position: absolute; inset: -3px; border-radius: calc(var(--radius-btn) + 3px); background-image: linear-gradient(62deg, var(--menu-btn-stroke-start), var(--menu-btn-stroke-end)); z-index: -1; padding: 3px; -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }}
@@ -699,6 +739,12 @@ HTML_CONTENT = f"""
 
         <!-- Logo -->
         <img src="{LOGO_URL}" alt="Kewz's Cobblemon" id="minecraft-logo">
+
+        <!-- Update badge (shown when a new modpack version is available) -->
+        <div id="update-badge">
+            <span class="badge-dot"></span>
+            <span id="update-badge-text">New version available</span>
+        </div>
 
         <!-- Play Button -->
         <button id="play-btn">PLAY</button>
@@ -1945,6 +1991,22 @@ HTML_CONTENT = f"""
                 // Always show play screen — button label reflects install state
                 switchScreen('play');
 
+                // Background modpack version check — update badge + button if update available
+                pywebview.api.py_check_modpack_version().then(result => {{
+                    if (result && result.has_update) {{
+                        const latest = result.latest_version;
+                        if (dom.updateBadge) {{
+                            dom.updateBadgeText.textContent = `New v${{latest}} available`;
+                            dom.updateBadge.classList.add('visible');
+                        }}
+                        // Only change button text if not already in cancel/install mode
+                        const lbl = dom.playBtn.textContent.trim();
+                        if (lbl === 'PLAY') {{
+                            dom.playBtn.textContent = 'UPDATE';
+                        }}
+                    }}
+                }}).catch(e => {{ console.warn("Version check failed:", e); }});
+
                 return pywebview.api.py_get_debug_status();
             }}).then(isDebug => {{
                 dom.panelDebugBtn.style.display = isDebug ? 'flex' : 'none';
@@ -1987,7 +2049,8 @@ HTML_CONTENT = f"""
                 resumeDiscardBtn: document.getElementById('resume-discard-btn'),
                 resumeContinueBtn: document.getElementById('resume-continue-btn'),
                 debugPanel: document.getElementById('debug-panel'), debugCloseStatus: document.getElementById('debug-close-status'), launcherVersion: document.getElementById('launcher-version'),
-                bgVideo: document.getElementById('bg-video')
+                bgVideo: document.getElementById('bg-video'),
+                updateBadge: document.getElementById('update-badge'), updateBadgeText: document.getElementById('update-badge-text')
             }};
 
             // --- Background Video event listeners (video list + gate managed at outer scope) ---
@@ -2100,7 +2163,8 @@ HTML_CONTENT = f"""
                 }} else if (label === 'INSTALL PRISM' || label === 'DOWNLOAD MODPACK') {{
                     startInitialSetupWizard();
                 }} else {{
-                    // PLAY — start the game
+                    // PLAY or UPDATE — start the game/update
+                    if (dom.updateBadge) dom.updateBadge.classList.remove('visible');
                     dom.playBtn.textContent = "CANCEL"; dom.playBtn.classList.add('cancel-mode');
                     switchScreen('progress');
                     dom.console.innerHTML = ''; dom.changelogContent.innerHTML = '';

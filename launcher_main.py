@@ -116,6 +116,8 @@ UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/m
 REPO_ZIP_URL = "https://github.com/Kewz4/kewz-cobblemon/archive/refs/heads/main.zip"
 # GitHub API: full recursive tree (used to detect empty folders, which GitHub ZIP omits)
 GITHUB_TREE_API_URL = "https://api.github.com/repos/Kewz4/kewz-cobblemon/git/trees/main?recursive=1"
+# GitHub Contents API for version.txt — bypasses CDN cache, always returns fresh data
+GITHUB_VERSION_CONTENTS_URL = "https://api.github.com/repos/Kewz4/kewz-cobblemon/contents/version.txt"
 GITHUB_RAW_URL = UNIFIED_REPO_RAW_URL  # Used by music player
 MUSIC_DATA_URL = UNIFIED_REPO_RAW_URL  # Music library base URL
 VERSION_URL = f"{UNIFIED_REPO_RAW_URL}/version.txt"
@@ -879,6 +881,64 @@ class ModpackLauncherAPI:
             return any(f.lower().endswith('.jar') for f in os.listdir(mods_path))
         except OSError:
             return False
+
+    def _fetch_latest_version(self):
+        """Fetches the latest modpack version from GitHub Contents API (bypasses CDN cache)."""
+        import base64
+        try:
+            headers = {
+                'Accept': 'application/vnd.github.v3+json',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'User-Agent': 'KewzLauncher/1.0',
+            }
+            resp = requests.get(GITHUB_VERSION_CONTENTS_URL, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            content = base64.b64decode(data['content']).decode('utf-8').strip()
+            return float(content)
+        except Exception:
+            # Fallback to raw URL with cache-busting query param
+            try:
+                import time as _time
+                bust_url = f"{VERSION_URL}?_={int(_time.time())}"
+                headers = {'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'User-Agent': 'KewzLauncher/1.0'}
+                resp = requests.get(bust_url, headers=headers, timeout=10)
+                resp.raise_for_status()
+                return float(resp.text.strip())
+            except Exception as e2:
+                raise IOError(f"No se pudo obtener la versión remota: {e2}")
+
+    def _get_local_version(self):
+        """Returns the highest local version number found in the instance folder."""
+        folder_path = self.instance_mc_path
+        if not folder_path or not os.path.isdir(folder_path):
+            return 1.0
+        try:
+            version_files = [f for f in os.listdir(folder_path) if f.endswith('.txt') and re.match(r'^\d+(\.\d+)*\.txt$', f)]
+            if version_files:
+                versions = [float(os.path.splitext(f)[0]) for f in version_files if re.fullmatch(r'\d+(\.\d+)*', os.path.splitext(f)[0])]
+                return max(versions) if versions else 1.0
+        except Exception:
+            pass
+        return 1.0
+
+    def py_check_modpack_version(self):
+        """Background check: returns {has_update, local_version, latest_version} for the UI badge."""
+        if not self.instance_mc_path or not os.path.isdir(self.instance_mc_path):
+            return {"has_update": False, "local_version": None, "latest_version": None}
+        try:
+            local = self._get_local_version()
+            latest = self._fetch_latest_version()
+            has_update = latest > local
+            return {
+                "has_update": has_update,
+                "local_version": str(local),
+                "latest_version": str(latest),
+            }
+        except Exception as e:
+            self._log(f"py_check_modpack_version error: {e}")
+            return {"has_update": False, "local_version": None, "latest_version": None}
 
     # --- Funciones de Utilidad de la GUI ---
 
@@ -2758,12 +2818,9 @@ class ModpackLauncherAPI:
             self._log(f"Versión actual local: {user_version}")
 
             try:
-                response = requests.get(VERSION_URL, timeout=10)
-                response.raise_for_status()
-                latest_version_str = response.text.strip()
-                latest_version = float(latest_version_str)
-            except (requests.RequestException, ValueError) as e:
-                self._log(f"Error crítico: No se pudo obtener la versión más reciente desde {VERSION_URL}: {e}")
+                latest_version = self._fetch_latest_version()
+            except Exception as e:
+                self._log(f"Error crítico: No se pudo obtener la versión más reciente: {e}")
                 self._show_result(False, "Error de Red", "No se pudo comprobar la versión del modpack. Revisa tu conexión a internet.")
                 return False
 
@@ -2783,7 +2840,12 @@ class ModpackLauncherAPI:
             self._update_progress(0.05, "Consultando versiones disponibles...")
             self._log("Consultando árbol del repositorio...")
             try:
-                tree_resp = requests.get(GITHUB_TREE_API_URL, timeout=15)
+                tree_headers = {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Cache-Control': 'no-cache',
+                    'User-Agent': 'KewzLauncher/1.0',
+                }
+                tree_resp = requests.get(GITHUB_TREE_API_URL, headers=tree_headers, timeout=15)
                 tree_resp.raise_for_status()
                 tree_items = tree_resp.json().get('tree', [])
             except Exception as e:
@@ -2812,69 +2874,78 @@ class ModpackLauncherAPI:
 
             self._log(f"Versiones a aplicar en orden: {updates_to_apply}")
 
-            # --- 3. Descargar repo ZIP una sola vez --- (Progreso 10% a 45%)
-            self._log("Descargando repositorio...")
-            self._update_progress(0.10, "Descargando repositorio...")
-            zip_path = os.path.join(tmp_dir, "repo.zip")
-            self._download_file(REPO_ZIP_URL, zip_path, "repo_archive")
-            self._log(f"Descarga completa ({os.path.getsize(zip_path) / (1024*1024):.2f} MB).")
-            self._update_progress(0.45, "Descarga completa.")
-
-            # Detectar prefijo raíz del ZIP de GitHub (ej. "kewz-cobblemon-main/")
-            with zipfile.ZipFile(zip_path, 'r') as _zf:
-                _top_dirs = {n.split('/')[0] for n in _zf.namelist() if '/' in n}
-            zip_top_prefix = (_top_dirs.pop() + '/') if len(_top_dirs) == 1 else ''
-
-            # --- 4. Extraer cada versión del ZIP y crear carpetas vacías ---
+            # --- 3. Descargar archivos por versión usando el árbol del repositorio ---
+            # (Solo descarga los archivos de las versiones necesarias, no el repo completo)
+            dl_headers = {
+                'User-Agent': 'KewzLauncher/1.0',
+                'Cache-Control': 'no-cache',
+            }
             version_roots = {}
+            total_versions = len(updates_to_apply)
             for i, ver in enumerate(updates_to_apply):
-                if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado extrayendo v{ver}.")
-                extract_path = os.path.join(tmp_dir, f"extracted_v{ver}")
-                os.makedirs(extract_path, exist_ok=True)
-                version_prefix = f"{zip_top_prefix}versions/{ver}/"
-                try:
-                    with zipfile.ZipFile(zip_path, 'r') as zf:
-                        matching = [n for n in zf.namelist() if n.startswith(version_prefix)]
-                        if not matching:
-                            raise IOError(f"No se encontró versions/{ver}/ en el ZIP del repositorio.")
-                        for member in matching:
-                            rel = member[len(version_prefix):]
-                            if not rel:
-                                continue
-                            dest = os.path.join(extract_path, rel)
-                            if member.endswith('/'):
-                                os.makedirs(dest, exist_ok=True)
-                            else:
-                                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                                with zf.open(member) as src, open(dest, 'wb') as dst:
-                                    dst.write(src.read())
-                except IOError:
-                    raise
-                except Exception as e:
-                    raise IOError(f"Error extrayendo v{ver}: {e}")
+                if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado descargando v{ver}.")
+                ver_str = str(ver)
+                # Normalise: 1.0 -> "1.0", but if originally "1" we keep float repr
+                ver_prefix = f"versions/{ver_str}/"
+                ver_files = [item for item in tree_items if item['type'] == 'blob' and item['path'].startswith(ver_prefix)]
 
-                # Crear carpetas vacías (GitHub ZIP las omite; el árbol las tiene)
-                ver_prefix = f"versions/{ver}/"
+                if not ver_files:
+                    raise IOError(f"No se encontraron archivos para versions/{ver_str}/ en el árbol del repositorio.")
+
+                extract_path = os.path.join(tmp_dir, f"extracted_v{ver_str}")
+                os.makedirs(extract_path, exist_ok=True)
+
+                total_files = len(ver_files)
+                self._log(f"Descargando v{ver_str}: {total_files} archivo(s)...")
+                base_progress = 0.10 + (i / total_versions) * 0.35
+                ver_progress_range = 0.35 / total_versions
+
+                for j, item in enumerate(ver_files):
+                    if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado descargando archivo de v{ver_str}.")
+                    rel_path = item['path'][len(ver_prefix):]
+                    dest = os.path.join(extract_path, rel_path.replace('/', os.sep))
+                    dest_dir = os.path.dirname(dest)
+                    if dest_dir:
+                        os.makedirs(dest_dir, exist_ok=True)
+                    raw_url = f"{UNIFIED_REPO_RAW_URL}/{item['path']}"
+                    file_progress = base_progress + (j / total_files) * ver_progress_range
+                    self._update_progress(file_progress, f"Descargando v{ver_str} ({j+1}/{total_files}): {os.path.basename(rel_path)}")
+                    try:
+                        with requests.get(raw_url, headers=dl_headers, timeout=30, stream=True) as r:
+                            r.raise_for_status()
+                            with open(dest, 'wb') as f_out:
+                                for chunk in r.iter_content(65536):
+                                    if self.cancel_event.is_set():
+                                        raise InterruptedError(f"Cancelado durante descarga de {rel_path}.")
+                                    if chunk:
+                                        f_out.write(chunk)
+                    except InterruptedError:
+                        raise
+                    except Exception as dl_err:
+                        raise IOError(f"Error descargando {rel_path}: {dl_err}")
+
+                # Crear carpetas vacías (el árbol las tiene como 'tree' items)
+                ver_dirs_prefix = f"versions/{ver_str}/"
                 all_dirs = {
-                    item['path'][len(ver_prefix):]
+                    item['path'][len(ver_dirs_prefix):]
                     for item in tree_items
-                    if item['type'] == 'tree' and item['path'].startswith(ver_prefix)
+                    if item['type'] == 'tree' and item['path'].startswith(ver_dirs_prefix)
                 }
                 non_empty_dirs = set()
                 for item in tree_items:
-                    if item['type'] == 'blob' and item['path'].startswith(ver_prefix):
-                        rel = item['path'][len(ver_prefix):]
+                    if item['type'] == 'blob' and item['path'].startswith(ver_dirs_prefix):
+                        rel = item['path'][len(ver_dirs_prefix):]
                         parts = rel.split('/')
                         for depth in range(1, len(parts)):
                             non_empty_dirs.add('/'.join(parts[:depth]))
                 for d in (all_dirs - non_empty_dirs - {''}):
                     os.makedirs(os.path.join(extract_path, d), exist_ok=True)
-                    self._log(f"Carpeta vacía creada en v{ver}: {d}")
+                    self._log(f"Carpeta vacía creada en v{ver_str}: {d}")
 
                 version_roots[ver] = extract_path
+                self._log(f"v{ver_str} descargada completamente.")
 
-            os.remove(zip_path)
-            self._update_progress(0.50, "Extracción completa.")
+            self._update_progress(0.50, "Descarga completa.")
 
             # --- 4. Procesar TODOS los Changelogs ANTES de aplicar --- (Progreso 55% a 75%)
             self._process_all_changelogs(version_roots, updates_to_apply)
