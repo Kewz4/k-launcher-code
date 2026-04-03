@@ -2595,6 +2595,53 @@ class ModpackLauncherAPI:
         else:
             self._update_progress(pct * 0.4, label)
 
+    # LFS pointer magic: first 43 bytes of a pointer are "version https://git-lfs.github.com/spec/v1"
+    _LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1"
+
+    @staticmethod
+    def _parse_lfs_pointer(content_bytes):
+        """If content_bytes is a Git LFS pointer, returns (oid_hex, size_int). Otherwise None."""
+        if not content_bytes.startswith(ModpackLauncherAPI._LFS_POINTER_PREFIX):
+            return None
+        try:
+            text = content_bytes.decode('utf-8')
+            oid = None
+            size = None
+            for line in text.splitlines():
+                if line.startswith('oid sha256:'):
+                    oid = line.split(':', 1)[1].strip()
+                elif line.startswith('size '):
+                    size = int(line.split(' ', 1)[1].strip())
+            if oid and size is not None:
+                return oid, size
+        except Exception:
+            pass
+        return None
+
+    def _resolve_lfs_url(self, oid, size):
+        """
+        Calls the GitHub LFS Batch API to get a real download URL for an LFS object.
+        Returns (download_url, headers_dict).
+        """
+        batch_url = "https://github.com/Kewz4/kewz-cobblemon.git/info/lfs/objects/batch"
+        payload = {
+            "operation": "download",
+            "transfers": ["basic"],
+            "objects": [{"oid": oid, "size": size}],
+        }
+        req_headers = {
+            "Accept": "application/vnd.git-lfs+json",
+            "Content-Type": "application/vnd.git-lfs+json",
+            "User-Agent": "KewzLauncher/1.0",
+        }
+        resp = requests.post(batch_url, json=payload, headers=req_headers, timeout=15)
+        resp.raise_for_status()
+        obj = resp.json()["objects"][0]
+        if "error" in obj:
+            raise IOError(f"LFS batch API error for oid {oid}: {obj['error']}")
+        action = obj["actions"]["download"]
+        return action["href"], action.get("header", {})
+
     def _download_file(self, url, destination_path, progress_context="update", filename_hint=None):
         """
         Downloads a file with:
@@ -2913,12 +2960,40 @@ class ModpackLauncherAPI:
                     try:
                         with requests.get(raw_url, headers=dl_headers, timeout=30, stream=True) as r:
                             r.raise_for_status()
-                            with open(dest, 'wb') as f_out:
-                                for chunk in r.iter_content(65536):
-                                    if self.cancel_event.is_set():
-                                        raise InterruptedError(f"Cancelado durante descarga de {rel_path}.")
-                                    if chunk:
-                                        f_out.write(chunk)
+                            # Buffer the first chunk to check for LFS pointer
+                            first_chunk = b""
+                            chunk_iter = r.iter_content(65536)
+                            for chunk in chunk_iter:
+                                if chunk:
+                                    first_chunk = chunk
+                                    break
+
+                            lfs = self._parse_lfs_pointer(first_chunk)
+                            if lfs:
+                                # This is an LFS pointer — fetch the real content via LFS batch API
+                                oid, lfs_size = lfs
+                                self._log(f"        - LFS detectado para {os.path.basename(rel_path)} ({lfs_size / (1024*1024):.1f} MB), resolviendo...")
+                                self._update_progress(file_progress, f"Descargando v{ver_str} ({j+1}/{total_files}) [LFS]: {os.path.basename(rel_path)}")
+                                lfs_url, lfs_headers = self._resolve_lfs_url(oid, lfs_size)
+                                merged_headers = {**dl_headers, **lfs_headers}
+                                with requests.get(lfs_url, headers=merged_headers, timeout=120, stream=True) as lfs_r:
+                                    lfs_r.raise_for_status()
+                                    with open(dest, 'wb') as f_out:
+                                        for chunk in lfs_r.iter_content(65536):
+                                            if self.cancel_event.is_set():
+                                                raise InterruptedError(f"Cancelado durante descarga LFS de {rel_path}.")
+                                            if chunk:
+                                                f_out.write(chunk)
+                            else:
+                                # Normal file — write first chunk then stream the rest
+                                with open(dest, 'wb') as f_out:
+                                    if first_chunk:
+                                        f_out.write(first_chunk)
+                                    for chunk in chunk_iter:
+                                        if self.cancel_event.is_set():
+                                            raise InterruptedError(f"Cancelado durante descarga de {rel_path}.")
+                                        if chunk:
+                                            f_out.write(chunk)
                     except InterruptedError:
                         raise
                     except Exception as dl_err:
