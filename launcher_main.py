@@ -3043,6 +3043,7 @@ class ModpackLauncherAPI:
                     dest_item_path = os.path.join(folder_path, item_name)
                     if (item_name.startswith('removed') and item_name.endswith('.txt')) or \
                        item_name == 'modsinfo.txt' or item_name == 'resourcepackoptions.txt' or \
+                       item_name == 'newkeys.txt' or \
                        item_name == '.gitkeep': continue
                     try:
                         if os.path.isdir(src_item_path):
@@ -3081,6 +3082,84 @@ class ModpackLauncherAPI:
                                 if not any(af == ("", 'options.txt') for af in self.added_files): self.added_files.append(("", 'options.txt'))
                                 self._log("        - options.txt actualizado.")
                         except Exception as opt_err: self._log(f"        - ERROR actualizando options.txt: {opt_err}")
+
+                # Fase newkeys.txt — keybind overrides
+                if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado antes de newkeys.txt v{ver}.")
+                newkeys_path = os.path.join(update_version_path, 'newkeys.txt')
+                if os.path.exists(newkeys_path):
+                    self._log(f"  [{ver}] Aplicando overrides de teclas desde newkeys.txt...")
+                    user_options_path = os.path.join(folder_path, 'options.txt')
+                    if os.path.exists(user_options_path):
+                        try:
+                            with open(newkeys_path, 'r', encoding='utf-8') as f_nk:
+                                key_lines = [l.strip() for l in f_nk if l.strip() and not l.startswith('#')]
+
+                            # Parse: each line is "key_name:key_value"
+                            key_overrides = {}
+                            for kl in key_lines:
+                                if ':' not in kl:
+                                    self._log(f"        - Advertencia: línea inválida en newkeys.txt (sin ':'): {kl!r}")
+                                    continue
+                                k_name, k_value = kl.split(':', 1)
+                                key_overrides[k_name.strip()] = k_value.strip()
+
+                            if not key_overrides:
+                                self._log(f"        - newkeys.txt vacío o sin entradas válidas.")
+                            else:
+                                # Backup options.txt once (shared with resourcepack block)
+                                backup_unique_name = "ROOT_options.txt"
+                                if not any(rf[0] == ("", "options.txt") for rf in self.removed_files):
+                                    try:
+                                        bpath = os.path.join(self.backup_dir, backup_unique_name)
+                                        os.makedirs(os.path.dirname(bpath), exist_ok=True)
+                                        shutil.copy2(user_options_path, bpath)
+                                        self.removed_files.append((("", "options.txt"), backup_unique_name))
+                                    except Exception as bk_err:
+                                        self._log(f"        - ERROR CRÍTICO respaldando options.txt para newkeys: {bk_err}. Saltando.")
+                                        raise
+
+                                with open(user_options_path, 'r', encoding='utf-8') as f_opt:
+                                    opt_lines = f_opt.readlines()
+
+                                changed = False
+                                applied_keys = set()
+                                new_opt_lines = []
+                                for opt_line in opt_lines:
+                                    stripped = opt_line.rstrip('\n\r')
+                                    if ':' in stripped:
+                                        line_key = stripped.split(':', 1)[0]
+                                        if line_key in key_overrides:
+                                            new_val = f"{line_key}:{key_overrides[line_key]}\n"
+                                            if new_val != opt_line:
+                                                self._log(f"        - Override: {stripped!r} → {new_val.rstrip()!r}")
+                                                changed = True
+                                            new_opt_lines.append(new_val)
+                                            applied_keys.add(line_key)
+                                            continue
+                                    new_opt_lines.append(opt_line)
+
+                                # Append any keys that weren't already in options.txt
+                                for k_name, k_val in key_overrides.items():
+                                    if k_name not in applied_keys:
+                                        new_line = f"{k_name}:{k_val}\n"
+                                        self._log(f"        - Añadido: {new_line.rstrip()!r}")
+                                        new_opt_lines.append(new_line)
+                                        changed = True
+
+                                if changed:
+                                    with open(user_options_path, 'w', encoding='utf-8') as f_opt_w:
+                                        f_opt_w.writelines(new_opt_lines)
+                                    if not any(af == ("", 'options.txt') for af in self.added_files):
+                                        self.added_files.append(("", 'options.txt'))
+                                    self._log(f"        - options.txt actualizado con {len(key_overrides)} override(s) de teclas.")
+                                else:
+                                    self._log(f"        - Sin cambios necesarios en options.txt para newkeys.")
+                        except InterruptedError:
+                            raise
+                        except Exception as nk_err:
+                            self._log(f"        - ERROR aplicando newkeys.txt: {nk_err}")
+                    else:
+                        self._log(f"        - options.txt no encontrado; no se pueden aplicar newkeys.")
 
             # --- 6. Finalización --- (Progreso 95% a 100%)
             if self.cancel_event.is_set(): raise InterruptedError("Cancelado después de aplicar versiones.")
