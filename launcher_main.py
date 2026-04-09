@@ -2618,29 +2618,47 @@ class ModpackLauncherAPI:
             pass
         return None
 
-    def _resolve_lfs_url(self, oid, size):
+    def _resolve_lfs_urls_batch(self, objects):
         """
-        Calls the GitHub LFS Batch API to get a real download URL for an LFS object.
-        Returns (download_url, headers_dict).
+        Calls the GitHub LFS Batch API for a list of objects.
+        objects: list of {"oid": str, "size": int}
+        Returns dict: {oid: (download_url, headers_dict)}
+        Retries on rate-limit (429) and server errors (500/503) with exponential backoff.
         """
         batch_url = "https://github.com/Kewz4/kewz-cobblemon.git/info/lfs/objects/batch"
-        payload = {
-            "operation": "download",
-            "transfers": ["basic"],
-            "objects": [{"oid": oid, "size": size}],
-        }
+        payload = {"operation": "download", "transfers": ["basic"], "objects": objects}
         req_headers = {
             "Accept": "application/vnd.git-lfs+json",
             "Content-Type": "application/vnd.git-lfs+json",
             "User-Agent": "KewzLauncher/1.0",
         }
-        resp = requests.post(batch_url, json=payload, headers=req_headers, timeout=15)
-        resp.raise_for_status()
-        obj = resp.json()["objects"][0]
-        if "error" in obj:
-            raise IOError(f"LFS batch API error for oid {oid}: {obj['error']}")
-        action = obj["actions"]["download"]
-        return action["href"], action.get("header", {})
+        _wait = 2
+        for _att in range(4):
+            resp = requests.post(batch_url, json=payload, headers=req_headers, timeout=30)
+            if resp.status_code in (429, 500, 502, 503, 504) and _att < 3:
+                self._log(f"  LFS batch HTTP {resp.status_code}, reintentando en {_wait}s...")
+                time.sleep(_wait); _wait = min(_wait * 2, 32); continue
+            resp.raise_for_status()
+            break
+        result = {}
+        for obj in (resp.json().get("objects") or []):
+            if "error" in obj:
+                self._log(f"  LFS batch error for oid {obj.get('oid', '?')[:8]}: {obj['error']}")
+                continue
+            action = obj.get("actions", {}).get("download")
+            if action:
+                result[obj["oid"]] = (action["href"], action.get("header", {}))
+        return result
+
+    def _resolve_lfs_url(self, oid, size):
+        """
+        Calls the GitHub LFS Batch API to get a real download URL for an LFS object.
+        Returns (download_url, headers_dict).
+        """
+        result = self._resolve_lfs_urls_batch([{"oid": oid, "size": size}])
+        if oid not in result:
+            raise IOError(f"LFS batch API returned no URL for oid {oid[:8]}...")
+        return result[oid]
 
     def _download_file(self, url, destination_path, progress_context="update", filename_hint=None):
         """
@@ -2947,6 +2965,8 @@ class ModpackLauncherAPI:
                 base_progress = 0.10 + (i / total_versions) * 0.35
                 ver_progress_range = 0.35 / total_versions
 
+                # --- Pass 1: download non-LFS files; collect LFS pointers for batch resolution ---
+                lfs_pending = []  # list of (oid, size, dest, rel_path)
                 for j, item in enumerate(ver_files):
                     if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado descargando archivo de v{ver_str}.")
                     rel_path = item['path'][len(ver_prefix):]
@@ -2955,28 +2975,75 @@ class ModpackLauncherAPI:
                     if dest_dir:
                         os.makedirs(dest_dir, exist_ok=True)
                     raw_url = f"{UNIFIED_REPO_RAW_URL}/{item['path']}"
-                    file_progress = base_progress + (j / total_files) * ver_progress_range
+                    file_progress = base_progress + (j / total_files) * (ver_progress_range * 0.6)
                     self._update_progress(file_progress, f"Descargando v{ver_str} ({j+1}/{total_files}): {os.path.basename(rel_path)}")
-                    try:
-                        with requests.get(raw_url, headers=dl_headers, timeout=30, stream=True) as r:
-                            r.raise_for_status()
-                            # Buffer the first chunk to check for LFS pointer
-                            first_chunk = b""
-                            chunk_iter = r.iter_content(65536)
-                            for chunk in chunk_iter:
-                                if chunk:
-                                    first_chunk = chunk
-                                    break
+                    _dl_wait = 2
+                    for _dl_att in range(4):  # up to 3 retries
+                        try:
+                            with requests.get(raw_url, headers=dl_headers, timeout=30, stream=True) as r:
+                                if r.status_code in (429, 500, 502, 503, 504) and _dl_att < 3:
+                                    self._log(f"        - HTTP {r.status_code} para {os.path.basename(rel_path)}, reintentando en {_dl_wait}s...")
+                                    time.sleep(_dl_wait); _dl_wait = min(_dl_wait * 2, 32); continue
+                                r.raise_for_status()
+                                first_chunk = b""
+                                raw_iter = r.iter_content(65536)
+                                for chunk in raw_iter:
+                                    if chunk:
+                                        first_chunk = chunk; break
+                                lfs = self._parse_lfs_pointer(first_chunk)
+                                if lfs:
+                                    # LFS pointer detected — queue for batch resolution
+                                    oid, lfs_size = lfs
+                                    lfs_pending.append((oid, lfs_size, dest, rel_path))
+                                    self._log(f"        - LFS: {os.path.basename(rel_path)} ({lfs_size / (1024*1024):.1f} MB, en cola)")
+                                else:
+                                    # Normal file — stream to disk
+                                    with open(dest, 'wb') as f_out:
+                                        if first_chunk:
+                                            f_out.write(first_chunk)
+                                        for chunk in raw_iter:
+                                            if self.cancel_event.is_set():
+                                                raise InterruptedError(f"Cancelado durante descarga de {rel_path}.")
+                                            if chunk:
+                                                f_out.write(chunk)
+                            break  # success
+                        except InterruptedError:
+                            raise
+                        except Exception as dl_err:
+                            if _dl_att < 3:
+                                self._log(f"        - Error ({dl_err}), reintentando en {_dl_wait}s...")
+                                time.sleep(_dl_wait); _dl_wait = min(_dl_wait * 2, 32)
+                            else:
+                                raise IOError(f"Error descargando {rel_path}: {dl_err}")
 
-                            lfs = self._parse_lfs_pointer(first_chunk)
-                            if lfs:
-                                # This is an LFS pointer — fetch the real content via LFS batch API
-                                oid, lfs_size = lfs
-                                self._log(f"        - LFS detectado para {os.path.basename(rel_path)} ({lfs_size / (1024*1024):.1f} MB), resolviendo...")
-                                self._update_progress(file_progress, f"Descargando v{ver_str} ({j+1}/{total_files}) [LFS]: {os.path.basename(rel_path)}")
-                                lfs_url, lfs_headers = self._resolve_lfs_url(oid, lfs_size)
-                                merged_headers = {**dl_headers, **lfs_headers}
+                # --- Pass 2: batch-resolve LFS objects and download actual content ---
+                if lfs_pending:
+                    self._log(f"  Resolviendo {len(lfs_pending)} archivo(s) LFS en bloque para v{ver_str}...")
+                    # Resolve all LFS objects in one (or few) batch API calls
+                    LFS_BATCH_SIZE = 100
+                    lfs_url_map = {}  # oid → (url, headers)
+                    for _bs in range(0, len(lfs_pending), LFS_BATCH_SIZE):
+                        batch_objs = [{"oid": oid, "size": sz} for oid, sz, _, _ in lfs_pending[_bs:_bs + LFS_BATCH_SIZE]]
+                        try:
+                            lfs_url_map.update(self._resolve_lfs_urls_batch(batch_objs))
+                        except Exception as lfs_batch_err:
+                            raise IOError(f"LFS batch API error para v{ver_str}: {lfs_batch_err}")
+
+                    total_lfs = len(lfs_pending)
+                    for lfs_idx, (oid, lfs_size, dest, rel_path) in enumerate(lfs_pending):
+                        if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado durante descarga LFS de v{ver_str}.")
+                        if oid not in lfs_url_map:
+                            raise IOError(f"LFS URL no encontrada para {rel_path} (oid {oid[:8]}...)")
+                        lfs_url, lfs_hdr = lfs_url_map[oid]
+                        merged_headers = {**dl_headers, **lfs_hdr}
+                        lfs_progress = base_progress + (ver_progress_range * 0.6) + (lfs_idx / total_lfs) * (ver_progress_range * 0.4)
+                        self._update_progress(lfs_progress, f"[LFS] v{ver_str} ({lfs_idx+1}/{total_lfs}): {os.path.basename(rel_path)}")
+                        _lfs_wait = 2
+                        for _lfs_att in range(4):
+                            try:
                                 with requests.get(lfs_url, headers=merged_headers, timeout=120, stream=True) as lfs_r:
+                                    if lfs_r.status_code in (429, 500, 502, 503, 504) and _lfs_att < 3:
+                                        time.sleep(_lfs_wait); _lfs_wait = min(_lfs_wait * 2, 32); continue
                                     lfs_r.raise_for_status()
                                     with open(dest, 'wb') as f_out:
                                         for chunk in lfs_r.iter_content(65536):
@@ -2984,20 +3051,14 @@ class ModpackLauncherAPI:
                                                 raise InterruptedError(f"Cancelado durante descarga LFS de {rel_path}.")
                                             if chunk:
                                                 f_out.write(chunk)
-                            else:
-                                # Normal file — write first chunk then stream the rest
-                                with open(dest, 'wb') as f_out:
-                                    if first_chunk:
-                                        f_out.write(first_chunk)
-                                    for chunk in chunk_iter:
-                                        if self.cancel_event.is_set():
-                                            raise InterruptedError(f"Cancelado durante descarga de {rel_path}.")
-                                        if chunk:
-                                            f_out.write(chunk)
-                    except InterruptedError:
-                        raise
-                    except Exception as dl_err:
-                        raise IOError(f"Error descargando {rel_path}: {dl_err}")
+                                break  # success
+                            except InterruptedError:
+                                raise
+                            except Exception as lfs_dl_err:
+                                if _lfs_att < 3:
+                                    time.sleep(_lfs_wait); _lfs_wait = min(_lfs_wait * 2, 32)
+                                else:
+                                    raise IOError(f"Error descargando LFS {rel_path}: {lfs_dl_err}")
 
                 # Crear carpetas vacías (el árbol las tiene como 'tree' items)
                 ver_dirs_prefix = f"versions/{ver_str}/"
