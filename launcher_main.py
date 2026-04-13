@@ -2939,128 +2939,107 @@ class ModpackLauncherAPI:
 
             self._log(f"Versiones a aplicar en orden: {updates_to_apply}")
 
-            # --- 3. Descargar archivos por versión usando el árbol del repositorio ---
-            # (Solo descarga los archivos de las versiones necesarias, no el repo completo)
-            dl_headers = {
-                'User-Agent': 'KewzLauncher/1.0',
-                'Cache-Control': 'no-cache',
-            }
+            # --- 3. Download all version files concurrently ---
+            # Downloading each of the thousands of small files one-by-one is the bottleneck.
+            # Using a thread pool fetches them in parallel batches, reducing wall-clock time
+            # dramatically. LFS pointer files are detected per-thread and then resolved in a
+            # single batch API call after all downloads complete.
+            import concurrent.futures
+            import threading
+
+            dl_headers = {'User-Agent': 'KewzLauncher/1.0', 'Cache-Control': 'no-cache'}
             version_roots = {}
-            total_versions = len(updates_to_apply)
-            for i, ver in enumerate(updates_to_apply):
-                if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado descargando v{ver}.")
+
+            # Build extract paths and flat list of all files to download
+            all_dl_tasks = []  # (ver_float, item_path, rel_path, dest)
+            for ver in updates_to_apply:
                 ver_str = str(ver)
-                # Normalise: 1.0 -> "1.0", but if originally "1" we keep float repr
                 ver_prefix = f"versions/{ver_str}/"
                 ver_files = [item for item in tree_items if item['type'] == 'blob' and item['path'].startswith(ver_prefix)]
-
                 if not ver_files:
                     raise IOError(f"No se encontraron archivos para versions/{ver_str}/ en el árbol del repositorio.")
-
                 extract_path = os.path.join(tmp_dir, f"extracted_v{ver_str}")
                 os.makedirs(extract_path, exist_ok=True)
-
-                total_files = len(ver_files)
-                self._log(f"Descargando v{ver_str}: {total_files} archivo(s)...")
-                base_progress = 0.10 + (i / total_versions) * 0.35
-                ver_progress_range = 0.35 / total_versions
-
-                # --- Pass 1: download non-LFS files; collect LFS pointers for batch resolution ---
-                lfs_pending = []  # list of (oid, size, dest, rel_path)
-                for j, item in enumerate(ver_files):
-                    if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado descargando archivo de v{ver_str}.")
+                version_roots[ver] = extract_path
+                for item in ver_files:
                     rel_path = item['path'][len(ver_prefix):]
                     dest = os.path.join(extract_path, rel_path.replace('/', os.sep))
-                    dest_dir = os.path.dirname(dest)
-                    if dest_dir:
-                        os.makedirs(dest_dir, exist_ok=True)
-                    raw_url = f"{UNIFIED_REPO_RAW_URL}/{item['path']}"
-                    file_progress = base_progress + (j / total_files) * (ver_progress_range * 0.6)
-                    self._update_progress(file_progress, f"Descargando v{ver_str} ({j+1}/{total_files}): {os.path.basename(rel_path)}")
-                    _dl_wait = 2
-                    for _dl_att in range(4):  # up to 3 retries
-                        try:
-                            with requests.get(raw_url, headers=dl_headers, timeout=30, stream=True) as r:
-                                if r.status_code in (429, 500, 502, 503, 504) and _dl_att < 3:
-                                    self._log(f"        - HTTP {r.status_code} para {os.path.basename(rel_path)}, reintentando en {_dl_wait}s...")
-                                    time.sleep(_dl_wait); _dl_wait = min(_dl_wait * 2, 32); continue
-                                r.raise_for_status()
-                                first_chunk = b""
-                                raw_iter = r.iter_content(65536)
-                                for chunk in raw_iter:
-                                    if chunk:
-                                        first_chunk = chunk; break
-                                lfs = self._parse_lfs_pointer(first_chunk)
-                                if lfs:
-                                    # LFS pointer detected — queue for batch resolution
-                                    oid, lfs_size = lfs
-                                    lfs_pending.append((oid, lfs_size, dest, rel_path))
-                                    self._log(f"        - LFS: {os.path.basename(rel_path)} ({lfs_size / (1024*1024):.1f} MB, en cola)")
-                                else:
-                                    # Normal file — stream to disk
-                                    with open(dest, 'wb') as f_out:
-                                        if first_chunk:
-                                            f_out.write(first_chunk)
-                                        for chunk in raw_iter:
-                                            if self.cancel_event.is_set():
-                                                raise InterruptedError(f"Cancelado durante descarga de {rel_path}.")
-                                            if chunk:
-                                                f_out.write(chunk)
-                            break  # success
-                        except InterruptedError:
-                            raise
-                        except Exception as dl_err:
-                            if _dl_att < 3:
-                                self._log(f"        - Error ({dl_err}), reintentando en {_dl_wait}s...")
-                                time.sleep(_dl_wait); _dl_wait = min(_dl_wait * 2, 32)
+                    all_dl_tasks.append((ver, item['path'], rel_path, dest))
+
+            total_files = len(all_dl_tasks)
+            self._log(f"Descargando {total_files} archivo(s) en paralelo...")
+            self._update_progress(0.10, f"Descargando {total_files} archivos...")
+
+            lfs_pending = []     # (oid, size, dest) — filled by worker threads
+            lfs_lock = threading.Lock()
+            done_count = [0]
+            done_lock = threading.Lock()
+            first_error = [None]
+            error_lock = threading.Lock()
+
+            def _download_task(task):
+                ver_float, item_path, rel_path, dest = task
+                if self.cancel_event.is_set():
+                    return
+                dest_dir = os.path.dirname(dest)
+                if dest_dir:
+                    os.makedirs(dest_dir, exist_ok=True)
+                raw_url = f"{UNIFIED_REPO_RAW_URL}/{item_path}"
+                _wait = 2
+                for _att in range(4):
+                    try:
+                        with requests.get(raw_url, headers=dl_headers, timeout=30, stream=True) as r:
+                            if r.status_code in (429, 500, 502, 503, 504) and _att < 3:
+                                time.sleep(_wait); _wait = min(_wait * 2, 32); continue
+                            r.raise_for_status()
+                            first_chunk = b""
+                            raw_iter = r.iter_content(65536)
+                            for chunk in raw_iter:
+                                if chunk:
+                                    first_chunk = chunk; break
+                            lfs = self._parse_lfs_pointer(first_chunk)
+                            if lfs:
+                                oid, lfs_size = lfs
+                                with lfs_lock:
+                                    lfs_pending.append((oid, lfs_size, dest))
                             else:
-                                raise IOError(f"Error descargando {rel_path}: {dl_err}")
+                                with open(dest, 'wb') as f_out:
+                                    if first_chunk:
+                                        f_out.write(first_chunk)
+                                    for chunk in raw_iter:
+                                        if self.cancel_event.is_set(): return
+                                        if chunk: f_out.write(chunk)
+                        break  # success
+                    except Exception as e:
+                        if _att < 3:
+                            time.sleep(_wait); _wait = min(_wait * 2, 32)
+                        else:
+                            with error_lock:
+                                if first_error[0] is None:
+                                    first_error[0] = f"Error descargando {rel_path}: {e}"
+                            return
+                with done_lock:
+                    done_count[0] += 1
 
-                # --- Pass 2: batch-resolve LFS objects and download actual content ---
-                if lfs_pending:
-                    self._log(f"  Resolviendo {len(lfs_pending)} archivo(s) LFS en bloque para v{ver_str}...")
-                    # Resolve all LFS objects in one (or few) batch API calls
-                    LFS_BATCH_SIZE = 100
-                    lfs_url_map = {}  # oid → (url, headers)
-                    for _bs in range(0, len(lfs_pending), LFS_BATCH_SIZE):
-                        batch_objs = [{"oid": oid, "size": sz} for oid, sz, _, _ in lfs_pending[_bs:_bs + LFS_BATCH_SIZE]]
-                        try:
-                            lfs_url_map.update(self._resolve_lfs_urls_batch(batch_objs))
-                        except Exception as lfs_batch_err:
-                            raise IOError(f"LFS batch API error para v{ver_str}: {lfs_batch_err}")
+            DL_WORKERS = 20
+            with concurrent.futures.ThreadPoolExecutor(max_workers=DL_WORKERS) as executor:
+                futures = [executor.submit(_download_task, task) for task in all_dl_tasks]
+                for fut in concurrent.futures.as_completed(futures):
+                    if self.cancel_event.is_set():
+                        raise InterruptedError("Cancelado durante descarga.")
+                    with done_lock:
+                        n = done_count[0]
+                    pct = 0.10 + (n / total_files) * 0.40
+                    self._update_progress(pct, f"Descargando ({n}/{total_files})...")
+                    if first_error[0]:
+                        raise IOError(first_error[0])
 
-                    total_lfs = len(lfs_pending)
-                    for lfs_idx, (oid, lfs_size, dest, rel_path) in enumerate(lfs_pending):
-                        if self.cancel_event.is_set(): raise InterruptedError(f"Cancelado durante descarga LFS de v{ver_str}.")
-                        if oid not in lfs_url_map:
-                            raise IOError(f"LFS URL no encontrada para {rel_path} (oid {oid[:8]}...)")
-                        lfs_url, lfs_hdr = lfs_url_map[oid]
-                        merged_headers = {**dl_headers, **lfs_hdr}
-                        lfs_progress = base_progress + (ver_progress_range * 0.6) + (lfs_idx / total_lfs) * (ver_progress_range * 0.4)
-                        self._update_progress(lfs_progress, f"[LFS] v{ver_str} ({lfs_idx+1}/{total_lfs}): {os.path.basename(rel_path)}")
-                        _lfs_wait = 2
-                        for _lfs_att in range(4):
-                            try:
-                                with requests.get(lfs_url, headers=merged_headers, timeout=120, stream=True) as lfs_r:
-                                    if lfs_r.status_code in (429, 500, 502, 503, 504) and _lfs_att < 3:
-                                        time.sleep(_lfs_wait); _lfs_wait = min(_lfs_wait * 2, 32); continue
-                                    lfs_r.raise_for_status()
-                                    with open(dest, 'wb') as f_out:
-                                        for chunk in lfs_r.iter_content(65536):
-                                            if self.cancel_event.is_set():
-                                                raise InterruptedError(f"Cancelado durante descarga LFS de {rel_path}.")
-                                            if chunk:
-                                                f_out.write(chunk)
-                                break  # success
-                            except InterruptedError:
-                                raise
-                            except Exception as lfs_dl_err:
-                                if _lfs_att < 3:
-                                    time.sleep(_lfs_wait); _lfs_wait = min(_lfs_wait * 2, 32)
-                                else:
-                                    raise IOError(f"Error descargando LFS {rel_path}: {lfs_dl_err}")
+            if first_error[0]:
+                raise IOError(first_error[0])
 
-                # Crear carpetas vacías (el árbol las tiene como 'tree' items)
+            # Create empty directories that have no files (ZIP/tree omit them)
+            for ver in updates_to_apply:
+                ver_str = str(ver)
                 ver_dirs_prefix = f"versions/{ver_str}/"
                 all_dirs = {
                     item['path'][len(ver_dirs_prefix):]
@@ -3071,17 +3050,55 @@ class ModpackLauncherAPI:
                 for item in tree_items:
                     if item['type'] == 'blob' and item['path'].startswith(ver_dirs_prefix):
                         rel = item['path'][len(ver_dirs_prefix):]
-                        parts = rel.split('/')
-                        for depth in range(1, len(parts)):
-                            non_empty_dirs.add('/'.join(parts[:depth]))
+                        p = rel.split('/')
+                        for depth in range(1, len(p)):
+                            non_empty_dirs.add('/'.join(p[:depth]))
                 for d in (all_dirs - non_empty_dirs - {''}):
-                    os.makedirs(os.path.join(extract_path, d), exist_ok=True)
-                    self._log(f"Carpeta vacía creada en v{ver_str}: {d}")
+                    os.makedirs(os.path.join(version_roots[ver], d.replace('/', os.sep)), exist_ok=True)
 
-                version_roots[ver] = extract_path
-                self._log(f"v{ver_str} descargada completamente.")
+            # --- 3b. Batch-resolve ALL LFS files across all versions and download ---
+            if lfs_pending:
+                self._log(f"Resolviendo {len(lfs_pending)} archivo(s) LFS en total...")
+                LFS_BATCH_SIZE = 100
+                lfs_url_map = {}
+                for _bs in range(0, len(lfs_pending), LFS_BATCH_SIZE):
+                    batch_objs = [{"oid": oid, "size": sz} for oid, sz, _ in lfs_pending[_bs:_bs + LFS_BATCH_SIZE]]
+                    try:
+                        lfs_url_map.update(self._resolve_lfs_urls_batch(batch_objs))
+                    except Exception as lfs_batch_err:
+                        raise IOError(f"LFS batch API error: {lfs_batch_err}")
 
-            self._update_progress(0.50, "Descarga completa.")
+                total_lfs = len(lfs_pending)
+                for lfs_idx, (oid, lfs_size, dest) in enumerate(lfs_pending):
+                    if self.cancel_event.is_set(): raise InterruptedError("Cancelado durante descarga LFS.")
+                    if oid not in lfs_url_map:
+                        raise IOError(f"LFS URL no encontrada para oid {oid[:8]}... ({os.path.basename(dest)})")
+                    lfs_url, lfs_hdr = lfs_url_map[oid]
+                    lfs_progress = 0.50 + (lfs_idx / total_lfs) * 0.05
+                    self._update_progress(lfs_progress, f"[LFS] ({lfs_idx+1}/{total_lfs}): {os.path.basename(dest)}")
+                    _lfs_wait = 2
+                    for _lfs_att in range(4):
+                        try:
+                            with requests.get(lfs_url, headers={**dl_headers, **lfs_hdr}, timeout=120, stream=True) as lfs_r:
+                                if lfs_r.status_code in (429, 500, 502, 503, 504) and _lfs_att < 3:
+                                    time.sleep(_lfs_wait); _lfs_wait = min(_lfs_wait * 2, 32); continue
+                                lfs_r.raise_for_status()
+                                with open(dest, 'wb') as f_out:
+                                    for chunk in lfs_r.iter_content(65536):
+                                        if self.cancel_event.is_set():
+                                            raise InterruptedError("Cancelado durante descarga LFS.")
+                                        if chunk: f_out.write(chunk)
+                            break  # success
+                        except InterruptedError:
+                            raise
+                        except Exception as lfs_dl_err:
+                            if _lfs_att < 3:
+                                time.sleep(_lfs_wait); _lfs_wait = min(_lfs_wait * 2, 32)
+                            else:
+                                raise IOError(f"Error descargando LFS {os.path.basename(dest)}: {lfs_dl_err}")
+
+
+            self._update_progress(0.55, "Descarga completa.")
 
             # --- 4. Procesar TODOS los Changelogs ANTES de aplicar --- (Progreso 55% a 75%)
             self._process_all_changelogs(version_roots, updates_to_apply)
