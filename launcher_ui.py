@@ -3,7 +3,7 @@ import sys
 
 # --- HTML Content Definition ---
 
-FONT_IMPORT_URL = "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;900&display=swap"
+FONT_IMPORT_URL = "https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&display=swap"
 FONT_AWESOME_URL = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
 ASSET_REPO_RAW = "https://raw.githubusercontent.com/Kewz4/K-Launcher-Assets/main"
 LOGO_URL = f"{ASSET_REPO_RAW}/Cobblemon/minecraftlogo.png"
@@ -24,42 +24,76 @@ HTML_CONTENT = f"""
     <style>
         /* --- Reset & Fonts --- */
         :root {{
-            --font-family-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            --font-family-display: 'Outfit', sans-serif;
-            --color-bg: #050810;
-            --color-bg-light: #0a0f1a;
-            --color-bg-lighter: #111827;
-            --color-text: #e2e8f0;
-            --color-text-muted: #64748b;
-            /* Teal accent palette — tinted toward the brand hue */
-            --color-accent: #00d4aa;
-            --color-accent-dark: #008f72;
+            --font-family-sans: 'Figtree', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --font-family-display: 'Figtree', sans-serif;
+
+            /* Structural neutrals */
+            --color-bg: #03060e;
+            --color-bg-light: #080e1c;
+            --color-bg-lighter: #0d1528;
+            --color-text: #e6ecf7;
+            --color-text-muted: #4e617a;
             --color-danger: #f87171;
             --color-danger-dark: #dc2626;
             --color-success: #34d399;
             --color-success-dark: #059669;
             --radius-md: 10px;
-            --radius-lg: 14px;
-            --radius-btn: 12px;
-            --shadow: 0 4px 24px oklch(0.62 0.12 180 / 0.10);
-            /* Button colors */
-            --play-btn-grad-start: #008f72;
-            --play-btn-grad-end: #00d4aa;
-            --cancel-btn-grad-start: #dc2626;
-            --cancel-btn-grad-end: #f87171;
-
-            --menu-btn-fill-start: #050810;
-            --menu-btn-fill-end: #0a0f1a;
-            --menu-btn-stroke-start: #004d3f;
-            --menu-btn-stroke-end: #00d4aa;
-            /* Side panel */
-            --panel-bg: #060b14;
-            --panel-width: 288px;
-            /* Music player dimensions */
+            --radius-lg: 16px;
+            --radius-btn: 14px;
+            --panel-bg: #040810;
+            --panel-width: 296px;
             --player-height: 80px;
             --player-width: 300px;
-            /* Text shadow for player */
-            --player-text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+            --player-text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+
+            /* ── Cobblemon palette (default) — teal-mint ─────────────── */
+            --color-accent:        oklch(0.73 0.18 174);
+            --color-accent-dark:   oklch(0.46 0.18 174);
+            --color-accent-glow:   oklch(0.73 0.18 174 / 0.38);
+            --color-accent-subtle: oklch(0.73 0.18 174 / 0.11);
+            --color-accent-border: oklch(0.73 0.18 174 / 0.26);
+
+            --play-btn-grad-start: var(--color-accent-dark);
+            --play-btn-grad-end:   var(--color-accent);
+            --cancel-btn-grad-start: #dc2626;
+            --cancel-btn-grad-end:   #f87171;
+            --menu-btn-fill-start: #03060e;
+            --menu-btn-fill-end:   #080e1c;
+            --menu-btn-stroke-start: var(--color-accent-dark);
+            --menu-btn-stroke-end:   var(--color-accent);
+            --shadow: 0 4px 32px var(--color-accent-glow);
+
+            /* Updater screen bg tint */
+            --updater-bg: radial-gradient(ellipse 80% 60% at 50% 110%, oklch(0.46 0.18 174 / 0.18) 0%, transparent 70%), var(--color-bg);
+        }}
+
+        /* ── Prominence II palette — violet-indigo ───────────────────── */
+        html[data-modpack="prominence"] {{
+            --color-accent:        oklch(0.68 0.22 288);
+            --color-accent-dark:   oklch(0.40 0.20 288);
+            --color-accent-glow:   oklch(0.68 0.22 288 / 0.38);
+            --color-accent-subtle: oklch(0.68 0.22 288 / 0.11);
+            --color-accent-border: oklch(0.68 0.22 288 / 0.26);
+            --updater-bg: radial-gradient(ellipse 80% 60% at 50% 110%, oklch(0.40 0.20 288 / 0.22) 0%, transparent 70%), var(--color-bg);
+        }}
+
+        /* Smooth color transitions — fires when data-modpack attribute changes */
+        *,
+        *::before,
+        *::after {{
+            transition-property: color, background-color, border-color, box-shadow, fill, stroke;
+            transition-duration: 0.45s;
+            transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+        }}
+        /* Remove color transitions from elements where they'd feel sluggish */
+        video, img, audio, canvas, svg, #bg-video, #bg-image,
+        #progress-fill, #wizard-progress-bar-fill, #minimized-progress-bar-fill,
+        .wizard-spinner, #scroll-bottom-btn {{
+            transition: none !important;
+        }}
+        /* Progress bars keep width transitions */
+        #progress-fill, #wizard-progress-bar-fill, #minimized-progress-bar-fill {{
+            transition: width 0.3s ease !important;
         }}
 
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -77,25 +111,25 @@ HTML_CONTENT = f"""
             100% {{ opacity: 0; }}
         }}
 
-        /* --- (NUEVO) Pantalla de Auto-Actualización --- */
+        /* --- Pantalla de Auto-Actualización --- */
         #screen-updater {{
-            display: flex; /* Se muestra por defecto */
+            display: flex;
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--color-bg);
+            background: var(--updater-bg);
             align-items: center; justify-content: center;
             flex-direction: column; z-index: 10000;
             padding: 20px; text-align: center;
-            transition: opacity 0.5s ease;
+            transition: opacity 0.6s cubic-bezier(0.23, 1, 0.32, 1);
         }}
         #screen-updater.hidden {{
             opacity: 0;
             pointer-events: none;
         }}
         #updater-container {{
-            width: 100%; max-width: 450px;
+            width: 100%; max-width: 460px;
         }}
         #updater-container h1 {{
-            font-size: 24px; font-weight: 700;
+            font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
             color: var(--color-accent); margin-bottom: 20px;
         }}
         #updater-progress-bar-container {{
@@ -134,7 +168,7 @@ HTML_CONTENT = f"""
         /* --- (RENOMBRADO) Pantalla de Ajustes (Post-Setup) --- */
         #screen-settings .setup-label {{ font-size: 16px; font-weight: 500; margin-bottom: 8px; margin-top: 16px; display: block; }}
         #screen-settings .folder-display {{ display: flex; align-items: center; background-color: var(--color-bg); border-radius: var(--radius-md); padding: 12px 16px; border: 2px dashed var(--color-bg-lighter); margin-bottom: 12px; transition: all 0.3s ease; min-height: 48px; cursor: default; }}
-        #screen-settings .folder-display.dragover {{ border-color: var(--color-accent); background-color: rgba(0, 207, 170, 0.07); }}
+        #screen-settings .folder-display.dragover {{ border-color: var(--color-accent); background-color: var(--color-accent-subtle); }}
         #screen-settings .folder-display.valid {{ border-style: solid; border-color: var(--color-success-dark); background-color: rgba(0, 230, 118, 0.07); }}
         #screen-settings .folder-display.invalid {{ border-style: solid; border-color: var(--color-danger-dark); background-color: rgba(229, 57, 53, 0.07); }}
         #screen-settings .folder-display span {{ flex-grow: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; pointer-events: none; }}
@@ -149,7 +183,7 @@ HTML_CONTENT = f"""
         #screen-initial-setup .wizard-step-content p {{ font-size: 15px; color: var(--color-text); margin-bottom: 24px; line-height: 1.6; }}
         #screen-initial-setup .wizard-buttons-horizontal {{ display: flex; gap: 16px; justify-content: center; }}
         #screen-initial-setup .wizard-buttons-horizontal .btn {{ flex: 1; }}
-        #screen-initial-setup .wizard-spinner {{ width: 40px; height: 40px; border: 4px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto 20px auto; box-shadow: 0 0 12px rgba(0, 207, 170, 0.3); }}
+        #screen-initial-setup .wizard-spinner {{ width: 40px; height: 40px; border: 4px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto 20px auto; box-shadow: 0 0 12px var(--color-accent-glow); }}
         
         /* (NUEVO) Consola y progreso para el asistente */
         #wizard-progress-container {{ display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }}
@@ -168,71 +202,82 @@ HTML_CONTENT = f"""
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
             z-index: 50; overflow: hidden; background-color: #000;
-            padding: 40px 20px; padding-bottom: calc(var(--player-height) + 30px);
+            padding: 0;
         }}
         #screen-play.active {{ z-index: 100; }}
 
         #bg-video {{
             position: absolute; top: 50%; left: 50%;
-            width: 100vw; height: 56.25vw; /* 16:9 ratio */
-            min-height: 100vh; min-width: 177.77vh; /* 16:9 ratio */
+            width: 100vw; height: 56.25vw;
+            min-height: 100vh; min-width: 177.77vh;
             transform: translate(-50%, -50%);
-            z-index: -1; pointer-events: none; border: none;
+            z-index: 0; pointer-events: none; border: none;
             object-fit: cover;
         }}
         #video-overlay {{
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background-color: var(--color-bg);
-            z-index: 0; pointer-events: none;
+            z-index: 1; pointer-events: none;
             animation: fadeOutOverlay 3s ease-out forwards;
         }}
 
         #minecraft-logo {{
-            position: absolute; top: 16px; right: 16px;
-            width: 160px; height: auto;
-            object-fit: contain; z-index: 2; pointer-events: none;
+            position: absolute; top: 20px; right: 20px;
+            width: 148px; height: auto;
+            object-fit: contain; z-index: 3; pointer-events: none;
+            filter: drop-shadow(0 2px 12px rgba(0,0,0,0.6));
         }}
         #bottom-gradient {{
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 150px;
-            background: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.7) 60%, transparent);
-            z-index: 0; pointer-events: none;
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 260px;
+            background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, transparent 100%);
+            z-index: 2; pointer-events: none;
+        }}
+
+        /* Modpack name above play button */
+        #modpack-name-display {{
+            position: fixed; bottom: 105px; left: 50%;
+            transform: translateX(-50%);
+            font-family: var(--font-family-display); font-weight: 800;
+            font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase;
+            color: var(--color-accent); opacity: 0.9;
+            z-index: 104; pointer-events: none;
+            text-shadow: 0 0 20px var(--color-accent-glow);
         }}
 
         #play-btn {{
-            position: fixed; bottom: 15px; left: 50%;
+            position: fixed; bottom: 22px; left: 50%;
             transform: translateX(-50%);
-            font-family: var(--font-family-display); font-weight: 900; font-size: 28px;
-            color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            padding: 12px 50px; border-radius: var(--radius-btn);
+            font-family: var(--font-family-display); font-weight: 900; font-size: 26px;
+            letter-spacing: 0.06em;
+            padding: 14px 56px; border-radius: var(--radius-btn);
             cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease, background-image 0.3s ease;
-            z-index: 101;
-            background-image: linear-gradient(30deg, var(--play-btn-grad-start), var(--play-btn-grad-end));
-            border: none; box-shadow: 0 5px 25px rgba(0, 207, 170, 0.3);
-            color: #000; font-weight: 900;
+            z-index: 103;
+            background: linear-gradient(135deg, var(--play-btn-grad-start), var(--play-btn-grad-end));
+            border: none; color: oklch(0.12 0.02 174); font-weight: 900;
+            box-shadow: 0 6px 32px var(--color-accent-glow), 0 2px 8px rgba(0,0,0,0.4);
         }}
-        #play-btn::before {{ content: ''; position: absolute; inset: -6px; border-radius: calc(var(--radius-btn) + 6px); background-image: linear-gradient(90deg, var(--play-btn-grad-start), var(--play-btn-grad-end)); z-index: -1; padding: 6px; -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; transition: background-image 0.3s ease; }}
-        #play-btn:hover {{ transform: translateX(-50%) scale(1.04); box-shadow: 0 10px 35px rgba(0, 207, 170, 0.45); }}
-        #play-btn:active {{ transform: translateX(-50%) scale(0.98); box-shadow: 0 3px 10px rgba(0,0,0,0.2); }}
+        #play-btn:not(.cancel-mode) {{ animation: pulseGlow 3s ease-in-out infinite; }}
+        #play-btn:hover {{ transform: translateX(-50%) scale(1.04) !important; animation: none !important; }}
+        #play-btn:active {{ transform: translateX(-50%) scale(0.97) !important; animation: none !important; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }}
 
         #play-btn.cancel-mode {{
-            background-image: linear-gradient(30deg, var(--cancel-btn-grad-start), var(--cancel-btn-grad-end));
-        }}
-        #play-btn.cancel-mode::before {{
-            background-image: linear-gradient(90deg, var(--cancel-btn-grad-start), var(--cancel-btn-grad-end));
+            background: linear-gradient(135deg, var(--cancel-btn-grad-start), var(--cancel-btn-grad-end));
+            color: #fff;
+            box-shadow: 0 6px 28px rgba(220,38,38,0.4);
+            animation: none;
         }}
 
         /* --- Update badge above play button --- */
         #update-badge {{
             position: fixed;
-            bottom: 85px;
+            bottom: 108px;
             left: 50%;
             transform: translateX(-50%);
             display: none;
             align-items: center;
             gap: 7px;
-            background: rgba(0, 0, 0, 0.72);
-            border: 1px solid var(--color-accent);
+            background: rgba(0, 0, 0, 0.78);
+            border: 1px solid var(--color-accent-border);
             border-radius: 20px;
             padding: 5px 14px 5px 10px;
             font-family: var(--font-family-sans);
@@ -241,8 +286,8 @@ HTML_CONTENT = f"""
             color: var(--color-accent);
             white-space: nowrap;
             z-index: 102;
-            backdrop-filter: blur(6px);
-            box-shadow: 0 0 14px rgba(0, 207, 170, 0.25);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 0 18px var(--color-accent-glow);
             animation: badgeFadeIn 0.5s ease forwards;
             pointer-events: none;
         }}
@@ -334,10 +379,10 @@ HTML_CONTENT = f"""
         }}
 
         /* --- Panel Lateral --- */
-        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid rgba(0,207,170,0.12); box-shadow: 5px 0 30px rgba(0,207,170,0.06); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding: 24px 15px 24px 15px; display: flex; flex-direction: column; gap: 10px; }}
+        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid var(--color-accent-border); box-shadow: 5px 0 30px var(--color-accent-subtle); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding: 24px 15px 24px 15px; display: flex; flex-direction: column; gap: 10px; }}
         #side-panel.panel-open {{ transform: translateX(0); }}
         .panel-button {{ display: flex; align-items: center; gap: 15px; padding: 15px; background-color: var(--color-bg-lighter); color: var(--color-text); border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; text-align: left; font-size: 16px; border: 1px solid transparent; }}
-        .panel-button:hover {{ background-color: rgba(0, 207, 170, 0.07); border-color: rgba(0, 207, 170, 0.2); color: var(--color-accent); }}
+        .panel-button:hover {{ background-color: var(--color-accent-subtle); border-color: var(--color-accent-border); color: var(--color-accent); }}
         .panel-button:hover i {{ color: var(--color-accent); }}
         .panel-button i {{ font-size: 18px; width: 20px; text-align: center; color: var(--color-text-muted); transition: color 0.2s ease; }}
         #panel-overlay {{ position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s linear; }}
@@ -378,7 +423,7 @@ HTML_CONTENT = f"""
         .changelog-item h4 .status-updated {{ color: var(--color-success); }}
         .changelog-item h4 .status-removed {{ color: var(--color-danger); }}
         .changelog-item h4 a {{ color: var(--color-text); text-decoration: none; vertical-align: middle; }}
-        .changelog-item h4 a:hover {{ color: var(--color-accent); text-decoration: underline; text-shadow: 0 0 8px rgba(0, 207, 170, 0.4); }}
+        .changelog-item h4 a:hover {{ color: var(--color-accent); text-decoration: underline; text-shadow: 0 0 8px var(--color-accent-glow); }}
         .changelog-item h4 span.no-link {{ color: var(--color-text); vertical-align: middle; }}
         .changelog-item p {{ font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
         .progress-bar {{ width: 100%; height: 16px; background-color: var(--color-bg); border-radius: 10px; overflow: hidden; }}
@@ -390,7 +435,7 @@ HTML_CONTENT = f"""
         #console::-webkit-scrollbar-thumb {{ background-color: var(--color-bg-lighter); border-radius: 4px; border: 2px solid var(--color-bg); }}
         #console p {{ margin-bottom: 4px; word-break: break-all; user-select: text; }}
         #console p:last-child {{ margin-bottom: 0; }}
-        #console p.highlight {{ color: var(--color-accent); font-weight: 500; background-color: rgba(0, 207, 170, 0.08); border-radius: 4px; padding: 2px 4px; }}
+        #console p.highlight {{ color: var(--color-accent); font-weight: 500; background-color: var(--color-accent-subtle); border-radius: 4px; padding: 2px 4px; }}
 
         /* --- Widget de Progreso Minimizado --- */
         #minimized-progress-widget {{
@@ -399,7 +444,7 @@ HTML_CONTENT = f"""
             width: 250px;
             background-color: rgba(10, 14, 20, 0.94);
             backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(0,207,170,0.18); border-radius: var(--radius-md);
+            border: 1px solid var(--color-accent-border); border-radius: var(--radius-md);
             padding: 12px; box-shadow: var(--shadow);
             z-index: 101; animation: fadeIn 0.3s ease;
             cursor: pointer; transition: background-color 0.2s ease;
@@ -408,7 +453,7 @@ HTML_CONTENT = f"""
         .minimized-widget-header {{ font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent); margin-bottom: 4px; }}
         .minimized-progress-text {{ display: flex; justify-content: space-between; align-items: center; width: 100%; }}
         #minimized-progress-label {{ font-size: 13px; font-weight: 500; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }}
-        #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; text-shadow: 0 0 8px rgba(0, 207, 170, 0.4); }}
+        #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; text-shadow: 0 0 8px var(--color-accent-glow); }}
         .minimized-progress-bar-container {{ width: 100%; height: 6px; background-color: var(--color-bg); border-radius: 3px; overflow: hidden; }}
         #minimized-progress-bar-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); border-radius: 3px; transition: width 0.3s ease; }}
 
@@ -465,13 +510,13 @@ HTML_CONTENT = f"""
 
         /* --- Botones Generales --- */
         .btn {{ font-family: var(--font-family-sans); font-size: 14px; font-weight: 500; padding: 12px 16px; border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px; outline: none; }}
-        .btn:focus-visible {{ box-shadow: 0 0 0 3px rgba(0, 207, 170, 0.35); }}
+        .btn:focus-visible {{ box-shadow: 0 0 0 3px var(--color-accent-glow); }}
         .btn:disabled {{ opacity: 0.5; cursor: not-allowed; background: var(--color-bg-lighter) !important; box-shadow: none !important; transform: none !important; }}
         .btn:not(:disabled):hover {{ transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); }}
         .btn:not(:disabled):active {{ transform: translateY(0) scale(0.98); box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15); }}
         .btn-primary {{ background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); color: #000; font-weight: 700; width: 100%; }}
-        .btn-secondary {{ background-color: var(--color-bg-lighter); color: var(--color-text); border: 1px solid rgba(0,207,170,0.1); }}
-        .btn-secondary:not(:disabled):hover {{ background-color: rgba(0,207,170,0.08); border-color: rgba(0,207,170,0.3); color: var(--color-accent); }}
+        .btn-secondary {{ background-color: var(--color-bg-lighter); color: var(--color-text); border: 1px solid var(--color-accent-subtle); }}
+        .btn-secondary:not(:disabled):hover {{ background-color: var(--color-accent-subtle); border-color: var(--color-accent-border); color: var(--color-accent); }}
         .btn-danger {{ background: linear-gradient(90deg, var(--color-danger-dark), var(--color-danger)); color: white; width: 100%; }}
 
         /* --- Modal de Resultado --- */
@@ -500,7 +545,7 @@ HTML_CONTENT = f"""
         #panel-header {{
             display: flex; align-items: center; justify-content: space-between;
             padding: 0 2px 16px 2px;
-            border-bottom: 1px solid rgba(0,207,170,0.12);
+            border-bottom: 1px solid var(--color-accent-border);
             margin-bottom: 8px;
         }}
         #panel-title {{
@@ -587,7 +632,7 @@ HTML_CONTENT = f"""
         /* --- Scroll-to-bottom button (icon only) --- */
         #scroll-bottom-btn {{
             display: none; position: absolute; bottom: 12px; right: 12px; z-index: 10;
-            background-color: rgba(0,207,170,0.85); color: #000; border: none;
+            background-color: var(--color-accent); color: #000; border: none;
             border-radius: 50%; width: 32px; height: 32px;
             font-size: 13px; font-weight: 700; cursor: pointer;
             opacity: 0.9; transition: all 0.2s ease;
@@ -599,7 +644,7 @@ HTML_CONTENT = f"""
         /* --- Download banner (replaces inline styles) --- */
         .download-banner {{
             display: none; margin-bottom: 10px; padding: 10px 14px;
-            background: rgba(0,207,170,0.06); border: 1px solid rgba(0,207,170,0.18);
+            background: var(--color-accent-subtle); border: 1px solid var(--color-accent-border);
             border-radius: var(--radius-md); align-items: center; gap: 12px; flex-wrap: wrap;
             animation: fadeIn 0.3s ease;
         }}
@@ -634,8 +679,8 @@ HTML_CONTENT = f"""
             position: fixed; top: 0; right: 0;
             width: 400px; height: 100%;
             background-color: var(--panel-bg);
-            border-left: 1px solid rgba(0,207,170,0.15);
-            box-shadow: -8px 0 40px rgba(0,207,170,0.1);
+            border-left: 1px solid var(--color-accent-border);
+            box-shadow: -8px 0 40px var(--color-accent-subtle);
             transform: translateX(100%);
             transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 600; display: flex; flex-direction: column;
@@ -645,7 +690,7 @@ HTML_CONTENT = f"""
         #settings-drawer-header {{
             display: flex; align-items: center; justify-content: space-between;
             padding: 20px 24px 16px; flex-shrink: 0;
-            border-bottom: 1px solid rgba(0,207,170,0.12);
+            border-bottom: 1px solid var(--color-accent-border);
         }}
         #settings-drawer-title {{
             font-size: 17px; font-weight: 700;
@@ -673,8 +718,8 @@ HTML_CONTENT = f"""
         #resume-modal.visible {{ display: flex; animation: fadeIn 0.3s ease; }}
         #resume-modal-content {{
             background-color: var(--color-bg-light); margin: auto; padding: 32px;
-            border: 1px solid rgba(0,207,170,0.2); width: 90%; max-width: 460px;
-            border-radius: var(--radius-lg); box-shadow: 0 8px 40px rgba(0,207,170,0.15);
+            border: 1px solid var(--color-accent-border); width: 90%; max-width: 460px;
+            border-radius: var(--radius-lg); box-shadow: 0 8px 40px var(--color-accent-glow);
             text-align: center; animation: modalSlideIn 0.4s ease-out;
         }}
         #resume-modal-icon {{ font-size: 42px; margin-bottom: 14px; color: var(--color-accent); }}
@@ -698,8 +743,8 @@ HTML_CONTENT = f"""
             to {{ opacity: 1; transform: translateX(0); }}
         }}
         @keyframes pulseGlow {{
-            0%, 100% {{ box-shadow: 0 5px 25px rgba(0,207,170,0.3); }}
-            50% {{ box-shadow: 0 8px 45px rgba(0,207,170,0.65); }}
+            0%, 100% {{ box-shadow: 0 5px 25px var(--color-accent-glow), 0 2px 8px rgba(0,0,0,0.4); }}
+            50% {{ box-shadow: 0 8px 45px var(--color-accent-glow), 0 4px 16px rgba(0,0,0,0.4); }}
         }}
         @keyframes staggerFadeIn {{
             from {{ opacity: 0; transform: translateY(12px); }}
@@ -774,6 +819,9 @@ HTML_CONTENT = f"""
             <span class="badge-dot"></span>
             <span id="update-badge-text">New version available</span>
         </div>
+
+        <!-- Modpack name above play button -->
+        <div id="modpack-name-display">Cobblemon</div>
 
         <!-- Play Button -->
         <button id="play-btn">PLAY</button>
@@ -1054,7 +1102,7 @@ HTML_CONTENT = f"""
                     <button class="btn btn-secondary" id="settings-browse-instance-btn"><i class="fas fa-folder-open"></i> Browse Folder...</button>
                 </div>
                 <button class="btn btn-primary" id="save-settings-btn" style="margin-top: 24px;" disabled>Save & Close</button>
-                <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(0,207,170,0.12);">
+                <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--color-accent-border);">
                     <button class="btn" id="settings-quit-btn" style="width:100%; background: none; border: 1px solid rgba(229,57,53,0.25); color: #d45e5e; gap: 10px;">
                         <i class="fas fa-power-off"></i> Quit Launcher
                     </button>
@@ -1847,11 +1895,18 @@ HTML_CONTENT = f"""
 
         // --- Modpack Switcher ---
         function _applyModpackUI(info) {{
+            // Apply CSS theme via data-modpack attribute
+            document.documentElement.setAttribute('data-modpack', info.id);
+
             // Update logo
             const logo = document.getElementById('minecraft-logo');
             const updaterLogo = document.getElementById('updater-logo');
             if (logo && info.logo_url) logo.src = info.logo_url;
             if (updaterLogo && info.logo_url) updaterLogo.src = info.logo_url;
+
+            // Update modpack name display
+            const nameEl = document.getElementById('modpack-name-display');
+            if (nameEl && info.display_name) nameEl.textContent = info.display_name;
 
             // Update active button highlights
             document.querySelectorAll('.modpack-btn').forEach(btn => btn.classList.remove('active'));
@@ -2147,6 +2202,10 @@ HTML_CONTENT = f"""
         }}
 
         // --- Event Listeners ---
+        // Set apiReady immediately if pywebview already exists (event may have fired before listener registered)
+        if (window.pywebview && window.pywebview.api) {{
+            window.pywebview.apiReady = true;
+        }}
         window.addEventListener('pywebviewready', () => {{
             console.log("pywebviewready: Python API is ready.");
             window.pywebview.apiReady = true;
@@ -2200,7 +2259,7 @@ HTML_CONTENT = f"""
             let _initRetries = 0;
             function initializeApp() {{
                 if (!window.pywebview || !window.pywebview.apiReady) {{
-                    if (++_initRetries > 200) {{ // 10s max wait
+                    if (++_initRetries > 600) {{ // 30s max wait
                         onUpdateError("Python backend did not become ready in time.");
                         return;
                     }}
