@@ -111,18 +111,34 @@ except ImportError:
 
 # --- Lógica de la Aplicación (Backend de Python) ---
 
-# --- Unified Repository (all assets in one place) ---
-UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
-REPO_ZIP_URL = "https://github.com/Kewz4/kewz-cobblemon/archive/refs/heads/main.zip"
-# GitHub API: full recursive tree (used to detect empty folders, which GitHub ZIP omits)
-GITHUB_TREE_API_URL = "https://api.github.com/repos/Kewz4/kewz-cobblemon/git/trees/main?recursive=1"
-# GitHub Contents API for version.txt — bypasses CDN cache, always returns fresh data
-GITHUB_VERSION_CONTENTS_URL = "https://api.github.com/repos/Kewz4/kewz-cobblemon/contents/version.txt"
-GITHUB_RAW_URL = UNIFIED_REPO_RAW_URL  # Used by music player
-MUSIC_DATA_URL = UNIFIED_REPO_RAW_URL  # Music library base URL
-VERSION_URL = f"{UNIFIED_REPO_RAW_URL}/version.txt"
-RESOURCE_PACK_OPTIONS_URL = f"{UNIFIED_REPO_RAW_URL}/resourcepacksoptions.txt"
+# --- Asset Repository (K-Launcher-Assets, unified for all modpacks) ---
+ASSET_REPO = "Kewz4/K-Launcher-Assets"
+ASSET_REPO_RAW = f"https://raw.githubusercontent.com/{ASSET_REPO}/main"
+ASSET_REPO_API = f"https://api.github.com/repos/{ASSET_REPO}"
+ASSET_REPO_TREE_API = f"{ASSET_REPO_API}/git/trees/main?recursive=1"
+ASSET_REPO_LFS_BATCH = f"https://github.com/{ASSET_REPO}.git/info/lfs/objects/batch"
+MUSIC_DATA_URL = ASSET_REPO_RAW   # songs/ folder at repo root (shared between modpacks)
 LOCAL_OPTIONS_BACKUP_FILENAME = "options_backup.txt"
+
+# --- Modpack definitions ---
+# Each modpack lives in its own subfolder inside the asset repo.
+MODPACK_CONFIGS = {
+    "cobblemon": {
+        "id": "cobblemon",
+        "display_name": "Cobblemon",
+        "folder": "Cobblemon",
+        "instance_name": "Kewz's Cobblemon",
+        "bg_type": "video",   # multiple .mp4 files in bg/
+    },
+    "prominence": {
+        "id": "prominence",
+        "display_name": "Prominence II",
+        "folder": "Prominence II",
+        "instance_name": "Kewz's Prominence II",
+        "bg_type": "image",   # single .webp image in bg/
+    },
+}
+DEFAULT_MODPACK_ID = "cobblemon"
 
 # --- Prism Launcher ---
 PRISM_DEFAULT_PATHS_WINDOWS = [
@@ -137,12 +153,6 @@ PRISM_DEFAULT_PATHS_WINDOWS = [
     r"C:\Program Files (x86)\Prism Launcher\PrismLauncher.exe",
     r"C:\Program Files (x86)\PrismLauncher\prismlauncher.exe",
 ]
-MODPACK_INSTANCE_NAME = "Kewz's Cobblemon"
-# URL of the text file in the repo containing the modpack download link.
-# The value can be either a direct .zip URL or a GoFile share URL
-# (e.g. https://gofile.io/d/Ke5wvh) — the launcher resolves GoFile links
-# automatically via the GoFile API.
-MODPACK_URL_SOURCE = f"{UNIFIED_REPO_RAW_URL}/modpack-url.txt"
 PRISM_PORTABLE_URL = "https://github.com/PrismLauncher/PrismLauncher/releases/download/10.0.5/PrismLauncher-Windows-MinGW-w64-Portable-10.0.5.zip"
 
 # --- Stable download directory for crash-resumable downloads ---
@@ -168,11 +178,18 @@ VIDEO_DIR = _get_video_dir()
 MIN_VIDEO_SIZE = 2_000_000   # 2 MB — any real background video will exceed this
 LFS_POINTER_PREFIX = b'version https://git-lfs.github.com/spec/v1'
 
-VIDEO_DEFINITIONS = [
-    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg1_cob.mp4", "filename": "video_bg1_cob.mp4"},
-    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg2_cob.mp4", "filename": "video_bg2_cob.mp4"},
-    {"url": "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/bg/video_bg3_cob.mp4", "filename": "video_bg3_cob.mp4"},
-]
+MODPACK_BG_DEFINITIONS = {
+    "cobblemon": [
+        {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg1_cob.mp4", "filename": "cobblemon_bg1.mp4"},
+        {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg2_cob.mp4", "filename": "cobblemon_bg2.mp4"},
+        {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg3_cob.mp4", "filename": "cobblemon_bg3.mp4"},
+    ],
+    "prominence": [
+        {"url": f"{ASSET_REPO_RAW}/Prominence%20II/bg/bg.webp", "filename": "prominence_bg.webp"},
+    ],
+}
+# Keep VIDEO_DEFINITIONS pointing to the default modpack for backward compat at startup
+VIDEO_DEFINITIONS = MODPACK_BG_DEFINITIONS[DEFAULT_MODPACK_ID]
 
 # (NUEVO) Lógica para leer la versión del launcher dinámicamente
 def get_current_launcher_version(default_version="1.0"):
@@ -256,6 +273,9 @@ class ModpackLauncherAPI:
         self.close_trigger_status = "PENDING"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
+        # Active modpack — can be "cobblemon" or "prominence"
+        self.active_modpack_id = DEFAULT_MODPACK_ID
+
     def _update_updater_ui(self, message, progress=None):
         """(NUEVO) Envía actualizaciones a la UI del actualizador."""
         if self.window:
@@ -264,6 +284,96 @@ class ModpackLauncherAPI:
             if progress is not None:
                 js_code += f" updateUpdaterProgress({progress});"
             self.window.evaluate_js(js_code)
+
+    # --- Active Modpack Helpers ---
+
+    @property
+    def _mp(self):
+        """Returns the active modpack config dict."""
+        return MODPACK_CONFIGS[self.active_modpack_id]
+
+    def _mp_raw_base(self):
+        import urllib.parse
+        return f"{ASSET_REPO_RAW}/{urllib.parse.quote(self._mp['folder'])}"
+
+    def _mp_version_contents_url(self):
+        import urllib.parse
+        return f"{ASSET_REPO_API}/contents/{urllib.parse.quote(self._mp['folder'])}/version.txt"
+
+    def _mp_version_url(self):
+        return f"{self._mp_raw_base()}/version.txt"
+
+    def _mp_resource_pack_url(self):
+        return f"{self._mp_raw_base()}/resourcepackoptions.txt"
+
+    def _mp_modpack_url_source(self):
+        return f"{self._mp_raw_base()}/modpack-url.txt"
+
+    def _mp_logo_url(self):
+        return f"{self._mp_raw_base()}/minecraftlogo.png"
+
+    def py_get_active_modpack(self):
+        """Returns info about the currently active modpack."""
+        mp = self._mp
+        return {
+            "id": self.active_modpack_id,
+            "display_name": mp["display_name"],
+            "folder": mp["folder"],
+            "logo_url": self._mp_logo_url(),
+            "bg_type": mp.get("bg_type", "video"),
+            "instance_name": mp["instance_name"],
+        }
+
+    def py_switch_modpack(self, modpack_id):
+        """Switch the active modpack. Returns updated modpack info for the UI."""
+        if modpack_id not in MODPACK_CONFIGS:
+            return {"success": False, "error": f"Unknown modpack: {modpack_id}"}
+
+        self.active_modpack_id = modpack_id
+
+        # Load per-modpack instance path from config
+        config_path = self._get_config_path()
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+            mp_cfg = cfg.get("modpacks", {}).get(modpack_id, {})
+            mp_instance = mp_cfg.get("instance_mc_path")
+            if mp_instance and self._validate_instance_path(mp_instance):
+                self.instance_mc_path = mp_instance
+            else:
+                # Try auto-detect from Prism path
+                self.instance_mc_path = None
+                if self.prism_exe_path:
+                    detected = self._find_instance_from_prism_path(self.prism_exe_path)
+                    if detected:
+                        self.instance_mc_path = detected
+            # Save active modpack choice
+            cfg["active_modpack"] = modpack_id
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(cfg, f, indent=4)
+        except Exception as e:
+            self._log(f"Warning: could not update config on modpack switch: {e}")
+
+        return {
+            "success": True,
+            "id": modpack_id,
+            "display_name": self._mp["display_name"],
+            "logo_url": self._mp_logo_url(),
+            "bg_type": self._mp.get("bg_type", "video"),
+            "instance_name": self._mp["instance_name"],
+            "instance_path": self.instance_mc_path,
+        }
+
+    def py_get_modpack_list(self):
+        """Returns a list of all available modpacks for the UI."""
+        return [
+            {
+                "id": mp_id,
+                "display_name": mp["display_name"],
+                "active": mp_id == self.active_modpack_id,
+            }
+            for mp_id, mp in MODPACK_CONFIGS.items()
+        ]
 
     def _save_download_state(self, url, dest_path, task_type, extra=None):
         """Save download state to allow crash-recovery on next launch."""
@@ -425,7 +535,8 @@ class ModpackLauncherAPI:
 
         os.makedirs(VIDEO_DIR, exist_ok=True)
         port = self._start_video_server()
-        video_total = len(VIDEO_DEFINITIONS)
+        bg_defs = MODPACK_BG_DEFINITIONS.get(self.active_modpack_id, VIDEO_DEFINITIONS)
+        video_total = len(bg_defs)
         CHUNK = 1024 * 256  # 256 KB read chunks
 
         def _js(expr):
@@ -610,12 +721,12 @@ class ModpackLauncherAPI:
                             pass
 
         def _task():
-            if not VIDEO_DEFINITIONS:
+            if not bg_defs:
                 return
             # Process the first video synchronously so the main screen can show ASAP
-            _process_video(1, VIDEO_DEFINITIONS[0])
+            _process_video(1, bg_defs[0])
             # Stream remaining videos in the background while the first one plays
-            for video_idx, vdef in enumerate(VIDEO_DEFINITIONS[1:], start=2):
+            for video_idx, vdef in enumerate(bg_defs[1:], start=2):
                 _process_video(video_idx, vdef)
 
         t = threading.Thread(target=_task, daemon=True)
@@ -685,9 +796,15 @@ class ModpackLauncherAPI:
 
         default_config = {
             "prism_exe_path": None,
+            "active_modpack": DEFAULT_MODPACK_ID,
+            "modpacks": {
+                mp_id: {"instance_mc_path": None}
+                for mp_id in MODPACK_CONFIGS
+            },
+            # Legacy key kept for migration — new installs won't have it
             "instance_mc_path": None,
             "launch_times_sec": [],
-            "music_player_volume": 1.0
+            "music_player_volume": 1.0,
         }
 
         with self.config_lock:
@@ -700,12 +817,34 @@ class ModpackLauncherAPI:
                     self._log("Advertencia: launcher_config.json está corrupto. Se creará uno nuevo.")
                     config_data = {}
 
-            # Migración: Añadir claves que falten
+            # Migrate legacy flat instance_mc_path → per-modpack structure
+            if "modpacks" not in config_data:
+                config_data["modpacks"] = {
+                    mp_id: {"instance_mc_path": None}
+                    for mp_id in MODPACK_CONFIGS
+                }
+                # Carry over the old Cobblemon instance path if present
+                legacy_instance = config_data.get("instance_mc_path")
+                if legacy_instance:
+                    config_data["modpacks"]["cobblemon"]["instance_mc_path"] = legacy_instance
+
+            # Ensure all current modpacks exist in the per-modpack section
+            for mp_id in MODPACK_CONFIGS:
+                if mp_id not in config_data["modpacks"]:
+                    config_data["modpacks"][mp_id] = {"instance_mc_path": None}
+
+            # Migrate: add keys that are missing from the top-level config
             needs_saving = False
             for key, default_value in default_config.items():
                 if key not in config_data:
                     config_data[key] = default_value
                     needs_saving = True
+                    self._log(f"Config migration: added default for '{key}'")
+
+            # Restore active modpack from config
+            self.active_modpack_id = config_data.get("active_modpack", DEFAULT_MODPACK_ID)
+            if self.active_modpack_id not in MODPACK_CONFIGS:
+                self.active_modpack_id = DEFAULT_MODPACK_ID
 
             # Guardar si se ha modificado
             if needs_saving:
@@ -716,9 +855,9 @@ class ModpackLauncherAPI:
                 except Exception as e:
                     self._log(f"Error guardando configuración migrada: {e}")
 
-            # Ahora, cargar y validar los datos como en la función original
+            # Load and validate paths for the active modpack
             prism_path = config_data.get("prism_exe_path")
-            instance_path = config_data.get("instance_mc_path")
+            instance_path = config_data["modpacks"].get(self.active_modpack_id, {}).get("instance_mc_path")
             is_prism_valid = self._validate_prism_path(prism_path)
             is_instance_valid = self._validate_instance_path(instance_path)
 
@@ -892,7 +1031,7 @@ class ModpackLauncherAPI:
                 'Pragma': 'no-cache',
                 'User-Agent': 'KewzLauncher/1.0',
             }
-            resp = requests.get(GITHUB_VERSION_CONTENTS_URL, headers=headers, timeout=10)
+            resp = requests.get(self._mp_version_contents_url(), headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             content = base64.b64decode(data['content']).decode('utf-8').strip()
@@ -901,7 +1040,7 @@ class ModpackLauncherAPI:
             # Fallback to raw URL with cache-busting query param
             try:
                 import time as _time
-                bust_url = f"{VERSION_URL}?_={int(_time.time())}"
+                bust_url = f"{self._mp_version_url()}?_={int(_time.time())}"
                 headers = {'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'User-Agent': 'KewzLauncher/1.0'}
                 resp = requests.get(bust_url, headers=headers, timeout=10)
                 resp.raise_for_status()
@@ -1024,6 +1163,13 @@ class ModpackLauncherAPI:
 
             config_data["prism_exe_path"] = self.prism_exe_path
             if instance_valid:
+                # Save to the per-modpack section
+                if "modpacks" not in config_data:
+                    config_data["modpacks"] = {mp_id: {"instance_mc_path": None} for mp_id in MODPACK_CONFIGS}
+                if self.active_modpack_id not in config_data["modpacks"]:
+                    config_data["modpacks"][self.active_modpack_id] = {}
+                config_data["modpacks"][self.active_modpack_id]["instance_mc_path"] = self.instance_mc_path
+                # Also keep legacy flat key for backward compat
                 config_data["instance_mc_path"] = self.instance_mc_path
 
             try:
@@ -1140,8 +1286,10 @@ class ModpackLauncherAPI:
 
             prism_dir = os.path.dirname(exe_path)
 
+            instance_name = self._mp["instance_name"]
+
             # 1. Intentar ruta relativa (Portable)
-            instance_mc_path = os.path.join(prism_dir, "instances", MODPACK_INSTANCE_NAME, "minecraft")
+            instance_mc_path = os.path.join(prism_dir, "instances", instance_name, "minecraft")
             if self._validate_instance_path(instance_mc_path):
                 self._log(f"Instancia auto-detectada con éxito (Portable): {instance_mc_path}")
                 return instance_mc_path
@@ -1152,15 +1300,15 @@ class ModpackLauncherAPI:
                 if appdata:
                     # Probar variantes de carpeta de datos
                     roaming_paths = [
-                        os.path.join(appdata, "PrismLauncher", "instances", MODPACK_INSTANCE_NAME, "minecraft"),
-                        os.path.join(appdata, "Prism Launcher", "instances", MODPACK_INSTANCE_NAME, "minecraft")
+                        os.path.join(appdata, "PrismLauncher", "instances", instance_name, "minecraft"),
+                        os.path.join(appdata, "Prism Launcher", "instances", instance_name, "minecraft")
                     ]
                     for path in roaming_paths:
                         if self._validate_instance_path(path):
                             self._log(f"Instancia auto-detectada con éxito (Roaming): {path}")
                             return path
 
-            self._log(f"Auto-detect: No se encontró la instancia '{MODPACK_INSTANCE_NAME}/minecraft' ni en '{prism_dir}' ni en AppData.")
+            self._log(f"Auto-detect: No se encontró la instancia '{instance_name}/minecraft' ni en '{prism_dir}' ni en AppData.")
             return None
         except Exception as e:
             self._log(f"Error durante la auto-detección de instancia: {e}")
@@ -1174,7 +1322,7 @@ class ModpackLauncherAPI:
         if self.music_library is None:
             self._log("Inicializando MusicLibrary...")
             try:
-                self.music_library = MusicLibrary(github_raw_url=GITHUB_RAW_URL)
+                self.music_library = MusicLibrary(github_raw_url=ASSET_REPO_RAW)
             except Exception as e:
                 self._log(f"ERROR CRÍTICO: No se pudo inicializar MusicLibrary: {e}")
                 return []
@@ -1422,7 +1570,8 @@ class ModpackLauncherAPI:
         Paso 4: Comprueba si la instancia del modpack ya existe.
         Retorna: {status: 'modpack_installed', ...} o {status: 'modpack_not_installed', ...} o {status: 'error', ...}
         """
-        self._log(f"Asistente: Comprobando si el modpack '{MODPACK_INSTANCE_NAME}' existe para Prism en '{prism_exe_path}'")
+        _inst_name = self._mp["instance_name"]
+        self._log(f"Asistente: Comprobando si el modpack '{_inst_name}' existe para Prism en '{prism_exe_path}'")
         try:
             # Use _find_instance_from_prism_path which checks BOTH portable and AppData/Roaming
             instance_mc_path = self._find_instance_from_prism_path(prism_exe_path)
@@ -1630,7 +1779,7 @@ class ModpackLauncherAPI:
             if prism_exe_path is None or instance_base_path is None:
                 raise ValueError("Se recibieron rutas nulas (None) desde la interfaz.")
 
-            final_instance_path = os.path.join(instance_base_path, MODPACK_INSTANCE_NAME)
+            final_instance_path = os.path.join(instance_base_path, self._mp["instance_name"])
             final_mc_path = os.path.join(final_instance_path, "minecraft")
 
             # Use stable download directory so the .part file survives a crash
@@ -1638,7 +1787,7 @@ class ModpackLauncherAPI:
             zip_path = os.path.join(STABLE_DOWNLOAD_DIR, "modpack.zip")
             self._update_install_status(f"Directorio de descarga: {STABLE_DOWNLOAD_DIR}")
             # Temp dir only used for extraction (can be recreated if crashed)
-            tmp_dir = tempfile.mkdtemp(prefix="cobblemon_extract_")
+            tmp_dir = tempfile.mkdtemp(prefix=f"{self.active_modpack_id}_extract_")
 
             # 1. Obtener URL y Descargar
             modpack_url = None
@@ -1647,8 +1796,9 @@ class ModpackLauncherAPI:
 
             # Fetch URL from modpack-url.txt (may be a GoFile share link or a direct URL)
             try:
-                self._log(f"DEBUG: Consultando {MODPACK_URL_SOURCE}")
-                resp = requests.get(MODPACK_URL_SOURCE, timeout=15)
+                mp_url_source = self._mp_modpack_url_source()
+                self._log(f"DEBUG: Consultando {mp_url_source}")
+                resp = requests.get(mp_url_source, timeout=15)
                 resp.raise_for_status()
                 raw_url = resp.text.replace('\n', '').replace('\r', '').strip()
                 if not raw_url.startswith('http'):
@@ -1990,8 +2140,9 @@ class ModpackLauncherAPI:
 
         # 1. Descargar el archivo de resource packs
         try:
-            self._log(f"Descargando lista de resource packs desde: {RESOURCE_PACK_OPTIONS_URL}")
-            response = requests.get(RESOURCE_PACK_OPTIONS_URL, timeout=15)
+            rp_url = self._mp_resource_pack_url()
+            self._log(f"Descargando lista de resource packs desde: {rp_url}")
+            response = requests.get(rp_url, timeout=15)
             response.raise_for_status()
             remote_options_content = response.text
             self._log("Lista de resource packs descargada con éxito.")
@@ -2625,7 +2776,7 @@ class ModpackLauncherAPI:
         Returns dict: {oid: (download_url, headers_dict)}
         Retries on rate-limit (429) and server errors (500/503) with exponential backoff.
         """
-        batch_url = "https://github.com/Kewz4/kewz-cobblemon.git/info/lfs/objects/batch"
+        batch_url = ASSET_REPO_LFS_BATCH
         payload = {"operation": "download", "transfers": ["basic"], "objects": objects}
         req_headers = {
             "Accept": "application/vnd.git-lfs+json",
@@ -2910,19 +3061,22 @@ class ModpackLauncherAPI:
                     'Cache-Control': 'no-cache',
                     'User-Agent': 'KewzLauncher/1.0',
                 }
-                tree_resp = requests.get(GITHUB_TREE_API_URL, headers=tree_headers, timeout=15)
+                tree_resp = requests.get(ASSET_REPO_TREE_API, headers=tree_headers, timeout=15)
                 tree_resp.raise_for_status()
                 tree_items = tree_resp.json().get('tree', [])
             except Exception as e:
                 raise IOError(f"No se pudo consultar el árbol del repositorio: {e}")
 
-            # Detect all version folders directly under versions/
+            mp_folder = self._mp['folder']
+
+            # Detect all version folders under {modpack_folder}/versions/
             available_versions = []
             for item in tree_items:
                 if item['type'] == 'tree':
                     parts = item['path'].split('/')
-                    if len(parts) == 2 and parts[0] == 'versions':
-                        ver_str = parts[1]
+                    # Path looks like: "Cobblemon/versions/1.1" or "Prominence II/versions/1.1"
+                    if len(parts) == 3 and parts[0] == mp_folder and parts[1] == 'versions':
+                        ver_str = parts[2]
                         if re.fullmatch(r'\d+(\.\d+)*', ver_str):
                             try:
                                 available_versions.append(float(ver_str))
@@ -2954,10 +3108,10 @@ class ModpackLauncherAPI:
             all_dl_tasks = []  # (ver_float, item_path, rel_path, dest)
             for ver in updates_to_apply:
                 ver_str = str(ver)
-                ver_prefix = f"versions/{ver_str}/"
+                ver_prefix = f"{mp_folder}/versions/{ver_str}/"
                 ver_files = [item for item in tree_items if item['type'] == 'blob' and item['path'].startswith(ver_prefix)]
                 if not ver_files:
-                    raise IOError(f"No se encontraron archivos para versions/{ver_str}/ en el árbol del repositorio.")
+                    raise IOError(f"No se encontraron archivos para {ver_prefix} en el árbol del repositorio.")
                 extract_path = os.path.join(tmp_dir, f"extracted_v{ver_str}")
                 os.makedirs(extract_path, exist_ok=True)
                 version_roots[ver] = extract_path
@@ -2984,7 +3138,7 @@ class ModpackLauncherAPI:
                 dest_dir = os.path.dirname(dest)
                 if dest_dir:
                     os.makedirs(dest_dir, exist_ok=True)
-                raw_url = f"{UNIFIED_REPO_RAW_URL}/{item_path}"
+                raw_url = f"{ASSET_REPO_RAW}/{item_path}"
                 _wait = 2
                 for _att in range(4):
                     try:

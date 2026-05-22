@@ -3,10 +3,10 @@ import sys
 
 # --- HTML Content Definition ---
 
-FONT_IMPORT_URL = "https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Montserrat:wght@900&display=swap"
+FONT_IMPORT_URL = "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;900&display=swap"
 FONT_AWESOME_URL = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-UNIFIED_REPO_RAW_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main"
-LOGO_URL = f"{UNIFIED_REPO_RAW_URL}/minecraftlogo.png"
+ASSET_REPO_RAW = "https://raw.githubusercontent.com/Kewz4/K-Launcher-Assets/main"
+LOGO_URL = f"{ASSET_REPO_RAW}/Cobblemon/minecraftlogo.png"
 URL_ALBUM_COVER = ""  # Each song provides its own cover.jpg inside its songs/<folder>/ directory
 
 
@@ -18,43 +18,43 @@ HTML_CONTENT = f"""
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kewz's Cobblemon Launcher</title>
+    <title>K Launcher</title>
     <link rel="stylesheet" href="{FONT_IMPORT_URL}">
     <link rel="stylesheet" href="{FONT_AWESOME_URL}">
     <style>
         /* --- Reset & Fonts --- */
         :root {{
-            --font-family-sans: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            --font-family-display: 'Montserrat', sans-serif;
-            --color-bg: #000000;
-            --color-bg-light: #0d1117;
-            --color-bg-lighter: #161b22;
-            --color-text: #e0e0e0;
-            --color-text-muted: #7a8fa6;
-            /* Aqua accent palette */
-            --color-accent: #00cfaa;
-            --color-accent-dark: #007a65;
-            --color-danger: #e53935;
-            --color-danger-dark: #b71c1c;
-            --color-success: #00e676;
-            --color-success-dark: #00c853;
-            --radius-md: 8px;
-            --radius-lg: 12px;
-            --radius-btn: 11px;
-            --shadow: 0 4px 20px rgba(0, 207, 170, 0.08);
+            --font-family-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --font-family-display: 'Outfit', sans-serif;
+            --color-bg: #050810;
+            --color-bg-light: #0a0f1a;
+            --color-bg-lighter: #111827;
+            --color-text: #e2e8f0;
+            --color-text-muted: #64748b;
+            /* Teal accent palette — tinted toward the brand hue */
+            --color-accent: #00d4aa;
+            --color-accent-dark: #008f72;
+            --color-danger: #f87171;
+            --color-danger-dark: #dc2626;
+            --color-success: #34d399;
+            --color-success-dark: #059669;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --radius-btn: 12px;
+            --shadow: 0 4px 24px oklch(0.62 0.12 180 / 0.10);
             /* Button colors */
-            --play-btn-grad-start: #007a65;
-            --play-btn-grad-end: #00cfaa;
-            --cancel-btn-grad-start: #b71c1c;
-            --cancel-btn-grad-end: #e53935;
+            --play-btn-grad-start: #008f72;
+            --play-btn-grad-end: #00d4aa;
+            --cancel-btn-grad-start: #dc2626;
+            --cancel-btn-grad-end: #f87171;
 
-            --menu-btn-fill-start: #000000;
-            --menu-btn-fill-end: #0d1117;
-            --menu-btn-stroke-start: #004840;
-            --menu-btn-stroke-end: #00cfaa;
+            --menu-btn-fill-start: #050810;
+            --menu-btn-fill-end: #0a0f1a;
+            --menu-btn-stroke-start: #004d3f;
+            --menu-btn-stroke-end: #00d4aa;
             /* Side panel */
-            --panel-bg: #080d13;
-            --panel-width: 280px;
+            --panel-bg: #060b14;
+            --panel-width: 288px;
             /* Music player dimensions */
             --player-height: 80px;
             --player-width: 300px;
@@ -525,6 +525,34 @@ HTML_CONTENT = f"""
         #panel-quit-btn:hover {{ background-color: rgba(229, 57, 53, 0.08); border-color: rgba(229, 57, 53, 0.25); color: #e57373; }}
         #panel-quit-btn:hover i {{ color: #e57373; }}
 
+        /* --- Modpack Switcher --- */
+        .panel-section-label {{
+            font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; color: var(--color-text-muted);
+            padding: 4px 6px 8px 6px; margin-top: 4px;
+        }}
+        .modpack-btn {{
+            position: relative;
+            transition: all 0.18s cubic-bezier(0.23, 1, 0.32, 1);
+        }}
+        .modpack-btn.active {{
+            background-color: rgba(0, 212, 170, 0.1);
+            border-color: rgba(0, 212, 170, 0.3);
+            color: var(--color-accent);
+        }}
+        .modpack-btn.active i.modpack-icon {{ color: var(--color-accent); }}
+        .modpack-btn .modpack-check {{
+            margin-left: auto; font-size: 12px; opacity: 0;
+            transition: opacity 0.15s ease;
+            flex-shrink: 0;
+        }}
+        .modpack-btn.active .modpack-check {{ opacity: 1; color: var(--color-accent); }}
+        .modpack-btn:not(.active):hover .modpack-check {{ opacity: 0.4; }}
+        .panel-divider {{
+            height: 1px; background: rgba(0, 212, 170, 0.1);
+            margin: 6px 0; flex-shrink: 0;
+        }}
+
         /* --- Settings folder display improvements --- */
         #screen-settings .folder-display .folder-type-icon {{
             font-size: 15px; color: var(--color-text-muted);
@@ -712,7 +740,7 @@ HTML_CONTENT = f"""
     <!-- Auto-Update Screen -->
     <div id="screen-updater">
         <div id="updater-container">
-            <img src="{LOGO_URL}" alt="Kewz's Cobblemon" id="updater-logo">
+            <img src="{LOGO_URL}" alt="K Launcher" id="updater-logo">
             <h1 id="updater-title">Checking for Updates...</h1>
             <div id="updater-progress-bar-container">
                 <div id="updater-progress-bar" style="width: 5%;"></div>
@@ -728,8 +756,9 @@ HTML_CONTENT = f"""
 
     <!-- Pantalla Principal (Jugar) -->
     <div class="screen" id="screen-play" style="display: none;">
-        <!-- Iframe de Vimeo -->
+        <!-- Background: video (Cobblemon) or static image (Prominence II) -->
         <video id="bg-video" autoplay muted playsinline></video>
+        <img id="bg-image" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100vw; height:100vh; object-fit:cover; z-index:-1; pointer-events:none;" alt="">
         <!-- Video Overlay (Para Fade In) -->
         <div id="video-overlay"></div>
 
@@ -737,8 +766,8 @@ HTML_CONTENT = f"""
         <div id="top-gradient"></div>
         <div id="bottom-gradient"></div>
 
-        <!-- Logo -->
-        <img src="{LOGO_URL}" alt="Kewz's Cobblemon" id="minecraft-logo">
+        <!-- Logo (src updated dynamically by switchModpack) -->
+        <img src="{LOGO_URL}" alt="K Launcher" id="minecraft-logo">
 
         <!-- Update badge (shown when a new modpack version is available) -->
         <div id="update-badge">
@@ -761,9 +790,25 @@ HTML_CONTENT = f"""
     <!-- Slide-out Side Panel -->
     <div id="side-panel">
         <div id="panel-header">
-            <span id="panel-title">Kewz's Cobblemon</span>
+            <span id="panel-title">K Launcher</span>
             <button id="panel-close-btn" title="Close menu"><i class="fas fa-times"></i></button>
         </div>
+
+        <!-- Modpack switcher -->
+        <div class="panel-section-label">Modpack</div>
+        <button class="panel-button modpack-btn active" id="panel-modpack-cobblemon" onclick="switchModpack('cobblemon')">
+            <i class="fas fa-dragon modpack-icon"></i>
+            <span>Cobblemon</span>
+            <i class="fas fa-check modpack-check"></i>
+        </button>
+        <button class="panel-button modpack-btn" id="panel-modpack-prominence" onclick="switchModpack('prominence')">
+            <i class="fas fa-mountain modpack-icon"></i>
+            <span>Prominence II</span>
+            <i class="fas fa-check modpack-check"></i>
+        </button>
+
+        <div class="panel-divider"></div>
+
         <button class="panel-button" id="panel-settings-btn">
             <i class="fas fa-cog"></i>
             <span>Settings</span>
@@ -927,7 +972,7 @@ HTML_CONTENT = f"""
             <div class="wizard-step" data-step="check-modpack">
                 <div class="header">
                     <h1>Modpack Instance</h1>
-                    <p>Looking for "Kewz's Cobblemon" in your instances...</p>
+                    <p id="wizard-check-modpack-text">Looking for the modpack in your instances...</p>
                 </div>
                 <div class="wizard-spinner"></div>
             </div>
@@ -1000,7 +1045,7 @@ HTML_CONTENT = f"""
                     <button class="btn btn-secondary" id="settings-browse-prism-btn"><i class="fas fa-search"></i> Browse Executable...</button>
                 </div>
                 <label class="setup-label">Modpack Folder</label>
-                <div class="folder-display" id="settings-instance-folder-display" title="Drag the 'minecraft' folder of your Kewz's Cobblemon instance here">
+                <div class="folder-display" id="settings-instance-folder-display" title="Drag the 'minecraft' folder of your modpack instance here">
                     <i class="fas fa-folder-open folder-type-icon"></i>
                     <span id="settings-instance-folder-text" class="placeholder">Drag or browse for your '.../minecraft' folder</span>
                     <i class="fas fa-chevron-right folder-browse-arrow"></i>
@@ -1118,14 +1163,31 @@ HTML_CONTENT = f"""
             }}
         }}
 
-        // Called by Python each time a video becomes ready (downloaded or already cached).
+        // Called by Python each time a bg asset becomes ready (downloaded or already cached).
         function onBgVideoReady(url) {{
-            bgVideoList.push(url);
-            if (!_firstVideoReady) {{
-                _firstVideoReady = true;
-                bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
-                _loadBgVideo(bgVideoIndex);
-                _maybeStartMainApp();
+            const isImage = /\.(webp|png|jpg|jpeg)(\?.*)?$/i.test(url);
+            if (isImage) {{
+                // Static background image (e.g. Prominence II)
+                const bgImage = document.getElementById('bg-image');
+                if (bgImage) {{ bgImage.src = url; bgImage.style.display = 'block'; }}
+                const bgVideo = document.getElementById('bg-video');
+                if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
+                if (!_firstVideoReady) {{
+                    _firstVideoReady = true;
+                    _maybeStartMainApp();
+                }}
+            }} else {{
+                bgVideoList.push(url);
+                if (!_firstVideoReady) {{
+                    _firstVideoReady = true;
+                    bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
+                    const bgVideo = document.getElementById('bg-video');
+                    if (bgVideo) bgVideo.style.display = '';
+                    const bgImage = document.getElementById('bg-image');
+                    if (bgImage) bgImage.style.display = 'none';
+                    _loadBgVideo(bgVideoIndex);
+                    _maybeStartMainApp();
+                }}
             }}
         }}
 
@@ -1783,6 +1845,66 @@ HTML_CONTENT = f"""
         function openSidePanel() {{ dom.sidePanel.classList.add('panel-open'); dom.panelOverlay.classList.add('visible'); }}
         function closeSidePanel() {{ dom.sidePanel.classList.remove('panel-open'); dom.panelOverlay.classList.remove('visible'); }}
 
+        // --- Modpack Switcher ---
+        function _applyModpackUI(info) {{
+            // Update logo
+            const logo = document.getElementById('minecraft-logo');
+            const updaterLogo = document.getElementById('updater-logo');
+            if (logo && info.logo_url) logo.src = info.logo_url;
+            if (updaterLogo && info.logo_url) updaterLogo.src = info.logo_url;
+
+            // Update active button highlights
+            document.querySelectorAll('.modpack-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById('panel-modpack-' + info.id);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            // Switch background: video vs static image
+            const bgVideo = document.getElementById('bg-video');
+            const bgImage = document.getElementById('bg-image');
+            if (info.bg_type === 'image') {{
+                if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
+                if (bgImage) bgImage.style.display = 'block';
+                // bg image is loaded by Python via onBgVideoReady (served through local HTTP server)
+            }} else {{
+                if (bgImage) bgImage.style.display = 'none';
+                if (bgVideo) bgVideo.style.display = '';
+                // Reload the video playlist for the new modpack
+                bgVideoList = [];
+                bgVideoPlaying = false;
+            }}
+
+            // Refresh play button state (instance may have changed)
+            refreshPlayBtnLabel();
+        }}
+
+        function applyModpackFromPython(infoJson) {{
+            try {{
+                const info = JSON.parse(infoJson);
+                _applyModpackUI(info);
+            }} catch(e) {{ console.error('applyModpackFromPython error:', e); }}
+        }}
+
+        // Called by onBgVideoReady when bg_type === 'image'
+        function onBgImageReady(url) {{
+            const bgImage = document.getElementById('bg-image');
+            if (bgImage) bgImage.src = url;
+        }}
+
+        function switchModpack(modpackId) {{
+            closeSidePanel();
+            try {{
+                pywebview.api.py_switch_modpack(modpackId).then(result => {{
+                    if (!result || !result.success) {{
+                        console.error('switchModpack failed:', result && result.error);
+                        return;
+                    }}
+                    _applyModpackUI(result);
+                    // Re-fetch bg assets for the new modpack
+                    pywebview.api.py_ensure_background_videos();
+                }}).catch(err => console.error('switchModpack error:', err));
+            }} catch(e) {{ console.error('switchModpack exception:', e); }}
+        }}
+
         // Called by Python when a duplicate task start is attempted.
         // Instead of an error, we just bring whatever is running back into view.
         function restoreRunningTaskView() {{
@@ -1871,7 +1993,7 @@ HTML_CONTENT = f"""
                         }}
 
                         showWizardStep('install-progress');
-                        dom.wizard.installTitle.textContent = "Installing Kewz's Cobblemon";
+                        dom.wizard.installTitle.textContent = "Installing Modpack";
                         dom.wizard.installSubtitle.textContent = "Downloading modpack files (10GB+). You can pause this at any time.";
 
                         console.log("Starting 'install_modpack' task with args:", result.prism_path, result.instance_base_path);
@@ -1987,6 +2109,11 @@ HTML_CONTENT = f"""
                 pywebview.api.py_load_music_volume().then(vol => {{
                     domPlayer.volumeSlider.value = vol; setVolume();
                 }}).catch(e => {{ domPlayer.volumeSlider.value = 1.0; setVolume(); }});
+
+                // Apply active modpack UI (logo, bg mode, panel highlights)
+                pywebview.api.py_get_active_modpack().then(mp => {{
+                    if (mp) _applyModpackUI(mp);
+                }}).catch(e => {{ console.warn("Could not get active modpack:", e); }});
 
                 // Always show play screen — button label reflects install state
                 switchScreen('play');
