@@ -53,14 +53,8 @@ HTML_CONTENT = f"""
             --color-accent-subtle: oklch(0.73 0.18 174 / 0.11);
             --color-accent-border: oklch(0.73 0.18 174 / 0.26);
 
-            --play-btn-grad-start: var(--color-accent-dark);
-            --play-btn-grad-end:   var(--color-accent);
             --cancel-btn-grad-start: #dc2626;
             --cancel-btn-grad-end:   #f87171;
-            --menu-btn-fill-start: #03060e;
-            --menu-btn-fill-end:   #080e1c;
-            --menu-btn-stroke-start: var(--color-accent-dark);
-            --menu-btn-stroke-end:   var(--color-accent);
             --shadow: 0 4px 32px var(--color-accent-glow);
 
             /* Updater screen bg tint */
@@ -158,7 +152,7 @@ HTML_CONTENT = f"""
         .container {{ width: 100%; max-width: 650px; background-color: var(--color-bg-light); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 24px 32px; border: 1px solid var(--color-bg-lighter); transition: opacity 0.3s ease; position: relative; z-index: 101; display: none; }}
         .container.visible {{ display: block; animation: fadeIn 0.25s ease; }}
         .header {{ text-align: center; margin-bottom: 24px; }}
-        .header h1 {{ font-size: 28px; font-weight: 700; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; margin-bottom: 4px; }}
+        .header h1 {{ font-size: 28px; font-weight: 700; color: var(--color-accent); margin-bottom: 4px; }}
         .header p {{ font-size: 14px; color: var(--color-text-muted); }}
 
         /* --- Pantallas (Contenedores generales) --- */
@@ -197,12 +191,11 @@ HTML_CONTENT = f"""
         #wizard-step-install-progress .btn, #wizard-step-install-modpack .btn {{ margin-top: 16px; }}
 
 
-        /* --- Play Screen --- */
+        /* --- Play Screen — reimagined as a game-launcher HUD --- */
         #screen-play {{
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+            display: block;
             z-index: 50; overflow: hidden; background-color: #000;
-            padding: 0;
         }}
         #screen-play.active {{ z-index: 100; }}
 
@@ -221,102 +214,136 @@ HTML_CONTENT = f"""
             animation: fadeOutOverlay 3s ease-out forwards;
         }}
 
-        #minecraft-logo {{
-            position: absolute; top: 20px; right: 20px;
-            width: 148px; height: auto;
-            object-fit: contain; z-index: 3; pointer-events: none;
-            filter: drop-shadow(0 2px 12px rgba(0,0,0,0.6));
+        /* Dark vignette layers */
+        #top-gradient {{
+            position: absolute; top: 0; left: 0; width: 100%; height: 180px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 100%);
+            z-index: 2; pointer-events: none;
         }}
         #bottom-gradient {{
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 260px;
-            background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 50%, transparent 100%);
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 440px;
+            background: linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.75) 32%, rgba(0,0,0,0.15) 72%, transparent 100%);
             z-index: 2; pointer-events: none;
         }}
 
-        /* Modpack name above play button */
-        #modpack-name-display {{
-            position: fixed; bottom: 105px; left: 50%;
-            transform: translateX(-50%);
-            font-family: var(--font-family-display); font-weight: 800;
-            font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase;
-            color: var(--color-accent); opacity: 0.9;
-            z-index: 104; pointer-events: none;
-            text-shadow: 0 0 20px var(--color-accent-glow);
+        /* Logo — top right */
+        #minecraft-logo {{
+            position: fixed; top: 24px; right: 28px;
+            width: 116px; height: auto;
+            object-fit: contain; z-index: 103; pointer-events: none;
+            filter: drop-shadow(0 2px 18px rgba(0,0,0,0.75));
+            opacity: 0.92;
         }}
 
-        #play-btn {{
-            position: fixed; bottom: 22px; left: 50%;
-            transform: translateX(-50%);
-            font-family: var(--font-family-display); font-weight: 900; font-size: 26px;
-            letter-spacing: 0.06em;
-            padding: 14px 56px; border-radius: var(--radius-btn);
-            cursor: pointer;
+        /* Menu trigger — top left, minimal */
+        #menu-btn {{
+            position: fixed; top: 24px; left: 28px;
+            width: 42px; height: 42px;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            cursor: pointer; z-index: 102;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center; gap: 5px;
+            padding: 0;
+            transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+        }}
+        #menu-btn:hover {{
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.22);
+            transform: scale(1.06);
+        }}
+        #menu-btn:active {{ transform: scale(0.94); }}
+        #menu-btn .menu-line {{
+            width: 18px; height: 2px;
+            background-color: rgba(255,255,255,0.88);
+            border-radius: 2px;
+            transition: background-color 0.2s ease;
+        }}
+        #menu-btn .menu-line:first-child {{ width: 12px; align-self: flex-start; margin-left: 12px; }}
+
+        /* Bottom-left HUD block */
+        #play-hud-left {{
+            position: fixed; bottom: 44px; left: 48px;
             z-index: 103;
-            background: linear-gradient(135deg, var(--play-btn-grad-start), var(--play-btn-grad-end));
-            border: none; color: oklch(0.12 0.02 174); font-weight: 900;
-            box-shadow: 0 6px 32px var(--color-accent-glow), 0 2px 8px rgba(0,0,0,0.4);
+            display: flex; flex-direction: column; align-items: flex-start;
+            gap: 18px;
         }}
-        #play-btn:not(.cancel-mode) {{ animation: pulseGlow 3s ease-in-out infinite; }}
-        #play-btn:hover {{ transform: translateX(-50%) scale(1.04) !important; animation: none !important; }}
-        #play-btn:active {{ transform: translateX(-50%) scale(0.97) !important; animation: none !important; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }}
 
-        #play-btn.cancel-mode {{
-            background: linear-gradient(135deg, var(--cancel-btn-grad-start), var(--cancel-btn-grad-end));
+        /* Giant modpack name */
+        #modpack-name-display {{
+            font-family: var(--font-family-display); font-weight: 900;
+            font-size: clamp(54px, 8.8vw, 110px);
+            letter-spacing: -0.03em; line-height: 0.86;
+            text-transform: uppercase;
             color: #fff;
-            box-shadow: 0 6px 28px rgba(220,38,38,0.4);
-            animation: none;
+            pointer-events: none;
+            text-shadow: 0 4px 32px rgba(0,0,0,0.9), 0 1px 4px rgba(0,0,0,0.6);
         }}
 
-        /* --- Update badge above play button --- */
+        /* Play button row */
+        .play-row {{
+            display: flex; align-items: center; gap: 16px;
+        }}
+
+        /* Play button — clean, no glow */
+        #play-btn {{
+            font-family: var(--font-family-sans); font-weight: 700;
+            font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+            padding: 14px 46px;
+            border-radius: 4px;
+            cursor: pointer;
+            background: var(--color-accent);
+            color: oklch(0.08 0 0);
+            border: none;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+            transition: transform 0.18s cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.18s ease;
+        }}
+        #play-btn:hover {{ transform: translateY(-3px); box-shadow: 0 8px 32px rgba(0,0,0,0.7); }}
+        #play-btn:active {{ transform: translateY(0) scale(0.97) !important; box-shadow: 0 2px 12px rgba(0,0,0,0.5); }}
+        #play-btn.cancel-mode {{
+            background: var(--color-danger);
+            color: #fff;
+            box-shadow: 0 4px 24px rgba(220,38,38,0.35);
+        }}
+
+        /* Update badge — inline next to play button */
         #update-badge {{
-            position: fixed;
-            bottom: 108px;
-            left: 50%;
-            transform: translateX(-50%);
             display: none;
             align-items: center;
             gap: 7px;
-            background: rgba(0, 0, 0, 0.78);
+            background: rgba(0,0,0,0.72);
             border: 1px solid var(--color-accent-border);
-            border-radius: 20px;
-            padding: 5px 14px 5px 10px;
-            font-family: var(--font-family-sans);
-            font-size: 13px;
-            font-weight: 600;
+            border-radius: 4px;
+            padding: 6px 14px 6px 10px;
+            font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
             color: var(--color-accent);
             white-space: nowrap;
-            z-index: 102;
-            backdrop-filter: blur(8px);
-            box-shadow: 0 0 18px var(--color-accent-glow);
-            animation: badgeFadeIn 0.5s ease forwards;
+            backdrop-filter: blur(10px);
+            animation: badgeFadeIn 0.4s ease forwards;
             pointer-events: none;
         }}
         #update-badge.visible {{ display: flex; }}
         #update-badge .badge-dot {{
-            width: 8px; height: 8px; border-radius: 50%;
+            width: 6px; height: 6px; border-radius: 50%;
             background: var(--color-accent);
-            box-shadow: 0 0 6px var(--color-accent);
-            animation: badgePulse 1.8s ease-in-out infinite;
+            animation: badgePulse 2s ease-in-out infinite;
             flex-shrink: 0;
         }}
         @keyframes badgeFadeIn {{
-            from {{ opacity: 0; transform: translateX(-50%) translateY(6px); }}
-            to   {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+            from {{ opacity: 0; transform: translateY(6px); }}
+            to   {{ opacity: 1; transform: translateY(0); }}
         }}
         @keyframes badgePulse {{
             0%, 100% {{ opacity: 1; transform: scale(1); }}
             50%       {{ opacity: 0.5; transform: scale(1.35); }}
         }}
 
-        #menu-btn {{ position: absolute; top: 20px; left: 20px; right: auto; width: 50px; height: 50px; border-radius: var(--radius-btn); cursor: pointer; z-index: 102; display: flex; flex-direction: column; justify-content: space-around; align-items: center; padding: 10px; transition: transform 0.2s ease; background-image: linear-gradient(84deg, var(--menu-btn-fill-start), var(--menu-btn-fill-end)); border: none; }}
-        #menu-btn::before {{ content: ''; position: absolute; inset: -3px; border-radius: calc(var(--radius-btn) + 3px); background-image: linear-gradient(62deg, var(--menu-btn-stroke-start), var(--menu-btn-stroke-end)); z-index: -1; padding: 3px; -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }}
-        #menu-btn .menu-line {{ width: 70%; height: 3px; background-color: var(--color-text); border-radius: 2px; transition: background-color 0.2s ease; }}
-        #menu-btn:hover {{ transform: scale(1.05); }}
-        #menu-btn:active {{ transform: scale(0.95); }}
 
         /* --- Estilos Reproductor de Música --- */
         #music-player {{
-            position: fixed; bottom: 15px; left: 15px;
+            position: fixed; bottom: 18px; right: 18px;
             width: var(--player-width); height: var(--player-height);
             background-color: rgba(30, 30, 30, 0.5);
             backdrop-filter: blur(5px);
@@ -533,13 +560,6 @@ HTML_CONTENT = f"""
             margin-bottom: 32px; opacity: 0.92;
         }}
 
-        /* --- Top Gradient (play screen) --- */
-        #top-gradient {{
-            position: absolute; top: 0; left: 0; width: 100%; height: 140px;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
-            z-index: 0; pointer-events: none;
-        }}
-
         /* --- Container: animate on show --- */
         /* --- Side Panel Header --- */
         #panel-header {{
@@ -694,9 +714,7 @@ HTML_CONTENT = f"""
         }}
         #settings-drawer-title {{
             font-size: 17px; font-weight: 700;
-            background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent));
-            -webkit-background-clip: text; background-clip: text;
-            color: transparent; -webkit-text-fill-color: transparent;
+            color: var(--color-accent);
         }}
         #settings-drawer-close-btn {{
             background: none; border: none; color: var(--color-text-muted);
@@ -742,10 +760,6 @@ HTML_CONTENT = f"""
             from {{ opacity: 0; transform: translateX(30px); }}
             to {{ opacity: 1; transform: translateX(0); }}
         }}
-        @keyframes pulseGlow {{
-            0%, 100% {{ box-shadow: 0 5px 25px var(--color-accent-glow), 0 2px 8px rgba(0,0,0,0.4); }}
-            50% {{ box-shadow: 0 8px 45px var(--color-accent-glow), 0 4px 16px rgba(0,0,0,0.4); }}
-        }}
         @keyframes staggerFadeIn {{
             from {{ opacity: 0; transform: translateY(12px); }}
             to {{ opacity: 1; transform: translateY(0); }}
@@ -763,12 +777,8 @@ HTML_CONTENT = f"""
             animation: shimmer 2s linear infinite;
         }}
 
-        /* Float animation on logo */
-        #minecraft-logo {{ animation: floatUpDown 6s ease-in-out infinite; }}
-
-        /* Pulse glow on play button (only when not in cancel mode) */
-        #play-btn:not(.cancel-mode) {{ animation: pulseGlow 3s ease-in-out infinite; }}
-        #play-btn:hover, #play-btn:active {{ animation: none !important; }}
+        /* Subtle float animation on logo */
+        #minecraft-logo {{ animation: floatUpDown 7s ease-in-out infinite; }}
 
         /* Slide-in for wizard steps */
         #screen-initial-setup .wizard-step.active {{
@@ -814,24 +824,24 @@ HTML_CONTENT = f"""
         <!-- Logo (src updated dynamically by switchModpack) -->
         <img src="{LOGO_URL}" alt="K Launcher" id="minecraft-logo">
 
-        <!-- Update badge (shown when a new modpack version is available) -->
-        <div id="update-badge">
-            <span class="badge-dot"></span>
-            <span id="update-badge-text">New version available</span>
-        </div>
-
-        <!-- Modpack name above play button -->
-        <div id="modpack-name-display">Cobblemon</div>
-
-        <!-- Play Button -->
-        <button id="play-btn">PLAY</button>
-
-        <!-- Hamburger Menu Button -->
-        <button id="menu-btn" title="Menu">
+        <!-- Menu trigger - top left -->
+        <button id="menu-btn" title="Open menu" aria-label="Open menu">
             <span class="menu-line"></span>
             <span class="menu-line"></span>
             <span class="menu-line"></span>
         </button>
+
+        <!-- Bottom-left HUD: modpack name + play controls -->
+        <div id="play-hud-left">
+            <div id="modpack-name-display">Cobblemon</div>
+            <div class="play-row">
+                <button id="play-btn">Play</button>
+                <div id="update-badge">
+                    <span class="badge-dot"></span>
+                    <span id="update-badge-text">Update available</span>
+                </div>
+            </div>
+        </div>
 
     </div>
 

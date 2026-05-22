@@ -566,15 +566,19 @@ class ModpackLauncherAPI:
                 return False
 
         def _process_video(video_idx, vdef):
-            """Download + optionally compress one video, then fire onBgVideoReady."""
+            """Download + optionally compress one video (or cache one image), then fire onBgVideoReady."""
             out_path = os.path.join(VIDEO_DIR, vdef["filename"])
             serve_url = f"http://127.0.0.1:{port}/{vdef['filename']}"
+
+            # Images are much smaller than videos — use a 1 KB floor instead of 2 MB
+            _is_image = vdef["filename"].lower().endswith(('.webp', '.png', '.jpg', '.jpeg'))
+            _min_size = 1_000 if _is_image else MIN_VIDEO_SIZE
 
             # Already cached with a plausible size — notify immediately.
             # If the cached file is suspiciously small (e.g. a stale LFS pointer),
             # delete it and re-download.
             if os.path.exists(out_path):
-                if os.path.getsize(out_path) >= MIN_VIDEO_SIZE:
+                if os.path.getsize(out_path) >= _min_size:
                     _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
                     return
                 else:
@@ -643,7 +647,7 @@ class ModpackLauncherAPI:
                     raise RuntimeError("Download produced no file")
 
                 dl_size = os.path.getsize(tmp_path)
-                if dl_size < MIN_VIDEO_SIZE:
+                if dl_size < _min_size:
                     with open(tmp_path, 'rb') as _f:
                         header = _f.read(256)
                     if header.lstrip().startswith(LFS_POINTER_PREFIX):
@@ -684,14 +688,14 @@ class ModpackLauncherAPI:
                             with open(tmp_path, "wb") as f:
                                 _dl_loop(lfs_resp, f, total_b, _on_lfs_tick)
                         dl_size = os.path.getsize(tmp_path)
-                        if dl_size < MIN_VIDEO_SIZE:
+                        if dl_size < _min_size:
                             raise RuntimeError(f"LFS download also too small ({dl_size} bytes)")
                         _lfs_status("LFS download complete", f"{dl_size / 1024 / 1024:.1f} MB received")
                     else:
                         raise RuntimeError(f"Download too small ({dl_size} bytes) — expected a real video file")
 
-                # Compress using bundled ffmpeg; fall back to raw file if unavailable
-                if ffmpeg_exe:
+                # Compress using bundled ffmpeg (videos only; images are served as-is)
+                if ffmpeg_exe and not _is_image:
                     self._log(f"Compressing {vdef['filename']}...")
                     comp_tmp = out_path + ".comp.tmp"
                     if _compress(tmp_path, comp_tmp):
