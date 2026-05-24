@@ -490,7 +490,7 @@ HTML_CONTENT = f"""
         /* --- Widget de Progreso Minimizado --- */
         #minimized-progress-widget {{
             display: none; flex-direction: column; gap: 5px;
-            position: fixed; bottom: 20px; right: 20px;
+            position: fixed; bottom: calc(var(--player-height) + 28px); right: 18px;
             width: 250px;
             background-color: rgba(10, 14, 20, 0.94);
             backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -829,10 +829,9 @@ HTML_CONTENT = f"""
 
     <!-- Pantalla Principal (Jugar) -->
     <div class="screen" id="screen-play" style="display: none;">
-        <!-- Background: video (Cobblemon), YouTube iframe (NightfallCraft) -->
+        <!-- Background: video (Cobblemon, NightfallCraft via yt-dlp) or static image -->
         <video id="bg-video" autoplay muted playsinline></video>
         <img id="bg-image" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100vw; height:100vh; object-fit:cover; z-index:0; pointer-events:none;" alt="">
-        <iframe id="bg-youtube" style="display:none; position:absolute; top:50%; left:50%; width:177.78vh; height:100vh; min-width:100vw; min-height:56.25vw; transform:translate(-50%,-50%); z-index:0; pointer-events:none; border:none;" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
         <!-- Video Overlay (Para Fade In) -->
         <div id="video-overlay"></div>
 
@@ -1242,24 +1241,6 @@ HTML_CONTENT = f"""
 
         // Called by Python each time a bg asset becomes ready (downloaded or already cached).
         function onBgVideoReady(url) {{
-            // YouTube background: url = "youtube:<id>:<start>"
-            if (url.startsWith('youtube:')) {{
-                const parts = url.split(':');
-                const ytId    = parts[1] || '';
-                const ytStart = parts[2] || '0';
-                const bgYt = document.getElementById('bg-youtube');
-                if (bgYt && ytId) {{
-                    bgYt.src = `https://www.youtube.com/embed/${{ytId}}?autoplay=1&mute=1&controls=0&loop=1&playlist=${{ytId}}&start=${{ytStart}}&rel=0&modestbranding=1&disablekb=1&iv_load_policy=3&enablejsapi=0`;
-                    bgYt.style.display = '';
-                }}
-                const bgVideo = document.getElementById('bg-video');
-                if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
-                const bgImage = document.getElementById('bg-image');
-                if (bgImage) bgImage.style.display = 'none';
-                if (!_firstVideoReady) {{ _firstVideoReady = true; _maybeStartMainApp(); }}
-                return;
-            }}
-
             const isImage = /\.(webp|png|jpg|jpeg)(\?.*)?$/i.test(url);
             if (isImage) {{
                 // Static background image
@@ -1960,27 +1941,16 @@ HTML_CONTENT = f"""
             const activeBtn = document.getElementById('panel-modpack-' + info.id);
             if (activeBtn) activeBtn.classList.add('active');
 
-            // Switch background: video, image, or YouTube
+            // Switch background: image or video (youtube downloads are treated as video)
             const bgVideo = document.getElementById('bg-video');
             const bgImage = document.getElementById('bg-image');
-            const bgYt    = document.getElementById('bg-youtube');
             if (info.bg_type === 'image') {{
                 if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
-                if (bgYt)    {{ bgYt.src = ''; bgYt.style.display = 'none'; }}
                 if (bgImage) bgImage.style.display = 'block';
-            }} else if (info.bg_type === 'youtube') {{
-                if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
-                if (bgImage) bgImage.style.display = 'none';
-                if (bgYt && info.youtube_id) {{
-                    const ytStart = info.youtube_start || 0;
-                    bgYt.src = `https://www.youtube.com/embed/${{info.youtube_id}}?autoplay=1&mute=1&controls=0&loop=1&playlist=${{info.youtube_id}}&start=${{ytStart}}&rel=0&modestbranding=1&disablekb=1&iv_load_policy=3&enablejsapi=0`;
-                    bgYt.style.display = '';
-                }}
             }} else {{
+                // 'video' and 'youtube' both play through <video>
                 if (bgImage) bgImage.style.display = 'none';
-                if (bgYt)    {{ bgYt.src = ''; bgYt.style.display = 'none'; }}
                 if (bgVideo) bgVideo.style.display = '';
-                // Reload the video playlist for the new modpack
                 bgVideoList = [];
                 bgVideoPlaying = false;
             }}

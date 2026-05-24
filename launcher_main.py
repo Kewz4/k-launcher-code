@@ -545,11 +545,64 @@ class ModpackLauncherAPI:
             except Exception:
                 pass
 
-        # YouTube backgrounds are served inline — nothing to download
+        # YouTube backgrounds: download via yt-dlp, cache locally, serve like any other video
         if self._mp.get("bg_type") == "youtube":
+            os.makedirs(VIDEO_DIR, exist_ok=True)
+            port = self._start_video_server()
             yt_id    = self._mp.get("youtube_id", "")
-            yt_start = self._mp.get("youtube_start", 0)
-            _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps("youtube:" + yt_id + ":" + str(yt_start))})')
+            filename = f"{self.active_modpack_id}_yt_bg.mp4"
+            out_path  = os.path.join(VIDEO_DIR, filename)
+            serve_url = f"http://127.0.0.1:{port}/{filename}"
+
+            if os.path.exists(out_path) and os.path.getsize(out_path) >= MIN_VIDEO_SIZE:
+                _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
+                return
+
+            def _download_yt_bg():
+                try:
+                    import yt_dlp
+                    yt_url = f"https://www.youtube.com/watch?v={yt_id}"
+                    self._log(f"Downloading YouTube background: {yt_url}")
+                    tmp_path = out_path + ".tmp.mp4"
+
+                    def _progress_hook(d):
+                        if d.get('status') == 'downloading':
+                            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                            downloaded = d.get('downloaded_bytes', 0)
+                            speed = d.get('speed') or 0
+                            pct = int(downloaded / total * 100) if total > 0 else 0
+                            speed_mb = speed / 1024 / 1024 if speed else 0
+                            detail = f"{downloaded/1024/1024:.1f} MB  •  {speed_mb:.1f} MB/s"
+                            _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background")},{json.dumps(detail)})')
+                            _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
+
+                    ffmpeg_dir = os.path.dirname(ffmpeg_exe) if ffmpeg_exe else None
+                    ydl_opts = {
+                        'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]/best[height<=1080]',
+                        'outtmpl': tmp_path,
+                        'merge_output_format': 'mp4',
+                        'quiet': True,
+                        'no_warnings': True,
+                        'progress_hooks': [_progress_hook],
+                    }
+                    if ffmpeg_dir:
+                        ydl_opts['ffmpeg_location'] = ffmpeg_dir
+
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([yt_url])
+
+                    if os.path.exists(tmp_path) and os.path.getsize(tmp_path) >= MIN_VIDEO_SIZE:
+                        os.replace(tmp_path, out_path)
+                        self._log(f"YouTube background ready: {filename}")
+                        _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
+                    else:
+                        raise RuntimeError(f"yt-dlp produced no usable file")
+                except Exception as e:
+                    self._log(f"YouTube background download failed: {e}")
+                    _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps(str(e))})')
+
+            import threading as _threading
+            _threading.Thread(target=_download_yt_bg, daemon=True).start()
             return
 
         os.makedirs(VIDEO_DIR, exist_ok=True)
