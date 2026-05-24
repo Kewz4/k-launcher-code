@@ -559,47 +559,80 @@ class ModpackLauncherAPI:
                 return
 
             def _download_yt_bg():
+                import shutil
+                import tempfile as _tempfile
+
+                # Fail fast if yt-dlp isn't importable
                 try:
                     import yt_dlp
-                    yt_url = f"https://www.youtube.com/watch?v={yt_id}"
-                    self._log(f"Downloading YouTube background: {yt_url}")
-                    tmp_path = out_path + ".tmp.mp4"
+                except ImportError as ie:
+                    self._log(f"yt-dlp not available: {ie}")
+                    _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps("yt-dlp not installed")})')
+                    return
 
+                yt_url = f"https://www.youtube.com/watch?v={yt_id}"
+                self._log(f"Downloading YouTube background: {yt_url}")
+
+                # Isolate all of yt-dlp's intermediate/part files in a temp dir
+                tmp_dir = _tempfile.mkdtemp(prefix="klauncher_yt_")
+                try:
                     def _progress_hook(d):
                         if d.get('status') == 'downloading':
-                            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                            total      = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
                             downloaded = d.get('downloaded_bytes', 0)
-                            speed = d.get('speed') or 0
-                            pct = int(downloaded / total * 100) if total > 0 else 0
-                            speed_mb = speed / 1024 / 1024 if speed else 0
-                            detail = f"{downloaded/1024/1024:.1f} MB  •  {speed_mb:.1f} MB/s"
+                            speed      = d.get('speed') or 0
+                            pct        = int(downloaded / total * 100) if total > 0 else 0
+                            speed_mb   = speed / 1024 / 1024 if speed else 0
+                            detail     = f"{downloaded/1024/1024:.1f} MB  •  {speed_mb:.1f} MB/s"
                             _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background")},{json.dumps(detail)})')
                             _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
 
-                    ffmpeg_dir = os.path.dirname(ffmpeg_exe) if ffmpeg_exe else None
                     ydl_opts = {
-                        'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]/best[height<=1080]',
-                        'outtmpl': tmp_path,
+                        # Try: pre-merged mp4; fall back to anything ≤1080p; then best available
+                        'format': (
+                            'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]'
+                            '/bestvideo[height<=1080]+bestaudio'
+                            '/best[height<=1080]/best'
+                        ),
+                        # %(ext)s lets yt-dlp write the correct extension after merge
+                        'outtmpl': os.path.join(tmp_dir, 'bg.%(ext)s'),
                         'merge_output_format': 'mp4',
+                        'noplaylist': True,
                         'quiet': True,
                         'no_warnings': True,
                         'progress_hooks': [_progress_hook],
                     }
-                    if ffmpeg_dir:
-                        ydl_opts['ffmpeg_location'] = ffmpeg_dir
+                    # yt-dlp accepts either the binary path or a directory
+                    if ffmpeg_exe:
+                        ydl_opts['ffmpeg_location'] = ffmpeg_exe
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([yt_url])
 
-                    if os.path.exists(tmp_path) and os.path.getsize(tmp_path) >= MIN_VIDEO_SIZE:
-                        os.replace(tmp_path, out_path)
+                    # After a merge the file is bg.mp4; otherwise it's whatever ext yt-dlp chose
+                    result = os.path.join(tmp_dir, 'bg.mp4')
+                    if not (os.path.exists(result) and os.path.getsize(result) >= MIN_VIDEO_SIZE):
+                        # Scan for the largest non-partial file in the temp dir
+                        result = None
+                        for f in sorted(os.listdir(tmp_dir)):
+                            if f.endswith(('.part', '.ytdl', '.tmp')):
+                                continue
+                            fp = os.path.join(tmp_dir, f)
+                            if os.path.isfile(fp) and os.path.getsize(fp) >= MIN_VIDEO_SIZE:
+                                result = fp
+                                break
+
+                    if result:
+                        shutil.move(result, out_path)
                         self._log(f"YouTube background ready: {filename}")
                         _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
                     else:
-                        raise RuntimeError(f"yt-dlp produced no usable file")
+                        raise RuntimeError("yt-dlp produced no usable video file in temp dir")
                 except Exception as e:
                     self._log(f"YouTube background download failed: {e}")
                     _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps(str(e))})')
+                finally:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
 
             import threading as _threading
             _threading.Thread(target=_download_yt_bg, daemon=True).start()
