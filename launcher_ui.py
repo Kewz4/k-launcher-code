@@ -55,14 +55,14 @@ HTML_CONTENT = f"""
 
             --cancel-btn-grad-start: #dc2626;
             --cancel-btn-grad-end:   #f87171;
-            --shadow: 0 4px 32px var(--color-accent-glow);
+            --shadow: 0 4px 32px rgba(0,0,0,0.5);
 
             /* Updater screen bg tint */
             --updater-bg: radial-gradient(ellipse 80% 60% at 50% 110%, oklch(0.46 0.18 174 / 0.18) 0%, transparent 70%), var(--color-bg);
         }}
 
-        /* ── Prominence II palette — violet-indigo ───────────────────── */
-        html[data-modpack="prominence"] {{
+        /* ── NightfallCraft palette — deep indigo ────────────────────── */
+        html[data-modpack="nightfallcraft"] {{
             --color-accent:        oklch(0.68 0.22 288);
             --color-accent-dark:   oklch(0.40 0.20 288);
             --color-accent-glow:   oklch(0.68 0.22 288 / 0.38);
@@ -177,7 +177,7 @@ HTML_CONTENT = f"""
         #screen-initial-setup .wizard-step-content p {{ font-size: 15px; color: var(--color-text); margin-bottom: 24px; line-height: 1.6; }}
         #screen-initial-setup .wizard-buttons-horizontal {{ display: flex; gap: 16px; justify-content: center; }}
         #screen-initial-setup .wizard-buttons-horizontal .btn {{ flex: 1; }}
-        #screen-initial-setup .wizard-spinner {{ width: 40px; height: 40px; border: 4px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto 20px auto; box-shadow: 0 0 12px var(--color-accent-glow); }}
+        #screen-initial-setup .wizard-spinner {{ width: 40px; height: 40px; border: 4px solid var(--color-bg-lighter); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto 20px auto; }}
         
         /* (NUEVO) Consola y progreso para el asistente */
         #wizard-progress-container {{ display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }}
@@ -406,12 +406,35 @@ HTML_CONTENT = f"""
         }}
 
         /* --- Panel Lateral --- */
-        #side-panel {{ position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%; background-color: var(--panel-bg); border-right: 1px solid var(--color-accent-border); box-shadow: 5px 0 30px var(--color-accent-subtle); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 1000; padding: 24px 15px 24px 15px; display: flex; flex-direction: column; gap: 10px; }}
+        #side-panel {{
+            position: fixed; top: 0; left: 0; width: var(--panel-width); height: 100%;
+            background: rgba(5, 7, 15, 0.9);
+            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border-right: 1px solid rgba(255,255,255,0.06);
+            box-shadow: 8px 0 40px rgba(0,0,0,0.6);
+            transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.23,1,0.32,1);
+            z-index: 1000; padding: 20px 12px 20px 12px;
+            display: flex; flex-direction: column; gap: 2px;
+        }}
         #side-panel.panel-open {{ transform: translateX(0); }}
-        .panel-button {{ display: flex; align-items: center; gap: 15px; padding: 15px; background-color: var(--color-bg-lighter); color: var(--color-text); border: none; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; text-align: left; font-size: 16px; border: 1px solid transparent; }}
-        .panel-button:hover {{ background-color: var(--color-accent-subtle); border-color: var(--color-accent-border); color: var(--color-accent); }}
+        .panel-button {{
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 12px 10px 14px;
+            background: none; border: none;
+            border-left: 2px solid transparent;
+            border-radius: 0 8px 8px 0;
+            color: rgba(255,255,255,0.5); cursor: pointer;
+            transition: all 0.15s ease; text-align: left;
+            font-size: 14px; font-weight: 500;
+            font-family: var(--font-family-sans);
+        }}
+        .panel-button:hover {{
+            background: rgba(255,255,255,0.05);
+            border-left-color: var(--color-accent);
+            color: rgba(255,255,255,0.92);
+        }}
         .panel-button:hover i {{ color: var(--color-accent); }}
-        .panel-button i {{ font-size: 18px; width: 20px; text-align: center; color: var(--color-text-muted); transition: color 0.2s ease; }}
+        .panel-button i {{ font-size: 14px; width: 16px; text-align: center; color: rgba(255,255,255,0.28); transition: color 0.15s ease; }}
         #panel-overlay {{ position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s linear; }}
         #panel-overlay.visible {{ opacity: 1; visibility: visible; transition: opacity 0.3s ease; }}
 
@@ -450,7 +473,7 @@ HTML_CONTENT = f"""
         .changelog-item h4 .status-updated {{ color: var(--color-success); }}
         .changelog-item h4 .status-removed {{ color: var(--color-danger); }}
         .changelog-item h4 a {{ color: var(--color-text); text-decoration: none; vertical-align: middle; }}
-        .changelog-item h4 a:hover {{ color: var(--color-accent); text-decoration: underline; text-shadow: 0 0 8px var(--color-accent-glow); }}
+        .changelog-item h4 a:hover {{ color: var(--color-accent); text-decoration: underline; }}
         .changelog-item h4 span.no-link {{ color: var(--color-text); vertical-align: middle; }}
         .changelog-item p {{ font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
         .progress-bar {{ width: 100%; height: 16px; background-color: var(--color-bg); border-radius: 10px; overflow: hidden; }}
@@ -473,14 +496,14 @@ HTML_CONTENT = f"""
             backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
             border: 1px solid var(--color-accent-border); border-radius: var(--radius-md);
             padding: 12px; box-shadow: var(--shadow);
-            z-index: 101; animation: fadeIn 0.3s ease;
+            z-index: 2500; animation: fadeIn 0.3s ease;
             cursor: pointer; transition: background-color 0.2s ease;
         }}
         #minimized-progress-widget:hover {{ background-color: rgba(20, 28, 38, 0.97); }}
         .minimized-widget-header {{ font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent); margin-bottom: 4px; }}
         .minimized-progress-text {{ display: flex; justify-content: space-between; align-items: center; width: 100%; }}
         #minimized-progress-label {{ font-size: 13px; font-weight: 500; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }}
-        #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; text-shadow: 0 0 8px var(--color-accent-glow); }}
+        #minimized-progress-percent {{ font-size: 14px; font-weight: 700; color: var(--color-accent); flex-shrink: 0; }}
         .minimized-progress-bar-container {{ width: 100%; height: 6px; background-color: var(--color-bg); border-radius: 3px; overflow: hidden; }}
         #minimized-progress-bar-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-accent-dark), var(--color-accent)); border-radius: 3px; transition: width 0.3s ease; }}
 
@@ -564,58 +587,53 @@ HTML_CONTENT = f"""
         /* --- Side Panel Header --- */
         #panel-header {{
             display: flex; align-items: center; justify-content: space-between;
-            padding: 0 2px 16px 2px;
-            border-bottom: 1px solid var(--color-accent-border);
-            margin-bottom: 8px;
+            padding: 4px 4px 16px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            margin-bottom: 6px;
         }}
         #panel-title {{
-            font-size: 13px; font-weight: 700;
-            color: var(--color-accent);
-            letter-spacing: 0.5px; text-transform: uppercase;
+            font-size: 10px; font-weight: 800;
+            color: rgba(255,255,255,0.22);
+            letter-spacing: 0.14em; text-transform: uppercase;
         }}
         #panel-close-btn {{
             background: none; border: none;
-            color: var(--color-text-muted); cursor: pointer;
-            font-size: 16px; padding: 4px 6px;
-            border-radius: var(--radius-md);
-            transition: color 0.2s ease, background 0.2s ease;
+            color: rgba(255,255,255,0.3); cursor: pointer;
+            font-size: 14px; padding: 4px 6px;
+            border-radius: 6px;
+            transition: color 0.15s ease, background 0.15s ease;
             line-height: 1;
         }}
-        #panel-close-btn:hover {{ color: var(--color-text); background: var(--color-bg-lighter); }}
+        #panel-close-btn:hover {{ color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.08); }}
 
-        /* Push Quit to bottom, style it as a soft-danger action */
-        .panel-spacer {{ flex-grow: 1; min-height: 16px; }}
-        #panel-quit-btn {{ color: #d45e5e; border-color: transparent; }}
-        #panel-quit-btn i {{ color: #d45e5e; }}
-        #panel-quit-btn:hover {{ background-color: rgba(229, 57, 53, 0.08); border-color: rgba(229, 57, 53, 0.25); color: #e57373; }}
-        #panel-quit-btn:hover i {{ color: #e57373; }}
+        .panel-spacer {{ flex-grow: 1; min-height: 8px; }}
+        #panel-quit-btn {{ color: rgba(220,80,80,0.65); }}
+        #panel-quit-btn i {{ color: rgba(220,80,80,0.45); }}
+        #panel-quit-btn:hover {{ background: rgba(220,38,38,0.08); border-left-color: #dc2626; color: #ef4444; }}
+        #panel-quit-btn:hover i {{ color: #ef4444; }}
 
         /* --- Modpack Switcher --- */
         .panel-section-label {{
-            font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
-            text-transform: uppercase; color: var(--color-text-muted);
-            padding: 4px 6px 8px 6px; margin-top: 4px;
+            font-size: 9px; font-weight: 800; letter-spacing: 0.16em;
+            text-transform: uppercase; color: rgba(255,255,255,0.18);
+            padding: 12px 14px 5px 16px;
         }}
-        .modpack-btn {{
-            position: relative;
-            transition: all 0.18s cubic-bezier(0.23, 1, 0.32, 1);
-        }}
+        .modpack-btn {{ transition: all 0.15s ease; }}
         .modpack-btn.active {{
-            background-color: rgba(0, 212, 170, 0.1);
-            border-color: rgba(0, 212, 170, 0.3);
+            background: var(--color-accent-subtle);
+            border-left-color: var(--color-accent);
             color: var(--color-accent);
         }}
         .modpack-btn.active i.modpack-icon {{ color: var(--color-accent); }}
         .modpack-btn .modpack-check {{
-            margin-left: auto; font-size: 12px; opacity: 0;
-            transition: opacity 0.15s ease;
-            flex-shrink: 0;
+            margin-left: auto; font-size: 10px; opacity: 0;
+            transition: opacity 0.15s ease; flex-shrink: 0;
+            color: var(--color-accent);
         }}
-        .modpack-btn.active .modpack-check {{ opacity: 1; color: var(--color-accent); }}
-        .modpack-btn:not(.active):hover .modpack-check {{ opacity: 0.4; }}
+        .modpack-btn.active .modpack-check {{ opacity: 1; }}
         .panel-divider {{
-            height: 1px; background: rgba(0, 212, 170, 0.1);
-            margin: 6px 0; flex-shrink: 0;
+            height: 1px; background: rgba(255,255,255,0.07);
+            margin: 8px 12px; flex-shrink: 0;
         }}
 
         /* --- Settings folder display improvements --- */
@@ -737,7 +755,7 @@ HTML_CONTENT = f"""
         #resume-modal-content {{
             background-color: var(--color-bg-light); margin: auto; padding: 32px;
             border: 1px solid var(--color-accent-border); width: 90%; max-width: 460px;
-            border-radius: var(--radius-lg); box-shadow: 0 8px 40px var(--color-accent-glow);
+            border-radius: var(--radius-lg); box-shadow: 0 8px 40px rgba(0,0,0,0.6);
             text-align: center; animation: modalSlideIn 0.4s ease-out;
         }}
         #resume-modal-icon {{ font-size: 42px; margin-bottom: 14px; color: var(--color-accent); }}
@@ -811,9 +829,10 @@ HTML_CONTENT = f"""
 
     <!-- Pantalla Principal (Jugar) -->
     <div class="screen" id="screen-play" style="display: none;">
-        <!-- Background: video (Cobblemon) or static image (Prominence II) -->
+        <!-- Background: video (Cobblemon), YouTube iframe (NightfallCraft) -->
         <video id="bg-video" autoplay muted playsinline></video>
-        <img id="bg-image" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100vw; height:100vh; object-fit:cover; z-index:-1; pointer-events:none;" alt="">
+        <img id="bg-image" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100vw; height:100vh; object-fit:cover; z-index:0; pointer-events:none;" alt="">
+        <iframe id="bg-youtube" style="display:none; position:absolute; top:50%; left:50%; width:177.78vh; height:100vh; min-width:100vw; min-height:56.25vw; transform:translate(-50%,-50%); z-index:0; pointer-events:none; border:none;" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
         <!-- Video Overlay (Para Fade In) -->
         <div id="video-overlay"></div>
 
@@ -859,9 +878,9 @@ HTML_CONTENT = f"""
             <span>Cobblemon</span>
             <i class="fas fa-check modpack-check"></i>
         </button>
-        <button class="panel-button modpack-btn" id="panel-modpack-prominence" onclick="switchModpack('prominence')">
-            <i class="fas fa-mountain modpack-icon"></i>
-            <span>Prominence II</span>
+        <button class="panel-button modpack-btn" id="panel-modpack-nightfallcraft" onclick="switchModpack('nightfallcraft')">
+            <i class="fas fa-moon modpack-icon"></i>
+            <span>NightfallCraft</span>
             <i class="fas fa-check modpack-check"></i>
         </button>
 
@@ -1223,9 +1242,27 @@ HTML_CONTENT = f"""
 
         // Called by Python each time a bg asset becomes ready (downloaded or already cached).
         function onBgVideoReady(url) {{
+            // YouTube background: url = "youtube:<id>:<start>"
+            if (url.startsWith('youtube:')) {{
+                const parts = url.split(':');
+                const ytId    = parts[1] || '';
+                const ytStart = parts[2] || '0';
+                const bgYt = document.getElementById('bg-youtube');
+                if (bgYt && ytId) {{
+                    bgYt.src = `https://www.youtube.com/embed/${{ytId}}?autoplay=1&mute=1&controls=0&loop=1&playlist=${{ytId}}&start=${{ytStart}}&rel=0&modestbranding=1&disablekb=1&iv_load_policy=3&enablejsapi=0`;
+                    bgYt.style.display = '';
+                }}
+                const bgVideo = document.getElementById('bg-video');
+                if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
+                const bgImage = document.getElementById('bg-image');
+                if (bgImage) bgImage.style.display = 'none';
+                if (!_firstVideoReady) {{ _firstVideoReady = true; _maybeStartMainApp(); }}
+                return;
+            }}
+
             const isImage = /\.(webp|png|jpg|jpeg)(\?.*)?$/i.test(url);
             if (isImage) {{
-                // Static background image (e.g. Prominence II)
+                // Static background image
                 const bgImage = document.getElementById('bg-image');
                 if (bgImage) {{ bgImage.src = url; bgImage.style.display = 'block'; }}
                 const bgVideo = document.getElementById('bg-video');
@@ -1923,15 +1960,25 @@ HTML_CONTENT = f"""
             const activeBtn = document.getElementById('panel-modpack-' + info.id);
             if (activeBtn) activeBtn.classList.add('active');
 
-            // Switch background: video vs static image
+            // Switch background: video, image, or YouTube
             const bgVideo = document.getElementById('bg-video');
             const bgImage = document.getElementById('bg-image');
+            const bgYt    = document.getElementById('bg-youtube');
             if (info.bg_type === 'image') {{
                 if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
+                if (bgYt)    {{ bgYt.src = ''; bgYt.style.display = 'none'; }}
                 if (bgImage) bgImage.style.display = 'block';
-                // bg image is loaded by Python via onBgVideoReady (served through local HTTP server)
+            }} else if (info.bg_type === 'youtube') {{
+                if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
+                if (bgImage) bgImage.style.display = 'none';
+                if (bgYt && info.youtube_id) {{
+                    const ytStart = info.youtube_start || 0;
+                    bgYt.src = `https://www.youtube.com/embed/${{info.youtube_id}}?autoplay=1&mute=1&controls=0&loop=1&playlist=${{info.youtube_id}}&start=${{ytStart}}&rel=0&modestbranding=1&disablekb=1&iv_load_policy=3&enablejsapi=0`;
+                    bgYt.style.display = '';
+                }}
             }} else {{
                 if (bgImage) bgImage.style.display = 'none';
+                if (bgYt)    {{ bgYt.src = ''; bgYt.style.display = 'none'; }}
                 if (bgVideo) bgVideo.style.display = '';
                 // Reload the video playlist for the new modpack
                 bgVideoList = [];

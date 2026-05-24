@@ -10,7 +10,7 @@ import threading
 
 log = logging.getLogger(__name__)
 
-LAUNCHER_VERSION_URL = "https://raw.githubusercontent.com/Kewz4/kewz-cobblemon/main/launcher_version.txt"
+LAUNCHER_VERSION_URL = "https://raw.githubusercontent.com/Kewz4/K-Launcher-Assets/main/launcher_version.txt"
 
 class Updater:
     """Handles checking, downloading and applying launcher updates."""

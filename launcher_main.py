@@ -130,12 +130,14 @@ MODPACK_CONFIGS = {
         "instance_name": "Kewz's Cobblemon",
         "bg_type": "video",   # multiple .mp4 files in bg/
     },
-    "prominence": {
-        "id": "prominence",
-        "display_name": "Prominence II",
-        "folder": "Prominence II",
-        "instance_name": "Kewz's Prominence II",
-        "bg_type": "image",   # single .webp image in bg/
+    "nightfallcraft": {
+        "id": "nightfallcraft",
+        "display_name": "NightfallCraft",
+        "folder": "NightfallCraft",
+        "instance_name": "Kewz's NightfallCraft",
+        "bg_type": "youtube",  # YouTube video background (no local download)
+        "youtube_id": "uQWvVPRHOM0",
+        "youtube_start": 78,
     },
 }
 DEFAULT_MODPACK_ID = "cobblemon"
@@ -184,9 +186,7 @@ MODPACK_BG_DEFINITIONS = {
         {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg2_cob.mp4", "filename": "cobblemon_bg2.mp4"},
         {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg3_cob.mp4", "filename": "cobblemon_bg3.mp4"},
     ],
-    "prominence": [
-        {"url": f"{ASSET_REPO_RAW}/Prominence%20II/bg/bg.webp", "filename": "prominence_bg.webp"},
-    ],
+    "nightfallcraft": [],  # YouTube background — no local files to download
 }
 # Keep VIDEO_DEFINITIONS pointing to the default modpack for backward compat at startup
 VIDEO_DEFINITIONS = MODPACK_BG_DEFINITIONS[DEFAULT_MODPACK_ID]
@@ -273,7 +273,7 @@ class ModpackLauncherAPI:
         self.close_trigger_status = "PENDING"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
-        # Active modpack — can be "cobblemon" or "prominence"
+        # Active modpack — can be "cobblemon" or "nightfallcraft"
         self.active_modpack_id = DEFAULT_MODPACK_ID
 
     def _update_updater_ui(self, message, progress=None):
@@ -322,6 +322,8 @@ class ModpackLauncherAPI:
             "logo_url": self._mp_logo_url(),
             "bg_type": mp.get("bg_type", "video"),
             "instance_name": mp["instance_name"],
+            "youtube_id": mp.get("youtube_id", ""),
+            "youtube_start": mp.get("youtube_start", 0),
         }
 
     def py_switch_modpack(self, modpack_id):
@@ -362,6 +364,8 @@ class ModpackLauncherAPI:
             "bg_type": self._mp.get("bg_type", "video"),
             "instance_name": self._mp["instance_name"],
             "instance_path": self.instance_mc_path,
+            "youtube_id": self._mp.get("youtube_id", ""),
+            "youtube_start": self._mp.get("youtube_start", 0),
         }
 
     def py_get_modpack_list(self):
@@ -533,12 +537,6 @@ class ModpackLauncherAPI:
         except Exception:
             ffmpeg_exe = None
 
-        os.makedirs(VIDEO_DIR, exist_ok=True)
-        port = self._start_video_server()
-        bg_defs = MODPACK_BG_DEFINITIONS.get(self.active_modpack_id, VIDEO_DEFINITIONS)
-        video_total = len(bg_defs)
-        CHUNK = 1024 * 256  # 256 KB read chunks
-
         def _js(expr):
             """Evaluate JS, ignoring errors if the window/page isn't ready yet."""
             try:
@@ -546,6 +544,19 @@ class ModpackLauncherAPI:
                     self.window.evaluate_js(expr)
             except Exception:
                 pass
+
+        # YouTube backgrounds are served inline — nothing to download
+        if self._mp.get("bg_type") == "youtube":
+            yt_id    = self._mp.get("youtube_id", "")
+            yt_start = self._mp.get("youtube_start", 0)
+            _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps("youtube:" + yt_id + ":" + str(yt_start))})')
+            return
+
+        os.makedirs(VIDEO_DIR, exist_ok=True)
+        port = self._start_video_server()
+        bg_defs = MODPACK_BG_DEFINITIONS.get(self.active_modpack_id, VIDEO_DEFINITIONS)
+        video_total = len(bg_defs)
+        CHUNK = 1024 * 256  # 256 KB read chunks
 
         def _compress(src, dst):
             """Re-encode to 1080p H.264 CRF 28, no audio. Returns True on success."""
@@ -3078,7 +3089,7 @@ class ModpackLauncherAPI:
             for item in tree_items:
                 if item['type'] == 'tree':
                     parts = item['path'].split('/')
-                    # Path looks like: "Cobblemon/versions/1.1" or "Prominence II/versions/1.1"
+                    # Path looks like: "Cobblemon/versions/1.1" or "NightfallCraft/versions/1.1"
                     if len(parts) == 3 and parts[0] == mp_folder and parts[1] == 'versions':
                         ver_str = parts[2]
                         if re.fullmatch(r'\d+(\.\d+)*', ver_str):
