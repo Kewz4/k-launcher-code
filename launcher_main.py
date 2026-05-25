@@ -130,26 +130,18 @@ MODPACK_CONFIGS = {
         "instance_name": "Kewz's Cobblemon",
         "bg_type": "video",   # multiple .mp4 files in bg/
     },
-    "nightfallcraft": {
-        "id": "nightfallcraft",
-        "display_name": "NightfallCraft",
-        "folder": "NightfallCraft",
-        "instance_name": "Kewz's NightfallCraft",
-        "bg_type": "youtube",  # YouTube video background (no local download)
-        "youtube_id": "uQWvVPRHOM0",
-        "youtube_start": 78,
-    },
     "casket_of_reveries": {
         "id": "casket_of_reveries",
         "display_name": "The Casket of Reveries",
         "folder": "CasketOfReveries",
         "instance_name": "Kewz's Casket of Reveries",
-        "bg_type": "video",
-        # Direct modpack zip URL — bypasses the GitHub modpack-url.txt lookup
+        "bg_type": "youtube",
+        "youtube_id": "uQWvVPRHOM0",
+        "youtube_start": 78,
         "modpack_zip_url": "https://www.mediafire.com/file/2uk8op16lam7ie7/The+Casket+of+Reveries+-2.2.7.1+(1).zip/file",
     },
 }
-DEFAULT_MODPACK_ID = "nightfallcraft"
+DEFAULT_MODPACK_ID = "casket_of_reveries"
 
 # --- Prism Launcher ---
 PRISM_DEFAULT_PATHS_WINDOWS = [
@@ -195,8 +187,7 @@ MODPACK_BG_DEFINITIONS = {
         {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg2_cob.mp4", "filename": "cobblemon_bg2.mp4"},
         {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg3_cob.mp4", "filename": "cobblemon_bg3.mp4"},
     ],
-    "nightfallcraft": [],       # YouTube background — no local files to download
-    "casket_of_reveries": [],  # No bg videos defined yet
+    "casket_of_reveries": [],  # YouTube background — no local files to download
 }
 # Keep VIDEO_DEFINITIONS pointing to the default modpack for backward compat at startup
 VIDEO_DEFINITIONS = MODPACK_BG_DEFINITIONS[DEFAULT_MODPACK_ID]
@@ -283,7 +274,7 @@ class ModpackLauncherAPI:
         self.close_trigger_status = "PENDING"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
-        # Active modpack — can be "cobblemon" or "nightfallcraft"
+        # Active modpack — can be "cobblemon" or "casket_of_reveries"
         self.active_modpack_id = DEFAULT_MODPACK_ID
         # Tracks files currently being downloaded so duplicate calls are ignored
         self._bg_downloads_in_progress = set()
