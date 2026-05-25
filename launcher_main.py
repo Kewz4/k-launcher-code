@@ -604,10 +604,10 @@ class ModpackLauncherAPI:
                             _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
 
                     ydl_opts = {
-                        # Try: pre-merged mp4; fall back to anything ≤1080p; then best available
+                        # Avoid ext=mp4 constraint — it forces CDN paths that get 403'd.
+                        # Let yt-dlp pick best streams and merge into mp4 via ffmpeg.
                         'format': (
-                            'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]'
-                            '/bestvideo[height<=1080]+bestaudio'
+                            'bestvideo[height<=1080]+bestaudio'
                             '/best[height<=1080]/best'
                         ),
                         # %(ext)s lets yt-dlp write the correct extension after merge
@@ -617,6 +617,8 @@ class ModpackLauncherAPI:
                         'quiet': True,
                         'no_warnings': True,
                         'progress_hooks': [_progress_hook],
+                        # iOS/Android clients bypass YouTube's bot-detection 403 blocks
+                        'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web_creator']}},
                     }
                     # yt-dlp accepts either the binary path or a directory
                     if ffmpeg_exe:

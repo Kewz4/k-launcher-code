@@ -1258,14 +1258,20 @@ HTML_CONTENT = f"""
                 }}
             }} else {{
                 bgVideoList.push(url);
-                if (!_firstVideoReady) {{
-                    _firstVideoReady = true;
+                // Start (or restart) playback whenever bgVideoPlaying is false —
+                // _applyModpackUI resets this flag on every modpack switch so the
+                // first ready URL after a switch always kicks off playback.
+                if (!bgVideoPlaying) {{
+                    bgVideoPlaying = true;
                     bgVideoIndex = Math.floor(Math.random() * bgVideoList.length);
                     const bgVideo = document.getElementById('bg-video');
                     if (bgVideo) bgVideo.style.display = '';
                     const bgImage = document.getElementById('bg-image');
                     if (bgImage) bgImage.style.display = 'none';
                     _loadBgVideo(bgVideoIndex);
+                }}
+                if (!_firstVideoReady) {{
+                    _firstVideoReady = true;
                     _maybeStartMainApp();
                 }}
             }}
