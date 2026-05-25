@@ -70,6 +70,14 @@ HTML_CONTENT = f"""
             --color-accent-border: oklch(0.68 0.22 288 / 0.26);
             --updater-bg: radial-gradient(ellipse 80% 60% at 50% 110%, oklch(0.40 0.20 288 / 0.22) 0%, transparent 70%), var(--color-bg);
         }}
+        html[data-modpack="casket_of_reveries"] {{
+            --color-accent:        oklch(0.72 0.17 55);
+            --color-accent-dark:   oklch(0.44 0.15 55);
+            --color-accent-glow:   oklch(0.72 0.17 55 / 0.38);
+            --color-accent-subtle: oklch(0.72 0.17 55 / 0.11);
+            --color-accent-border: oklch(0.72 0.17 55 / 0.26);
+            --updater-bg: radial-gradient(ellipse 80% 60% at 50% 110%, oklch(0.44 0.15 55 / 0.22) 0%, transparent 70%), var(--color-bg);
+        }}
 
         /* Smooth color transitions — fires when data-modpack attribute changes */
         *,
@@ -884,6 +892,11 @@ HTML_CONTENT = f"""
         <button class="panel-button modpack-btn" id="panel-modpack-nightfallcraft" onclick="switchModpack('nightfallcraft')">
             <i class="fas fa-moon modpack-icon"></i>
             <span>NightfallCraft</span>
+            <i class="fas fa-check modpack-check"></i>
+        </button>
+        <button class="panel-button modpack-btn" id="panel-modpack-casket_of_reveries" onclick="switchModpack('casket_of_reveries')">
+            <i class="fas fa-skull modpack-icon"></i>
+            <span>Casket of Reveries</span>
             <i class="fas fa-check modpack-check"></i>
         </button>
 

@@ -139,6 +139,15 @@ MODPACK_CONFIGS = {
         "youtube_id": "uQWvVPRHOM0",
         "youtube_start": 78,
     },
+    "casket_of_reveries": {
+        "id": "casket_of_reveries",
+        "display_name": "The Casket of Reveries",
+        "folder": "CasketOfReveries",
+        "instance_name": "Kewz's Casket of Reveries",
+        "bg_type": "video",
+        # Direct modpack zip URL — bypasses the GitHub modpack-url.txt lookup
+        "modpack_zip_url": "https://www.mediafire.com/file/2uk8op16lam7ie7/The+Casket+of+Reveries+-2.2.7.1.zip/file",
+    },
 }
 DEFAULT_MODPACK_ID = "nightfallcraft"
 
@@ -186,7 +195,8 @@ MODPACK_BG_DEFINITIONS = {
         {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg2_cob.mp4", "filename": "cobblemon_bg2.mp4"},
         {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg3_cob.mp4", "filename": "cobblemon_bg3.mp4"},
     ],
-    "nightfallcraft": [],  # YouTube background — no local files to download
+    "nightfallcraft": [],       # YouTube background — no local files to download
+    "casket_of_reveries": [],  # No bg videos defined yet
 }
 # Keep VIDEO_DEFINITIONS pointing to the default modpack for backward compat at startup
 VIDEO_DEFINITIONS = MODPACK_BG_DEFINITIONS[DEFAULT_MODPACK_ID]
@@ -310,6 +320,70 @@ class ModpackLauncherAPI:
 
     def _mp_modpack_url_source(self):
         return f"{self._mp_raw_base()}/modpack-url.txt"
+
+    def _resolve_mediafire_url(self, share_url, timeout=20):
+        """Resolve a MediaFire share page URL to a direct download URL."""
+        import re
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+
+        # Try the MediaFire API first (fastest, most reliable)
+        key_match = re.search(r'/file/([a-zA-Z0-9]+)/', share_url)
+        if key_match:
+            quick_key = key_match.group(1)
+            try:
+                api_url = (f"https://www.mediafire.com/api/1.5/file/get_links.php"
+                           f"?quick_key={quick_key}&response_format=json&link_type=normal_download")
+                resp = requests.get(api_url, headers=headers, timeout=timeout)
+                data = resp.json()
+                links = data.get("response", {}).get("links", [])
+                if links:
+                    dl_url = links[0].get("normal_download", "")
+                    if dl_url and dl_url.startswith("http"):
+                        self._log(f"MediaFire API resolved: {dl_url}")
+                        return dl_url
+            except Exception as e:
+                self._log(f"MediaFire API fallback: {e}")
+
+        # Fallback: scrape the download button URL from the HTML page
+        resp = requests.get(share_url, headers=headers, timeout=timeout, allow_redirects=True)
+        resp.raise_for_status()
+        html = resp.text
+
+        for pattern in [
+            r'href="(https://download\d*\.mediafire\.com/[^"]+)"',
+            r'"(https://download\d*\.mediafire\.com/[^"]+)"',
+        ]:
+            match = re.search(pattern, html)
+            if match:
+                url = match.group(1).replace('&amp;', '&')
+                self._log(f"MediaFire scrape resolved: {url}")
+                return url
+
+        raise ValueError(f"Could not resolve direct download URL from MediaFire page: {share_url}")
+
+    def _enforce_epicfight_config(self):
+        """Ensures use_compute_shader = false in epicfight-client.toml on every launch."""
+        if not self.instance_mc_path:
+            return
+        config_path = os.path.join(self.instance_mc_path, 'config', 'epicfight-client.toml')
+        if not os.path.isfile(config_path):
+            return
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            import re as _re
+            new_content = _re.sub(
+                r'(use_compute_shader\s*=\s*)true',
+                r'\1false',
+                content,
+                flags=_re.IGNORECASE
+            )
+            if new_content != content:
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                self._log("Enforced use_compute_shader = false in epicfight-client.toml")
+        except Exception as e:
+            self._log(f"Warning: could not patch epicfight-client.toml: {e}")
 
     def _mp_logo_url(self):
         return f"{self._mp_raw_base()}/minecraftlogo.png"
@@ -604,12 +678,15 @@ class ModpackLauncherAPI:
                             _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
 
                     ydl_opts = {
-                        # Avoid ext=mp4 constraint — it forces CDN paths that get 403'd.
-                        # Let yt-dlp pick best streams and merge into mp4 via ffmpeg.
+                        # Prefer 1080p, fall back to best available.
+                        # Avoid [ext=mp4] constraint — it forces CDN paths that 403.
                         'format': (
-                            'bestvideo[height<=1080]+bestaudio'
-                            '/best[height<=1080]/best'
+                            'bestvideo[height=1080]+bestaudio'
+                            '/bestvideo[height<=1080][height>=720]+bestaudio'
+                            '/bestvideo[height<=1080]+bestaudio'
+                            '/best'
                         ),
+                        'format_sort': ['res:1080', 'quality'],
                         # %(ext)s lets yt-dlp write the correct extension after merge
                         'outtmpl': os.path.join(tmp_dir, 'bg.%(ext)s'),
                         'merge_output_format': 'mp4',
@@ -617,8 +694,8 @@ class ModpackLauncherAPI:
                         'quiet': True,
                         'no_warnings': True,
                         'progress_hooks': [_progress_hook],
-                        # iOS/Android clients bypass YouTube's bot-detection 403 blocks
-                        'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web_creator']}},
+                        # web_creator gives highest quality; ios/android bypass 403 blocks
+                        'extractor_args': {'youtube': {'player_client': ['web_creator', 'ios', 'android']}},
                     }
                     # yt-dlp accepts either the binary path or a directory
                     if ffmpeg_exe:
@@ -1923,18 +2000,23 @@ class ModpackLauncherAPI:
 
             self._update_install_status("Obteniendo enlace de descarga...")
 
-            # Fetch URL from modpack-url.txt (may be a GoFile share link or a direct URL)
+            # Fetch URL — either baked into the modpack config or from modpack-url.txt on GitHub
             try:
-                mp_url_source = self._mp_modpack_url_source()
-                self._log(f"DEBUG: Consultando {mp_url_source}")
-                resp = requests.get(mp_url_source, timeout=15)
-                resp.raise_for_status()
-                raw_url = resp.text.replace('\n', '').replace('\r', '').strip()
-                if not raw_url.startswith('http'):
-                    raise ValueError(f"modpack-url.txt no contiene una URL válida: '{raw_url}'")
-                self._log(f"URL leída desde repo: {raw_url}")
+                direct_zip_url = self._mp.get("modpack_zip_url")
+                if direct_zip_url:
+                    raw_url = direct_zip_url
+                    self._log(f"Using modpack zip URL from config: {raw_url}")
+                else:
+                    mp_url_source = self._mp_modpack_url_source()
+                    self._log(f"DEBUG: Consultando {mp_url_source}")
+                    resp = requests.get(mp_url_source, timeout=15)
+                    resp.raise_for_status()
+                    raw_url = resp.text.replace('\n', '').replace('\r', '').strip()
+                    if not raw_url.startswith('http'):
+                        raise ValueError(f"modpack-url.txt no contiene una URL válida: '{raw_url}'")
+                    self._log(f"URL leída desde repo: {raw_url}")
 
-                # If it's a GoFile share link, resolve to a direct download URL
+                # Resolve share links to direct download URLs
                 if "gofile.io/d/" in raw_url:
                     self._update_install_status("Resolviendo enlace de GoFile...")
                     try:
@@ -1949,6 +2031,10 @@ class ModpackLauncherAPI:
                             f"con la URL directa de descarga. "
                             f"Error técnico: {gofile_err}"
                         )
+                elif "mediafire.com" in raw_url:
+                    self._update_install_status("Resolviendo enlace de MediaFire...")
+                    modpack_url = self._resolve_mediafire_url(raw_url)
+                    self._log(f"URL directa obtenida desde MediaFire: {modpack_url}")
                 else:
                     # Already a direct download URL
                     modpack_url = raw_url
@@ -2206,6 +2292,9 @@ class ModpackLauncherAPI:
                 self._log("La sincronización de options.txt falló. Abortando lanzamiento.")
                 # El mensaje de error ya se mostró en _sync_options_txt
                 return
+
+            # --- Paso 1b: Enforce critical mod configs ---
+            self._enforce_epicfight_config()
 
             # --- Paso 2: Actualizar ---
             self._log("Iniciando comprobación de actualizaciones...")
