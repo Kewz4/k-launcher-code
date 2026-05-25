@@ -138,7 +138,7 @@ MODPACK_CONFIGS = {
         "bg_type": "youtube",
         "youtube_id": "uQWvVPRHOM0",
         "youtube_start": 78,
-        "modpack_zip_url": "https://www.mediafire.com/file/2uk8op16lam7ie7/The+Casket+of+Reveries+-2.2.7.1+(1).zip/file",
+        "modpack_zip_url": "https://download939.mediafire.com/vpjszm54j52gS1HAG4dIiruNxsj-kTYRkQEMcSewlO6NacXLx3vh6jmq0xA3UvhI6_Sycyca1iYCh2wIOwIikh9Ue0HyH2h8z5-_cN2SigjWkrfWcnJVdW88XtwRw-iolnyzh6yIp4E-CVyCOsRUL_Ye4Znz_0S_EHEfEWldGlqZ/2uk8op16lam7ie7/The+Casket+of+Reveries+-2.2.7.1+%281%29.zip",
     },
 }
 DEFAULT_MODPACK_ID = "nightfallcraft"
@@ -2056,7 +2056,8 @@ class ModpackLauncherAPI:
                             f"con la URL directa de descarga. "
                             f"Error técnico: {gofile_err}"
                         )
-                elif "mediafire.com" in raw_url:
+                elif "www.mediafire.com/file/" in raw_url:
+                    # Share page URL — resolve to a direct CDN download URL
                     self._update_install_status("Resolviendo enlace de MediaFire...")
                     modpack_url = self._resolve_mediafire_url(raw_url)
                     self._log(f"URL directa obtenida desde MediaFire: {modpack_url}")
