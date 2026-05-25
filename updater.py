@@ -55,7 +55,7 @@ class Updater:
 
         # 1. Fetch latest version from unified GitHub repo
         try:
-            v_response = requests.get(LAUNCHER_VERSION_URL, timeout=10)
+            v_response = requests.get(LAUNCHER_VERSION_URL, timeout=5)
             v_response.raise_for_status()
             remote_version_str = v_response.text.strip()
             remote_version_float = float(remote_version_str)
@@ -79,7 +79,7 @@ class Updater:
             try:
                 tag_url = f"{self.base_api_url}/tags/{remote_version_str}"
                 self._log(f"Trying release by tag: {tag_url}")
-                response = requests.get(tag_url, timeout=15)
+                response = requests.get(tag_url, timeout=8)
                 if response.status_code == 200:
                     self._log("Release found by exact tag.")
                     full_release_data = response.json()
@@ -95,7 +95,7 @@ class Updater:
                 try:
                     latest_url = f"{self.base_api_url}/latest"
                     self._log(f"Trying 'latest' release: {latest_url}")
-                    response = requests.get(latest_url, timeout=15)
+                    response = requests.get(latest_url, timeout=8)
                     if response.status_code == 200:
                         data = response.json()
                         temp_assets = data.get("assets", [])

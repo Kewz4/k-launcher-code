@@ -140,7 +140,7 @@ MODPACK_CONFIGS = {
         "youtube_start": 78,
     },
 }
-DEFAULT_MODPACK_ID = "cobblemon"
+DEFAULT_MODPACK_ID = "nightfallcraft"
 
 # --- Prism Launcher ---
 PRISM_DEFAULT_PATHS_WINDOWS = [

@@ -577,10 +577,14 @@ HTML_CONTENT = f"""
         #result-details {{ font-size: 14px; color: var(--color-text-muted); margin-bottom: 24px; max-height: 150px; overflow-y: auto; text-align: left; background: var(--color-bg); padding: 10px; border-radius: var(--radius-md); white-space: pre-wrap; word-wrap: break-word; border: 1px solid var(--color-bg-lighter); user-select: text; cursor: text; }}
         #close-modal-btn {{ width: auto; min-width: 120px; margin: 0 auto; }}
 
-        /* --- Updater Screen Logo --- */
+        /* --- Updater Screen Title --- */
         #updater-logo {{
-            max-width: 360px; width: 85%; height: auto;
-            margin-bottom: 32px; opacity: 0.92;
+            font-size: clamp(28px, 4.5vw, 52px);
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            color: #fff;
+            margin-bottom: 32px;
+            text-shadow: 0 2px 24px rgba(0,0,0,0.7);
         }}
 
         /* --- Container: animate on show --- */
@@ -813,7 +817,7 @@ HTML_CONTENT = f"""
     <!-- Auto-Update Screen -->
     <div id="screen-updater">
         <div id="updater-container">
-            <img src="{LOGO_URL}" alt="K Launcher" id="updater-logo">
+            <div id="updater-logo">Kewz Launcher</div>
             <h1 id="updater-title">Checking for Updates...</h1>
             <div id="updater-progress-bar-container">
                 <div id="updater-progress-bar" style="width: 5%;"></div>
@@ -1492,16 +1496,32 @@ HTML_CONTENT = f"""
             logToUpdaterConsole(`Warning: ${{error_message}}`);
             dom.updater.title.textContent = 'Update Check Failed';
             dom.updater.buttons.innerHTML = '';
-            const skipButton = document.createElement('button');
-            skipButton.textContent = 'Continue Anyway';
-            skipButton.className = 'btn btn-secondary';
-            skipButton.onclick = () => {{
+
+            const _proceed = () => {{
+                clearTimeout(autoTimer);
                 if (_videoGateTimeout) {{ clearTimeout(_videoGateTimeout); _videoGateTimeout = null; }}
                 _updateCheckDone = true;
                 _firstVideoReady = true;
                 _maybeStartMainApp();
             }};
+
+            // Auto-continue after 5 s so a network error never hard-blocks the launcher
+            let countdown = 5;
+            const skipButton = document.createElement('button');
+            skipButton.textContent = `Continue (${{countdown}}s)`;
+            skipButton.className = 'btn btn-secondary';
+            skipButton.onclick = _proceed;
             dom.updater.buttons.appendChild(skipButton);
+
+            const autoTimer = setInterval(() => {{
+                countdown--;
+                if (countdown <= 0) {{
+                    clearInterval(autoTimer);
+                    _proceed();
+                }} else {{
+                    skipButton.textContent = `Continue (${{countdown}}s)`;
+                }}
+            }}, 1000);
         }}
 
         // --- Funciones UI ---
@@ -1926,11 +1946,9 @@ HTML_CONTENT = f"""
             // Apply CSS theme via data-modpack attribute
             document.documentElement.setAttribute('data-modpack', info.id);
 
-            // Update logo
+            // Update modpack logo on the main play screen
             const logo = document.getElementById('minecraft-logo');
-            const updaterLogo = document.getElementById('updater-logo');
             if (logo && info.logo_url) logo.src = info.logo_url;
-            if (updaterLogo && info.logo_url) updaterLogo.src = info.logo_url;
 
             // Update modpack name display
             const nameEl = document.getElementById('modpack-name-display');
@@ -1945,14 +1963,16 @@ HTML_CONTENT = f"""
             const bgVideo = document.getElementById('bg-video');
             const bgImage = document.getElementById('bg-image');
             if (info.bg_type === 'image') {{
-                if (bgVideo) {{ bgVideo.pause(); bgVideo.style.display = 'none'; }}
+                if (bgVideo) {{ bgVideo.pause(); bgVideo.src = ''; bgVideo.style.display = 'none'; }}
                 if (bgImage) bgImage.style.display = 'block';
             }} else {{
                 // 'video' and 'youtube' both play through <video>
+                // Stop & clear the old video so the previous modpack's clip doesn't bleed through
+                if (bgVideo) {{ bgVideo.pause(); bgVideo.src = ''; bgVideo.style.display = 'none'; }}
                 if (bgImage) bgImage.style.display = 'none';
-                if (bgVideo) bgVideo.style.display = '';
                 bgVideoList = [];
                 bgVideoPlaying = false;
+                // Video element will be made visible again when onBgVideoReady fires
             }}
 
             // Refresh play button state (instance may have changed)
