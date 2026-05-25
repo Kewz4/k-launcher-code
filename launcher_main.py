@@ -641,11 +641,32 @@ class ModpackLauncherAPI:
                 data = _json.loads(resp.read())
             return data['objects'][0]['actions']['download']['href']
 
+        ffmpeg_exe = None
         try:
             import imageio_ffmpeg
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception:
-            ffmpeg_exe = None
+            self._log(f"ffmpeg found (imageio_ffmpeg): {ffmpeg_exe}")
+        except Exception as e:
+            self._log(f"imageio_ffmpeg unavailable: {e}")
+
+        if not ffmpeg_exe:
+            import shutil as _shutil
+            ffmpeg_exe = _shutil.which('ffmpeg') or _shutil.which('ffmpeg.exe')
+            if ffmpeg_exe:
+                self._log(f"ffmpeg found (PATH): {ffmpeg_exe}")
+
+        if not ffmpeg_exe and getattr(sys, 'frozen', False):
+            # Check the directory containing the exe itself
+            _exe_dir = os.path.dirname(sys.executable)
+            for _name in ('ffmpeg.exe', 'ffmpeg'):
+                _candidate = os.path.join(_exe_dir, _name)
+                if os.path.isfile(_candidate):
+                    ffmpeg_exe = _candidate
+                    self._log(f"ffmpeg found (exe dir): {ffmpeg_exe}")
+                    break
+
+        if not ffmpeg_exe:
+            self._log("WARNING: ffmpeg not found — yt-dlp will use low-quality pre-merged format. Rebuild the exe (spec now includes imageio_ffmpeg data files).")
 
         def _js(expr):
             """Evaluate JS, ignoring errors if the window/page isn't ready yet."""
@@ -692,6 +713,18 @@ class ModpackLauncherAPI:
                 # Isolate all of yt-dlp's intermediate/part files in a temp dir
                 tmp_dir = _tempfile.mkdtemp(prefix="klauncher_yt_")
                 try:
+                    class _YtLogger:
+                        def debug(self_, msg):
+                            if msg.startswith('[debug]'):
+                                return
+                            self._log(f"[yt-dlp] {msg}")
+                        def info(self_, msg):
+                            self._log(f"[yt-dlp] {msg}")
+                        def warning(self_, msg):
+                            self._log(f"[yt-dlp WARNING] {msg}")
+                        def error(self_, msg):
+                            self._log(f"[yt-dlp ERROR] {msg}")
+
                     def _progress_hook(d):
                         if d.get('status') == 'downloading':
                             total      = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
@@ -715,8 +748,7 @@ class ModpackLauncherAPI:
                         'outtmpl': os.path.join(tmp_dir, 'bg.%(ext)s'),
                         'merge_output_format': 'mp4',
                         'noplaylist': True,
-                        'quiet': True,
-                        'no_warnings': True,
+                        'logger': _YtLogger(),
                         'progress_hooks': [_progress_hook],
                         # ios bypasses bot-detection 403s reliably; tv_embedded gives
                         # full 1080p streams without the SABR/po-token restrictions

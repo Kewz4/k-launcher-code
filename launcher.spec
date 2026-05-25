@@ -19,6 +19,7 @@
 # over time via Microsoft SmartScreen Application Reputation.
 
 import os
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 
@@ -30,6 +31,10 @@ a = Analysis(
         ('launcher_version.txt', '.'),
         ('Kewz Launcher.ico',    '.'),
         ('music_player.py',      '.'),
+        # imageio_ffmpeg bundles a pre-compiled ffmpeg.exe inside its package;
+        # without this entry PyInstaller omits it and yt-dlp falls back to
+        # low-quality pre-merged formats (no stream merging possible).
+        *collect_data_files('imageio_ffmpeg'),
     ],
     hiddenimports=[
         'pywebview',
@@ -39,6 +44,10 @@ a = Analysis(
         'pythonnet',
         'pkg_resources.py2_warn',
         'psutil',
+        'imageio_ffmpeg',
+        'yt_dlp',
+        'yt_dlp.extractor',
+        'yt_dlp.extractor.youtube',
     ],
     hookspath=[],
     hooksconfig={},
