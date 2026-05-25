@@ -146,7 +146,7 @@ MODPACK_CONFIGS = {
         "instance_name": "Kewz's Casket of Reveries",
         "bg_type": "video",
         # Direct modpack zip URL — bypasses the GitHub modpack-url.txt lookup
-        "modpack_zip_url": "https://www.mediafire.com/file/2uk8op16lam7ie7/The+Casket+of+Reveries+-2.2.7.1.zip/file",
+        "modpack_zip_url": "https://www.mediafire.com/file/2uk8op16lam7ie7/The+Casket+of+Reveries+-2.2.7.1+(1).zip/file",
     },
 }
 DEFAULT_MODPACK_ID = "nightfallcraft"
