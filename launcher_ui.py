@@ -61,14 +61,14 @@ HTML_CONTENT = f"""
             --updater-bg: radial-gradient(ellipse 80% 60% at 50% 110%, oklch(0.46 0.18 174 / 0.18) 0%, transparent 70%), var(--color-bg);
         }}
 
-        /* ── Casket of Reveries palette — warm amber ─────────────────── */
-        html[data-modpack="casket_of_reveries"] {{
-            --color-accent:        oklch(0.72 0.17 55);
-            --color-accent-dark:   oklch(0.44 0.15 55);
-            --color-accent-glow:   oklch(0.72 0.17 55 / 0.38);
-            --color-accent-subtle: oklch(0.72 0.17 55 / 0.11);
-            --color-accent-border: oklch(0.72 0.17 55 / 0.26);
-            --updater-bg: radial-gradient(ellipse 80% 60% at 50% 110%, oklch(0.44 0.15 55 / 0.22) 0%, transparent 70%), var(--color-bg);
+        /* ── NightfallCraft palette — deep indigo ────────────────────── */
+        html[data-modpack="nightfallcraft"] {{
+            --color-accent:        oklch(0.68 0.22 288);
+            --color-accent-dark:   oklch(0.40 0.20 288);
+            --color-accent-glow:   oklch(0.68 0.22 288 / 0.38);
+            --color-accent-subtle: oklch(0.68 0.22 288 / 0.11);
+            --color-accent-border: oklch(0.68 0.22 288 / 0.26);
+            --updater-bg: radial-gradient(ellipse 80% 60% at 50% 110%, oklch(0.40 0.20 288 / 0.22) 0%, transparent 70%), var(--color-bg);
         }}
 
         /* Smooth color transitions — fires when data-modpack attribute changes */
@@ -833,7 +833,7 @@ HTML_CONTENT = f"""
 
     <!-- Pantalla Principal (Jugar) -->
     <div class="screen" id="screen-play" style="display: none;">
-        <!-- Background: video (Cobblemon, Casket of Reveries via yt-dlp) or static image -->
+        <!-- Background: video (Cobblemon mp4s, NightfallCraft via yt-dlp) or static image -->
         <video id="bg-video" autoplay muted playsinline></video>
         <img id="bg-image" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100vw; height:100vh; object-fit:cover; z-index:0; pointer-events:none;" alt="">
         <!-- Video Overlay (Para Fade In) -->
@@ -881,9 +881,9 @@ HTML_CONTENT = f"""
             <span>Cobblemon</span>
             <i class="fas fa-check modpack-check"></i>
         </button>
-        <button class="panel-button modpack-btn" id="panel-modpack-casket_of_reveries" onclick="switchModpack('casket_of_reveries')">
-            <i class="fas fa-skull modpack-icon"></i>
-            <span>Casket of Reveries</span>
+        <button class="panel-button modpack-btn" id="panel-modpack-nightfallcraft" onclick="switchModpack('nightfallcraft')">
+            <i class="fas fa-moon modpack-icon"></i>
+            <span>NightfallCraft</span>
             <i class="fas fa-check modpack-check"></i>
         </button>
 

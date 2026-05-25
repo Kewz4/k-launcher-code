@@ -130,18 +130,18 @@ MODPACK_CONFIGS = {
         "instance_name": "Kewz's Cobblemon",
         "bg_type": "video",   # multiple .mp4 files in bg/
     },
-    "casket_of_reveries": {
-        "id": "casket_of_reveries",
-        "display_name": "The Casket of Reveries",
-        "folder": "CasketOfReveries",
-        "instance_name": "Kewz's Casket of Reveries",
+    "nightfallcraft": {
+        "id": "nightfallcraft",
+        "display_name": "NightfallCraft",
+        "folder": "NightfallCraft",
+        "instance_name": "Kewz's NightfallCraft",
         "bg_type": "youtube",
         "youtube_id": "uQWvVPRHOM0",
         "youtube_start": 78,
         "modpack_zip_url": "https://www.mediafire.com/file/2uk8op16lam7ie7/The+Casket+of+Reveries+-2.2.7.1+(1).zip/file",
     },
 }
-DEFAULT_MODPACK_ID = "casket_of_reveries"
+DEFAULT_MODPACK_ID = "nightfallcraft"
 
 # --- Prism Launcher ---
 PRISM_DEFAULT_PATHS_WINDOWS = [
@@ -187,7 +187,7 @@ MODPACK_BG_DEFINITIONS = {
         {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg2_cob.mp4", "filename": "cobblemon_bg2.mp4"},
         {"url": f"{ASSET_REPO_RAW}/Cobblemon/bg/video_bg3_cob.mp4", "filename": "cobblemon_bg3.mp4"},
     ],
-    "casket_of_reveries": [],  # YouTube background — no local files to download
+    "nightfallcraft": [],  # YouTube background — no local files to download
 }
 # Keep VIDEO_DEFINITIONS pointing to the default modpack for backward compat at startup
 VIDEO_DEFINITIONS = MODPACK_BG_DEFINITIONS[DEFAULT_MODPACK_ID]
@@ -274,7 +274,7 @@ class ModpackLauncherAPI:
         self.close_trigger_status = "PENDING"
         self.prism_process = None # (NUEVO) Para rastrear el proceso de Prism
 
-        # Active modpack — can be "cobblemon" or "casket_of_reveries"
+        # Active modpack — can be "cobblemon" or "nightfallcraft"
         self.active_modpack_id = DEFAULT_MODPACK_ID
         # Tracks files currently being downloaded so duplicate calls are ignored
         self._bg_downloads_in_progress = set()
@@ -313,44 +313,79 @@ class ModpackLauncherAPI:
         return f"{self._mp_raw_base()}/modpack-url.txt"
 
     def _resolve_mediafire_url(self, share_url, timeout=20):
-        """Resolve a MediaFire share page URL to a direct download URL."""
+        """Resolve a MediaFire share page URL to a direct download URL.
+
+        MediaFire's /file/ page renders the download button via JavaScript, so
+        static HTML scraping is unreliable. We use two strategies in order:
+          1. MediaFire's public file/get_info API — returns a direct download
+             URL without authentication for public files.
+          2. Follow the /download/{key} redirect — MediaFire redirects this to
+             the actual CDN URL which we capture from the Location header.
+        """
         import re
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
 
-        # Try the MediaFire API first (fastest, most reliable)
         key_match = re.search(r'/file/([a-zA-Z0-9]+)/', share_url)
-        if key_match:
-            quick_key = key_match.group(1)
+        quick_key = key_match.group(1) if key_match else None
+
+        # Strategy 1: file/get_info API
+        if quick_key:
             try:
-                api_url = (f"https://www.mediafire.com/api/1.5/file/get_links.php"
-                           f"?quick_key={quick_key}&response_format=json&link_type=normal_download")
+                api_url = (f"https://www.mediafire.com/api/1.4/file/get_info.php"
+                           f"?quick_key={quick_key}&response_format=json")
                 resp = requests.get(api_url, headers=headers, timeout=timeout)
                 data = resp.json()
-                links = data.get("response", {}).get("links", [])
-                if links:
-                    dl_url = links[0].get("normal_download", "")
-                    if dl_url and dl_url.startswith("http"):
-                        self._log(f"MediaFire API resolved: {dl_url}")
-                        return dl_url
+                file_info = data.get("response", {}).get("file_info", {})
+                dl_url = file_info.get("links", {}).get("normal_download", "")
+                if not dl_url:
+                    dl_url = file_info.get("direct_download_url", "")
+                if dl_url and dl_url.startswith("http"):
+                    self._log(f"MediaFire API resolved: {dl_url}")
+                    return dl_url
             except Exception as e:
-                self._log(f"MediaFire API fallback: {e}")
+                self._log(f"MediaFire get_info API failed: {e}")
 
-        # Fallback: scrape the download button URL from the HTML page
-        resp = requests.get(share_url, headers=headers, timeout=timeout, allow_redirects=True)
-        resp.raise_for_status()
-        html = resp.text
+        # Strategy 2: /download/{key} redirect — follow without downloading
+        if quick_key:
+            try:
+                redirect_url = f"https://www.mediafire.com/download/{quick_key}"
+                resp = requests.get(redirect_url, headers=headers, timeout=timeout,
+                                    allow_redirects=False)
+                location = resp.headers.get("Location", "")
+                if location and "mediafire.com" in location and location.startswith("http"):
+                    self._log(f"MediaFire redirect resolved: {location}")
+                    return location
+                # Follow one more hop if needed
+                if location:
+                    resp2 = requests.get(location, headers=headers, timeout=timeout,
+                                         allow_redirects=False)
+                    loc2 = resp2.headers.get("Location", "")
+                    if loc2 and loc2.startswith("http"):
+                        self._log(f"MediaFire redirect (hop 2) resolved: {loc2}")
+                        return loc2
+            except Exception as e:
+                self._log(f"MediaFire redirect strategy failed: {e}")
 
-        for pattern in [
-            r'href="(https://download\d*\.mediafire\.com/[^"]+)"',
-            r'"(https://download\d*\.mediafire\.com/[^"]+)"',
-        ]:
-            match = re.search(pattern, html)
-            if match:
-                url = match.group(1).replace('&amp;', '&')
-                self._log(f"MediaFire scrape resolved: {url}")
-                return url
+        # Strategy 3: scrape the HTML (works if MediaFire serves the link server-side)
+        try:
+            resp = requests.get(share_url, headers=headers, timeout=timeout, allow_redirects=True)
+            resp.raise_for_status()
+            for pattern in [
+                r'href="(https://download\d*\.mediafire\.com/[^"]+)"',
+                r'"(https://download\d*\.mediafire\.com/[^"]+)"',
+            ]:
+                match = re.search(pattern, resp.text)
+                if match:
+                    url = match.group(1).replace('&amp;', '&')
+                    self._log(f"MediaFire scrape resolved: {url}")
+                    return url
+        except Exception as e:
+            self._log(f"MediaFire scrape failed: {e}")
 
-        raise ValueError(f"Could not resolve direct download URL from MediaFire page: {share_url}")
+        raise ValueError(
+            f"Could not resolve a direct download URL from MediaFire. "
+            f"The file may be private or the share link may have expired: {share_url}"
+        )
 
     def _enforce_epicfight_config(self):
         """Ensures use_compute_shader = false in epicfight-client.toml on every launch."""
@@ -669,15 +704,13 @@ class ModpackLauncherAPI:
                             _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
 
                     ydl_opts = {
-                        # Prefer 1080p, fall back to best available.
-                        # Avoid [ext=mp4] constraint — it forces CDN paths that 403.
-                        'format': (
-                            'bestvideo[height=1080]+bestaudio'
-                            '/bestvideo[height<=1080][height>=720]+bestaudio'
-                            '/bestvideo[height<=1080]+bestaudio'
-                            '/best'
-                        ),
-                        'format_sort': ['res:1080', 'quality'],
+                        # Get the best video up to 1080p and merge with best audio.
+                        # height<=1080 caps at 1080p; format_sort picks the tallest
+                        # resolution within that cap (so 1080 beats 720).
+                        # Avoid ext=mp4/m4a constraints — they force specific CDN
+                        # paths that YouTube 403-blocks for non-browser clients.
+                        'format': 'bestvideo[height<=1080]+bestaudio/bestvideo+bestaudio/best',
+                        'format_sort': ['res:1080', 'vcodec:h264', 'quality', 'br'],
                         # %(ext)s lets yt-dlp write the correct extension after merge
                         'outtmpl': os.path.join(tmp_dir, 'bg.%(ext)s'),
                         'merge_output_format': 'mp4',
@@ -685,8 +718,9 @@ class ModpackLauncherAPI:
                         'quiet': True,
                         'no_warnings': True,
                         'progress_hooks': [_progress_hook],
-                        # web_creator gives highest quality; ios/android bypass 403 blocks
-                        'extractor_args': {'youtube': {'player_client': ['web_creator', 'ios', 'android']}},
+                        # ios bypasses bot-detection 403s reliably; tv_embedded gives
+                        # full 1080p streams without the SABR/po-token restrictions
+                        'extractor_args': {'youtube': {'player_client': ['tv_embedded', 'ios', 'android']}},
                     }
                     # yt-dlp accepts either the binary path or a directory
                     if ffmpeg_exe:
