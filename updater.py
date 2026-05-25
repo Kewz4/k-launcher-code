@@ -108,9 +108,10 @@ class Updater:
                     self._log(f"Warning: latest lookup failed: {e}")
 
             if not full_release_data:
-                error_msg = f"Could not find a valid GitHub release for version {remote_version_str}."
-                self._log(error_msg)
-                return {'error': error_msg}
+                # No published release for this version yet — treat as up-to-date,
+                # not as an error (the user can't download what doesn't exist).
+                self._log(f"No GitHub release found for v{remote_version_str} — treating as up to date.")
+                return {'update_available': False}
 
             # Find the asset in the release
             assets = full_release_data.get("assets", [])

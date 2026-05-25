@@ -275,6 +275,8 @@ class ModpackLauncherAPI:
 
         # Active modpack — can be "cobblemon" or "nightfallcraft"
         self.active_modpack_id = DEFAULT_MODPACK_ID
+        # Tracks files currently being downloaded so duplicate calls are ignored
+        self._bg_downloads_in_progress = set()
 
     def _update_updater_ui(self, message, progress=None):
         """(NUEVO) Envía actualizaciones a la UI del actualizador."""
@@ -466,8 +468,16 @@ class ModpackLauncherAPI:
             def log_message(self, format, *args):
                 pass  # Silence access logs
 
+        class _QuietTCPServer(socketserver.TCPServer):
+            def handle_error(self, request, client_address):
+                # Suppress harmless client-disconnect errors (WinError 10054, BrokenPipe)
+                import sys
+                if sys.exc_info()[0] in (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                    return
+                super().handle_error(request, client_address)
+
         # Bind to port 0 to get a free port
-        server = socketserver.TCPServer(("127.0.0.1", 0), _Handler)
+        server = _QuietTCPServer(("127.0.0.1", 0), _Handler)
         port = server.server_address[1]
         t = threading.Thread(target=server.serve_forever, daemon=True)
         t.start()
@@ -558,6 +568,12 @@ class ModpackLauncherAPI:
                 _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
                 return
 
+            # Guard against concurrent duplicate downloads (e.g. rapid modpack switching)
+            if out_path in self._bg_downloads_in_progress:
+                self._log(f"YouTube background already downloading: {filename}")
+                return
+            self._bg_downloads_in_progress.add(out_path)
+
             def _download_yt_bg():
                 import shutil
                 import tempfile as _tempfile
@@ -633,6 +649,7 @@ class ModpackLauncherAPI:
                     _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps(str(e))})')
                 finally:
                     shutil.rmtree(tmp_dir, ignore_errors=True)
+                    self._bg_downloads_in_progress.discard(out_path)
 
             import threading as _threading
             _threading.Thread(target=_download_yt_bg, daemon=True).start()
@@ -671,11 +688,17 @@ class ModpackLauncherAPI:
             _is_image = vdef["filename"].lower().endswith(('.webp', '.png', '.jpg', '.jpeg'))
             _min_size = 1_000 if _is_image else MIN_VIDEO_SIZE
 
+            # Skip if a download for this exact file is already running
+            if out_path in self._bg_downloads_in_progress:
+                return
+            self._bg_downloads_in_progress.add(out_path)
+
             # Already cached with a plausible size — notify immediately.
             # If the cached file is suspiciously small (e.g. a stale LFS pointer),
             # delete it and re-download.
             if os.path.exists(out_path):
                 if os.path.getsize(out_path) >= _min_size:
+                    self._bg_downloads_in_progress.discard(out_path)
                     _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
                     return
                 else:
@@ -688,6 +711,7 @@ class ModpackLauncherAPI:
             src_url = vdef["url"]
             if src_url.startswith("PLACEHOLDER"):
                 self._log(f"Skipping {vdef['filename']}: URL not configured")
+                self._bg_downloads_in_progress.discard(out_path)
                 _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps("URL not configured for " + vdef["filename"])})')
                 return
 
@@ -820,6 +844,8 @@ class ModpackLauncherAPI:
                             os.remove(p)
                         except Exception:
                             pass
+            finally:
+                self._bg_downloads_in_progress.discard(out_path)
 
         def _task():
             if not bg_defs:
