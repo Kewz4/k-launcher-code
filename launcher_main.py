@@ -696,95 +696,85 @@ class ModpackLauncherAPI:
             self._bg_downloads_in_progress.add(out_path)
 
             def _download_yt_bg():
-                import shutil
-                import tempfile as _tempfile
-
-                # Fail fast if yt-dlp isn't importable
-                try:
-                    import yt_dlp
-                except ImportError as ie:
-                    self._log(f"yt-dlp not available: {ie}")
-                    _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps("yt-dlp not installed")})')
-                    return
-
                 yt_url = f"https://www.youtube.com/watch?v={yt_id}"
-                self._log(f"Downloading YouTube background: {yt_url}")
+                self._log(f"Resolving 1080p background via cobalt.tools: {yt_url}")
+                import time as _time
 
-                # Isolate all of yt-dlp's intermediate/part files in a temp dir
-                tmp_dir = _tempfile.mkdtemp(prefix="klauncher_yt_")
                 try:
-                    class _YtLogger:
-                        def debug(self_, msg):
-                            if msg.startswith('[debug]'):
-                                return
-                            self._log(f"[yt-dlp] {msg}")
-                        def info(self_, msg):
-                            self._log(f"[yt-dlp] {msg}")
-                        def warning(self_, msg):
-                            self._log(f"[yt-dlp WARNING] {msg}")
-                        def error(self_, msg):
-                            self._log(f"[yt-dlp ERROR] {msg}")
-
-                    def _progress_hook(d):
-                        if d.get('status') == 'downloading':
-                            total      = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                            downloaded = d.get('downloaded_bytes', 0)
-                            speed      = d.get('speed') or 0
-                            pct        = int(downloaded / total * 100) if total > 0 else 0
-                            speed_mb   = speed / 1024 / 1024 if speed else 0
-                            detail     = f"{downloaded/1024/1024:.1f} MB  •  {speed_mb:.1f} MB/s"
-                            _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background")},{json.dumps(detail)})')
-                            _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
-
-                    ydl_opts = {
-                        # Get the best video up to 1080p and merge with best audio.
-                        # height<=1080 caps at 1080p; format_sort picks the tallest
-                        # resolution within that cap (so 1080 beats 720).
-                        # Avoid ext=mp4/m4a constraints — they force specific CDN
-                        # paths that YouTube 403-blocks for non-browser clients.
-                        'format': 'bestvideo[height<=1080]+bestaudio/bestvideo+bestaudio/best',
-                        'format_sort': ['res:1080', 'vcodec:h264', 'quality', 'br'],
-                        # %(ext)s lets yt-dlp write the correct extension after merge
-                        'outtmpl': os.path.join(tmp_dir, 'bg.%(ext)s'),
-                        'merge_output_format': 'mp4',
-                        'noplaylist': True,
-                        'logger': _YtLogger(),
-                        'progress_hooks': [_progress_hook],
-                        # ios bypasses bot-detection 403s reliably; tv_embedded gives
-                        # full 1080p streams without the SABR/po-token restrictions
-                        'extractor_args': {'youtube': {'player_client': ['tv_embedded', 'ios', 'android']}},
+                    # cobalt.tools: public API that returns a direct 1080p H.264
+                    # download URL without needing yt-dlp or ffmpeg.
+                    cobalt_headers = {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
                     }
-                    # yt-dlp accepts either the binary path or a directory
-                    if ffmpeg_exe:
-                        ydl_opts['ffmpeg_location'] = ffmpeg_exe
-
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([yt_url])
-
-                    # After a merge the file is bg.mp4; otherwise it's whatever ext yt-dlp chose
-                    result = os.path.join(tmp_dir, 'bg.mp4')
-                    if not (os.path.exists(result) and os.path.getsize(result) >= MIN_VIDEO_SIZE):
-                        # Scan for the largest non-partial file in the temp dir
-                        result = None
-                        for f in sorted(os.listdir(tmp_dir)):
-                            if f.endswith(('.part', '.ytdl', '.tmp')):
-                                continue
-                            fp = os.path.join(tmp_dir, f)
-                            if os.path.isfile(fp) and os.path.getsize(fp) >= MIN_VIDEO_SIZE:
-                                result = fp
-                                break
-
-                    if result:
-                        shutil.move(result, out_path)
-                        self._log(f"YouTube background ready: {filename}")
-                        _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
+                    cobalt_payload = {
+                        'url': yt_url,
+                        'vQuality': '1080',
+                        'vCodec': 'h264',
+                        'downloadMode': 'auto',
+                    }
+                    _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Resolving video URL")},{json.dumps("contacting cobalt.tools...")})')
+                    cobalt_resp = requests.post(
+                        'https://api.cobalt.tools/',
+                        json=cobalt_payload,
+                        headers=cobalt_headers,
+                        timeout=20,
+                    )
+                    cobalt_data = cobalt_resp.json()
+                    status = cobalt_data.get('status', '')
+                    if status in ('stream', 'redirect', 'tunnel'):
+                        direct_url = cobalt_data['url']
+                        self._log(f"cobalt.tools resolved ({status}): {direct_url[:80]}...")
                     else:
-                        raise RuntimeError("yt-dlp produced no usable video file in temp dir")
+                        err = cobalt_data.get('error', {})
+                        raise RuntimeError(f"cobalt.tools returned status '{status}': {err.get('code', cobalt_data)}")
+
+                    # Download the resolved URL using plain urllib (no yt-dlp, no ffmpeg)
+                    import urllib.request as _urlreq
+                    dl_headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Referer': 'https://cobalt.tools/',
+                    }
+                    req = _urlreq.Request(direct_url, headers=dl_headers)
+                    with _urlreq.urlopen(req, timeout=300) as resp:
+                        total_b = int(resp.headers.get('Content-Length') or 0)
+                        total_mb_str = f"{total_b / 1024 / 1024:.1f} MB" if total_b else "? MB"
+                        self._log(f"Downloading background: {total_mb_str}")
+                        downloaded = 0
+                        t_start = _time.monotonic()
+
+                        with open(out_path, 'wb') as f:
+                            while True:
+                                if self.cancel_event.is_set():
+                                    raise InterruptedError("Cancelled")
+                                chunk = resp.read(65536)
+                                if not chunk:
+                                    break
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                elapsed = max(_time.monotonic() - t_start, 0.001)
+                                speed_mb = downloaded / elapsed / 1024 / 1024
+                                pct = int(downloaded / total_b * 100) if total_b else 0
+                                detail = f"{downloaded/1024/1024:.1f} / {total_mb_str}  •  {speed_mb:.1f} MB/s"
+                                _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background")},{json.dumps(detail)})')
+                                _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
+
+                    dl_size = os.path.getsize(out_path)
+                    if dl_size < MIN_VIDEO_SIZE:
+                        raise RuntimeError(f"Downloaded file too small ({dl_size} bytes) — expected a real 1080p video")
+
+                    self._log(f"YouTube background ready: {filename} ({dl_size/1024/1024:.1f} MB)")
+                    _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
+
                 except Exception as e:
                     self._log(f"YouTube background download failed: {e}")
+                    if os.path.exists(out_path):
+                        try:
+                            os.remove(out_path)
+                        except Exception:
+                            pass
                     _js(f'typeof onBgVideoError==="function"&&onBgVideoError({json.dumps(str(e))})')
                 finally:
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
                     self._bg_downloads_in_progress.discard(out_path)
 
             import threading as _threading
