@@ -387,30 +387,6 @@ class ModpackLauncherAPI:
             f"The file may be private or the share link may have expired: {share_url}"
         )
 
-    def _enforce_epicfight_config(self):
-        """Ensures use_compute_shader = false in epicfight-client.toml on every launch."""
-        if not self.instance_mc_path:
-            return
-        config_path = os.path.join(self.instance_mc_path, 'config', 'epicfight-client.toml')
-        if not os.path.isfile(config_path):
-            return
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            import re as _re
-            new_content = _re.sub(
-                r'(use_compute_shader\s*=\s*)true',
-                r'\1false',
-                content,
-                flags=_re.IGNORECASE
-            )
-            if new_content != content:
-                with open(config_path, 'w', encoding='utf-8') as f:
-                    f.write(new_content)
-                self._log("Enforced use_compute_shader = false in epicfight-client.toml")
-        except Exception as e:
-            self._log(f"Warning: could not patch epicfight-client.toml: {e}")
-
     def _mp_logo_url(self):
         return f"{self._mp_raw_base()}/minecraftlogo.png"
 
@@ -703,31 +679,36 @@ class ModpackLauncherAPI:
                 try:
                     # cobalt.tools: public API that returns a direct 1080p H.264
                     # download URL without needing yt-dlp or ffmpeg.
+                    # Field names changed in cobalt v10: vQuality→videoQuality, vCodec→youtubeVideoCodec
                     cobalt_headers = {
                         'Accept': 'application/json',
                         'Content-Type': 'application/json',
                     }
                     cobalt_payload = {
                         'url': yt_url,
-                        'vQuality': '1080',
-                        'vCodec': 'h264',
+                        'videoQuality': '1080',
+                        'youtubeVideoCodec': 'h264',
                         'downloadMode': 'auto',
+                        'filenameStyle': 'basic',
                     }
                     _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Resolving video URL")},{json.dumps("contacting cobalt.tools...")})')
+                    self._log("Contacting cobalt.tools API...")
                     cobalt_resp = requests.post(
                         'https://api.cobalt.tools/',
                         json=cobalt_payload,
                         headers=cobalt_headers,
                         timeout=20,
                     )
+                    self._log(f"cobalt.tools HTTP {cobalt_resp.status_code}")
                     cobalt_data = cobalt_resp.json()
+                    self._log(f"cobalt.tools response: {cobalt_data}")
                     status = cobalt_data.get('status', '')
                     if status in ('stream', 'redirect', 'tunnel'):
                         direct_url = cobalt_data['url']
                         self._log(f"cobalt.tools resolved ({status}): {direct_url[:80]}...")
                     else:
                         err = cobalt_data.get('error', {})
-                        raise RuntimeError(f"cobalt.tools returned status '{status}': {err.get('code', cobalt_data)}")
+                        raise RuntimeError(f"cobalt.tools error: status='{status}' code='{err.get('code', '')}' raw={cobalt_data}")
 
                     # Download the resolved URL using plain urllib (no yt-dlp, no ffmpeg)
                     import urllib.request as _urlreq
@@ -2340,9 +2321,6 @@ class ModpackLauncherAPI:
                 self._log("La sincronización de options.txt falló. Abortando lanzamiento.")
                 # El mensaje de error ya se mostró en _sync_options_txt
                 return
-
-            # --- Paso 1b: Enforce critical mod configs ---
-            self._enforce_epicfight_config()
 
             # --- Paso 2: Actualizar ---
             self._log("Iniciando comprobación de actualizaciones...")
