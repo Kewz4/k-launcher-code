@@ -311,79 +311,105 @@ class ModpackLauncherAPI:
     def _mp_modpack_url_source(self):
         return f"{self._mp_raw_base()}/modpack-url.txt"
 
-    def _resolve_mediafire_url(self, share_url, timeout=20):
+    def _resolve_mediafire_url(self, share_url, timeout=25):
         """Resolve a MediaFire share page URL to a direct download URL.
 
-        MediaFire's /file/ page renders the download button via JavaScript, so
-        static HTML scraping is unreliable. We use two strategies in order:
-          1. MediaFire's public file/get_info API — returns a direct download
-             URL without authentication for public files.
-          2. Follow the /download/{key} redirect — MediaFire redirects this to
-             the actual CDN URL which we capture from the Location header.
+        Tries four strategies in order:
+          1. get_links API  — official endpoint, returns CDN URL for public files
+          2. get_info API   — fallback official endpoint
+          3. /download/ redirect — HEAD request to capture Location header
+          4. HTML scrape    — find CDN URL in page source as last resort
         """
         import re
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
 
         key_match = re.search(r'/file/([a-zA-Z0-9]+)/', share_url)
         quick_key = key_match.group(1) if key_match else None
+        self._log(f"MediaFire quick_key: {quick_key}")
 
-        # Strategy 1: file/get_info API
+        def _is_cdn(url):
+            return bool(url and url.startswith('http') and 'mediafire.com' in url)
+
+        # Strategy 1: get_links API (designed specifically to return download URLs)
+        if quick_key:
+            for api_ver in ('1.5', '1.4'):
+                try:
+                    api_url = (f"https://www.mediafire.com/api/{api_ver}/file/get_links.php"
+                               f"?quick_key={quick_key}&response_format=json&link_type=normal_download")
+                    self._log(f"MediaFire get_links v{api_ver}: {api_url}")
+                    resp = requests.get(api_url, headers=headers, timeout=timeout)
+                    data = resp.json()
+                    self._log(f"MediaFire get_links response: {data}")
+                    links = data.get('response', {}).get('links', [])
+                    if links:
+                        dl_url = links[0].get('normal_download', '')
+                        if _is_cdn(dl_url):
+                            self._log(f"MediaFire get_links resolved: {dl_url}")
+                            return dl_url
+                except Exception as e:
+                    self._log(f"MediaFire get_links v{api_ver} failed: {e}")
+
+        # Strategy 2: get_info API
         if quick_key:
             try:
-                api_url = (f"https://www.mediafire.com/api/1.4/file/get_info.php"
+                api_url = (f"https://www.mediafire.com/api/1.5/file/get_info.php"
                            f"?quick_key={quick_key}&response_format=json")
+                self._log(f"MediaFire get_info: {api_url}")
                 resp = requests.get(api_url, headers=headers, timeout=timeout)
                 data = resp.json()
-                file_info = data.get("response", {}).get("file_info", {})
-                dl_url = file_info.get("links", {}).get("normal_download", "")
-                if not dl_url:
-                    dl_url = file_info.get("direct_download_url", "")
-                if dl_url and dl_url.startswith("http"):
-                    self._log(f"MediaFire API resolved: {dl_url}")
-                    return dl_url
+                self._log(f"MediaFire get_info response: {data}")
+                file_info = data.get('response', {}).get('file_info', {})
+                for key in ('normal_download_url', 'direct_download_url'):
+                    dl_url = file_info.get(key, '') or file_info.get('links', {}).get('normal_download', '')
+                    if _is_cdn(dl_url):
+                        self._log(f"MediaFire get_info resolved: {dl_url}")
+                        return dl_url
             except Exception as e:
-                self._log(f"MediaFire get_info API failed: {e}")
+                self._log(f"MediaFire get_info failed: {e}")
 
-        # Strategy 2: /download/{key} redirect — follow without downloading
+        # Strategy 3: HEAD /download/{key} to capture the Location redirect
         if quick_key:
-            try:
-                redirect_url = f"https://www.mediafire.com/download/{quick_key}"
-                resp = requests.get(redirect_url, headers=headers, timeout=timeout,
-                                    allow_redirects=False)
-                location = resp.headers.get("Location", "")
-                if location and "mediafire.com" in location and location.startswith("http"):
-                    self._log(f"MediaFire redirect resolved: {location}")
-                    return location
-                # Follow one more hop if needed
-                if location:
-                    resp2 = requests.get(location, headers=headers, timeout=timeout,
-                                         allow_redirects=False)
-                    loc2 = resp2.headers.get("Location", "")
-                    if loc2 and loc2.startswith("http"):
-                        self._log(f"MediaFire redirect (hop 2) resolved: {loc2}")
-                        return loc2
-            except Exception as e:
-                self._log(f"MediaFire redirect strategy failed: {e}")
+            for dl_path in (f"https://www.mediafire.com/download/{quick_key}",
+                            f"https://www.mediafire.com/download.php?{quick_key}"):
+                try:
+                    self._log(f"MediaFire redirect probe: {dl_path}")
+                    resp = requests.head(dl_path, headers=headers, timeout=timeout,
+                                        allow_redirects=True)
+                    final_url = resp.url
+                    if _is_cdn(final_url) and 'download' in final_url:
+                        self._log(f"MediaFire redirect resolved: {final_url}")
+                        return final_url
+                except Exception as e:
+                    self._log(f"MediaFire redirect probe failed: {e}")
 
-        # Strategy 3: scrape the HTML (works if MediaFire serves the link server-side)
+        # Strategy 4: scrape the share page HTML
         try:
+            self._log(f"MediaFire scraping page: {share_url}")
             resp = requests.get(share_url, headers=headers, timeout=timeout, allow_redirects=True)
             resp.raise_for_status()
+            html = resp.text
+            self._log(f"MediaFire page size: {len(html)} bytes")
             for pattern in [
-                r'href="(https://download\d*\.mediafire\.com/[^"]+)"',
-                r'"(https://download\d*\.mediafire\.com/[^"]+)"',
+                r'href="(https://download[^"]*\.mediafire\.com/[^"]+)"',
+                r'"(https://download[^"]*\.mediafire\.com/[^"]+)"',
+                r"'(https://download[^']*\.mediafire\.com/[^']+)'",
+                r'download_url["\']?\s*:\s*["\']([^"\']+)["\']',
             ]:
-                match = re.search(pattern, resp.text)
+                match = re.search(pattern, html)
                 if match:
-                    url = match.group(1).replace('&amp;', '&')
-                    self._log(f"MediaFire scrape resolved: {url}")
-                    return url
+                    url = match.group(1).replace('\\/', '/').replace('&amp;', '&')
+                    if _is_cdn(url):
+                        self._log(f"MediaFire scrape resolved: {url}")
+                        return url
         except Exception as e:
             self._log(f"MediaFire scrape failed: {e}")
 
         raise ValueError(
-            f"Could not resolve a direct download URL from MediaFire. "
-            f"The file may be private or the share link may have expired: {share_url}"
+            f"All MediaFire resolution strategies failed for: {share_url}\n"
+            f"The file may be private, deleted, or MediaFire changed their API."
         )
 
     def _mp_logo_url(self):
