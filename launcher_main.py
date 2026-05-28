@@ -331,7 +331,9 @@ class ModpackLauncherAPI:
         self._log(f"MediaFire quick_key: {quick_key}")
 
         def _is_cdn(url):
-            return bool(url and url.startswith('http') and 'mediafire.com' in url)
+            # Only accept actual CDN download URLs (e.g. download939.mediafire.com),
+            # NOT share page URLs (www.mediafire.com/file/...)
+            return bool(url and re.match(r'https?://download[^.]*\.mediafire\.com/', url))
 
         # Strategy 1: get_links API (designed specifically to return download URLs)
         if quick_key:
@@ -349,6 +351,8 @@ class ModpackLauncherAPI:
                         if _is_cdn(dl_url):
                             self._log(f"MediaFire get_links resolved: {dl_url}")
                             return dl_url
+                        else:
+                            self._log(f"MediaFire get_links returned non-CDN URL (share page?): {dl_url}")
                 except Exception as e:
                     self._log(f"MediaFire get_links v{api_ver} failed: {e}")
 
@@ -370,18 +374,21 @@ class ModpackLauncherAPI:
             except Exception as e:
                 self._log(f"MediaFire get_info failed: {e}")
 
-        # Strategy 3: HEAD /download/{key} to capture the Location redirect
+        # Strategy 3: GET /download/{key} with streaming to follow all redirects
         if quick_key:
             for dl_path in (f"https://www.mediafire.com/download/{quick_key}",
                             f"https://www.mediafire.com/download.php?{quick_key}"):
                 try:
                     self._log(f"MediaFire redirect probe: {dl_path}")
-                    resp = requests.head(dl_path, headers=headers, timeout=timeout,
-                                        allow_redirects=True)
+                    # Use GET with stream=True so we get the final URL without downloading body
+                    resp = requests.get(dl_path, headers=headers, timeout=timeout,
+                                        allow_redirects=True, stream=True)
+                    resp.close()
                     final_url = resp.url
-                    if _is_cdn(final_url) and 'download' in final_url:
+                    if _is_cdn(final_url):
                         self._log(f"MediaFire redirect resolved: {final_url}")
                         return final_url
+                    self._log(f"MediaFire redirect final URL not CDN: {final_url}")
                 except Exception as e:
                     self._log(f"MediaFire redirect probe failed: {e}")
 
