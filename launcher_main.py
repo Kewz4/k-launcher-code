@@ -138,7 +138,6 @@ MODPACK_CONFIGS = {
         "bg_type": "youtube",
         "youtube_id": "uQWvVPRHOM0",
         "youtube_start": 78,
-        "modpack_zip_url": "https://download939.mediafire.com/vpjszm54j52gS1HAG4dIiruNxsj-kTYRkQEMcSewlO6NacXLx3vh6jmq0xA3UvhI6_Sycyca1iYCh2wIOwIikh9Ue0HyH2h8z5-_cN2SigjWkrfWcnJVdW88XtwRw-iolnyzh6yIp4E-CVyCOsRUL_Ye4Znz_0S_EHEfEWldGlqZ/2uk8op16lam7ie7/The+Casket+of+Reveries+-2.2.7.1+%281%29.zip",
     },
 }
 DEFAULT_MODPACK_ID = "nightfallcraft"
