@@ -711,10 +711,9 @@ class ModpackLauncherAPI:
                 try:
                     import yt_dlp
 
-                    # Use the ios player client to avoid YouTube 403s.
-                    # ios returns pre-merged streams (video+audio in one file, up to 1080p)
-                    # without requiring cookies or PO tokens.
-                    # If ios doesn't have 1080p, fall back through mweb then the best available.
+                    # tv_embedded and android_vr are the most reliable clients
+                    # for public videos without cookies or PO tokens.
+                    # ios/mweb now require PO tokens in recent yt-dlp builds.
                     fmt = 'best[height<=1080][ext=mp4]/best[height<=1080]/best'
 
                     ydl_opts = {
@@ -726,7 +725,7 @@ class ModpackLauncherAPI:
                         'merge_output_format': 'mp4',
                         'extractor_args': {
                             'youtube': {
-                                'player_client': ['ios', 'mweb'],
+                                'player_client': ['tv_embedded', 'android_vr', 'android'],
                             },
                         },
                     }
