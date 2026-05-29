@@ -2221,6 +2221,8 @@ HTML_CONTENT = f"""
                 // Apply active modpack UI (logo, bg mode, panel highlights)
                 pywebview.api.py_get_active_modpack().then(mp => {{
                     if (mp) _applyModpackUI(mp);
+                    // _applyModpackUI resets bgVideoList/bgVideoPlaying — re-trigger the download/serve
+                    pywebview.api.py_ensure_background_videos().catch(() => {{}});
                 }}).catch(e => {{ console.warn("Could not get active modpack:", e); }});
 
                 // Always show play screen — button label reflects install state
