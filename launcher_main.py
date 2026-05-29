@@ -136,7 +136,7 @@ MODPACK_CONFIGS = {
         "folder": "NightfallCraft",
         "instance_name": "Kewz's NightfallCraft",
         "bg_type": "youtube",
-        "bg_video_url": "https://raw.githubusercontent.com/Kewz4/K-Launcher-Assets/main/videoplayback.mp4",
+        "bg_video_url": "https://media.githubusercontent.com/media/Kewz4/K-Launcher-Assets/main/videoplayback.mp4",
     },
 }
 DEFAULT_MODPACK_ID = "nightfallcraft"
@@ -704,7 +704,7 @@ class ModpackLauncherAPI:
             def _download_yt_bg():
                 bg_url = self._mp.get(
                     "bg_video_url",
-                    "https://raw.githubusercontent.com/Kewz4/K-Launcher-Assets/main/videoplayback.mp4"
+                    "https://media.githubusercontent.com/media/Kewz4/K-Launcher-Assets/main/videoplayback.mp4"
                 )
                 self._log(f"Downloading background video: {bg_url}")
                 import time as _time
@@ -743,7 +743,7 @@ class ModpackLauncherAPI:
                     _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
 
                 except Exception as e:
-                    self._log(f"YouTube background download failed: {e}")
+                    self._log(f"Background video download failed: {e}")
                     if os.path.exists(out_path):
                         try:
                             os.remove(out_path)
