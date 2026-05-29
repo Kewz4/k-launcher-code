@@ -711,13 +711,11 @@ class ModpackLauncherAPI:
                 try:
                     import yt_dlp
 
-                    # Prefer 1080p H264 video merged with AAC audio via ffmpeg.
-                    # Falls back to best available pre-merged if ffmpeg is unavailable.
-                    fmt = (
-                        'bestvideo[height<=1080][vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]'
-                        '/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]'
-                        '/best[height<=1080][ext=mp4]/best[height<=1080]'
-                    )
+                    # Use the ios player client to avoid YouTube 403s.
+                    # ios returns pre-merged streams (video+audio in one file, up to 1080p)
+                    # without requiring cookies or PO tokens.
+                    # If ios doesn't have 1080p, fall back through mweb then the best available.
+                    fmt = 'best[height<=1080][ext=mp4]/best[height<=1080]/best'
 
                     ydl_opts = {
                         'format': fmt,
@@ -726,14 +724,18 @@ class ModpackLauncherAPI:
                         'no_warnings': True,
                         'noprogress': True,
                         'merge_output_format': 'mp4',
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['ios', 'mweb'],
+                            },
+                        },
                     }
 
                     if ffmpeg_exe:
-                        # yt-dlp accepts either the ffmpeg binary path or its parent directory
                         ydl_opts['ffmpeg_location'] = ffmpeg_exe
-                        self._log(f"yt-dlp will merge streams using ffmpeg: {ffmpeg_exe}")
+                        self._log(f"yt-dlp using ffmpeg: {ffmpeg_exe}")
                     else:
-                        self._log("WARNING: no ffmpeg — yt-dlp falling back to pre-merged format (may be <1080p)")
+                        self._log("WARNING: no ffmpeg — using pre-merged stream only")
 
                     _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background video")},{json.dumps("starting...")})')
 
