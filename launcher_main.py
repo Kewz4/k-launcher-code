@@ -136,8 +136,7 @@ MODPACK_CONFIGS = {
         "folder": "NightfallCraft",
         "instance_name": "Kewz's NightfallCraft",
         "bg_type": "youtube",
-        "youtube_id": "uQWvVPRHOM0",
-        "youtube_start": 78,
+        "bg_video_url": "https://raw.githubusercontent.com/Kewz4/K-Launcher-Assets/main/videoplayback.mp4",
     },
 }
 DEFAULT_MODPACK_ID = "nightfallcraft"
@@ -684,11 +683,10 @@ class ModpackLauncherAPI:
             except Exception:
                 pass
 
-        # YouTube backgrounds: download via yt-dlp, cache locally, serve like any other video
+        # Single-file video background: download once, cache locally, serve like any other video
         if self._mp.get("bg_type") == "youtube":
             os.makedirs(VIDEO_DIR, exist_ok=True)
             port = self._start_video_server()
-            yt_id    = self._mp.get("youtube_id", "")
             filename = f"{self.active_modpack_id}_yt_bg.mp4"
             out_path  = os.path.join(VIDEO_DIR, filename)
             serve_url = f"http://127.0.0.1:{port}/{filename}"
@@ -704,63 +702,44 @@ class ModpackLauncherAPI:
             self._bg_downloads_in_progress.add(out_path)
 
             def _download_yt_bg():
-                yt_url = f"https://www.youtube.com/watch?v={yt_id}"
-                self._log(f"Downloading 1080p background via yt-dlp: {yt_url}")
+                bg_url = self._mp.get(
+                    "bg_video_url",
+                    "https://raw.githubusercontent.com/Kewz4/K-Launcher-Assets/main/videoplayback.mp4"
+                )
+                self._log(f"Downloading background video: {bg_url}")
                 import time as _time
 
                 try:
-                    import yt_dlp
-
-                    # tv_embedded and android_vr are the most reliable clients
-                    # for public videos without cookies or PO tokens.
-                    # ios/mweb now require PO tokens in recent yt-dlp builds.
-                    fmt = 'best[height<=1080][ext=mp4]/best[height<=1080]/best'
-
-                    ydl_opts = {
-                        'format': fmt,
-                        'outtmpl': out_path,
-                        'quiet': True,
-                        'no_warnings': True,
-                        'noprogress': True,
-                        'merge_output_format': 'mp4',
-                        'extractor_args': {
-                            'youtube': {
-                                'player_client': ['tv_embedded', 'android_vr', 'android'],
-                            },
-                        },
-                    }
-
-                    if ffmpeg_exe:
-                        ydl_opts['ffmpeg_location'] = ffmpeg_exe
-                        self._log(f"yt-dlp using ffmpeg: {ffmpeg_exe}")
-                    else:
-                        self._log("WARNING: no ffmpeg — using pre-merged stream only")
-
                     _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background video")},{json.dumps("starting...")})')
 
-                    def _progress_hook(d):
-                        if d.get('status') == 'downloading':
-                            downloaded = d.get('downloaded_bytes', 0)
-                            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                            speed = d.get('speed') or 0
-                            pct = int(downloaded / total * 100) if total else 0
-                            dl_mb = downloaded / 1024 / 1024
-                            tot_mb = total / 1024 / 1024 if total else 0
-                            spd_mb = speed / 1024 / 1024
-                            detail = f"{dl_mb:.1f} / {tot_mb:.1f} MB  •  {spd_mb:.1f} MB/s" if tot_mb else f"{dl_mb:.1f} MB"
-                            _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background")},{json.dumps(detail)})')
-                            _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
+                    dl_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                    with requests.get(bg_url, stream=True, timeout=300, headers=dl_headers) as resp:
+                        resp.raise_for_status()
+                        total_b = int(resp.headers.get('Content-Length') or 0)
+                        total_mb_str = f"{total_b / 1024 / 1024:.1f} MB" if total_b else "? MB"
+                        self._log(f"Background video size: {total_mb_str}")
+                        downloaded = 0
+                        t_start = _time.monotonic()
 
-                    ydl_opts['progress_hooks'] = [_progress_hook]
-
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([yt_url])
+                        with open(out_path, 'wb') as f:
+                            for chunk in resp.iter_content(chunk_size=65536):
+                                if self.cancel_event.is_set():
+                                    raise InterruptedError("Cancelled")
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    elapsed = max(_time.monotonic() - t_start, 0.001)
+                                    speed_mb = downloaded / elapsed / 1024 / 1024
+                                    pct = int(downloaded / total_b * 100) if total_b else 0
+                                    detail = f"{downloaded/1024/1024:.1f} / {total_mb_str}  •  {speed_mb:.1f} MB/s"
+                                    _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background")},{json.dumps(detail)})')
+                                    _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
 
                     dl_size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
                     if dl_size < MIN_VIDEO_SIZE:
-                        raise RuntimeError(f"Downloaded file too small ({dl_size} bytes) — expected a real 1080p video")
+                        raise RuntimeError(f"Downloaded file too small ({dl_size} bytes)")
 
-                    self._log(f"YouTube background ready: {filename} ({dl_size/1024/1024:.1f} MB)")
+                    self._log(f"Background video ready: {filename} ({dl_size/1024/1024:.1f} MB)")
                     _js(f'typeof onBgVideoReady==="function"&&onBgVideoReady({json.dumps(serve_url)})')
 
                 except Exception as e:
