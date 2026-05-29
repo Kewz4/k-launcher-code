@@ -705,74 +705,57 @@ class ModpackLauncherAPI:
 
             def _download_yt_bg():
                 yt_url = f"https://www.youtube.com/watch?v={yt_id}"
-                self._log(f"Resolving 1080p background via cobalt.tools: {yt_url}")
+                self._log(f"Downloading 1080p background via yt-dlp: {yt_url}")
                 import time as _time
 
                 try:
-                    # cobalt.tools: public API that returns a direct 1080p H.264
-                    # download URL without needing yt-dlp or ffmpeg.
-                    # Field names changed in cobalt v10: vQuality→videoQuality, vCodec→youtubeVideoCodec
-                    cobalt_headers = {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                    }
-                    cobalt_payload = {
-                        'url': yt_url,
-                        'videoQuality': '1080',
-                        'youtubeVideoCodec': 'h264',
-                        'downloadMode': 'auto',
-                        'filenameStyle': 'basic',
-                    }
-                    _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Resolving video URL")},{json.dumps("contacting cobalt.tools...")})')
-                    self._log("Contacting cobalt.tools API...")
-                    cobalt_resp = requests.post(
-                        'https://api.cobalt.tools/',
-                        json=cobalt_payload,
-                        headers=cobalt_headers,
-                        timeout=20,
+                    import yt_dlp
+
+                    # Prefer 1080p H264 video merged with AAC audio via ffmpeg.
+                    # Falls back to best available pre-merged if ffmpeg is unavailable.
+                    fmt = (
+                        'bestvideo[height<=1080][vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]'
+                        '/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]'
+                        '/best[height<=1080][ext=mp4]/best[height<=1080]'
                     )
-                    self._log(f"cobalt.tools HTTP {cobalt_resp.status_code}")
-                    cobalt_data = cobalt_resp.json()
-                    self._log(f"cobalt.tools response: {cobalt_data}")
-                    status = cobalt_data.get('status', '')
-                    if status in ('stream', 'redirect', 'tunnel'):
-                        direct_url = cobalt_data['url']
-                        self._log(f"cobalt.tools resolved ({status}): {direct_url[:80]}...")
-                    else:
-                        err = cobalt_data.get('error', {})
-                        raise RuntimeError(f"cobalt.tools error: status='{status}' code='{err.get('code', '')}' raw={cobalt_data}")
 
-                    # Download the resolved URL using plain urllib (no yt-dlp, no ffmpeg)
-                    import urllib.request as _urlreq
-                    dl_headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                        'Referer': 'https://cobalt.tools/',
+                    ydl_opts = {
+                        'format': fmt,
+                        'outtmpl': out_path,
+                        'quiet': True,
+                        'no_warnings': True,
+                        'noprogress': True,
+                        'merge_output_format': 'mp4',
                     }
-                    req = _urlreq.Request(direct_url, headers=dl_headers)
-                    with _urlreq.urlopen(req, timeout=300) as resp:
-                        total_b = int(resp.headers.get('Content-Length') or 0)
-                        total_mb_str = f"{total_b / 1024 / 1024:.1f} MB" if total_b else "? MB"
-                        self._log(f"Downloading background: {total_mb_str}")
-                        downloaded = 0
-                        t_start = _time.monotonic()
 
-                        with open(out_path, 'wb') as f:
-                            while True:
-                                if self.cancel_event.is_set():
-                                    raise InterruptedError("Cancelled")
-                                chunk = resp.read(65536)
-                                if not chunk:
-                                    break
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                elapsed = max(_time.monotonic() - t_start, 0.001)
-                                speed_mb = downloaded / elapsed / 1024 / 1024
-                                pct = int(downloaded / total_b * 100) if total_b else 0
-                                detail = f"{downloaded/1024/1024:.1f} / {total_mb_str}  •  {speed_mb:.1f} MB/s"
-                                _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background")},{json.dumps(detail)})')
-                                _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
+                    if ffmpeg_exe:
+                        # yt-dlp accepts either the ffmpeg binary path or its parent directory
+                        ydl_opts['ffmpeg_location'] = ffmpeg_exe
+                        self._log(f"yt-dlp will merge streams using ffmpeg: {ffmpeg_exe}")
+                    else:
+                        self._log("WARNING: no ffmpeg — yt-dlp falling back to pre-merged format (may be <1080p)")
 
-                    dl_size = os.path.getsize(out_path)
+                    _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background video")},{json.dumps("starting...")})')
+
+                    def _progress_hook(d):
+                        if d.get('status') == 'downloading':
+                            downloaded = d.get('downloaded_bytes', 0)
+                            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                            speed = d.get('speed') or 0
+                            pct = int(downloaded / total * 100) if total else 0
+                            dl_mb = downloaded / 1024 / 1024
+                            tot_mb = total / 1024 / 1024 if total else 0
+                            spd_mb = speed / 1024 / 1024
+                            detail = f"{dl_mb:.1f} / {tot_mb:.1f} MB  •  {spd_mb:.1f} MB/s" if tot_mb else f"{dl_mb:.1f} MB"
+                            _js(f'typeof onBgVideoStatus==="function"&&onBgVideoStatus(0,1,{json.dumps("Downloading background")},{json.dumps(detail)})')
+                            _js(f'typeof onBgVideoProgress==="function"&&onBgVideoProgress(0,1,{pct})')
+
+                    ydl_opts['progress_hooks'] = [_progress_hook]
+
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([yt_url])
+
+                    dl_size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
                     if dl_size < MIN_VIDEO_SIZE:
                         raise RuntimeError(f"Downloaded file too small ({dl_size} bytes) — expected a real 1080p video")
 
